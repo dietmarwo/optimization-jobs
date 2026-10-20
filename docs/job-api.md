@@ -488,7 +488,7 @@ one of the [runner's codes](#errors) or one of these:
 | --- | --- | --- |
 | `invalid_arguments` | The tool's arguments do not fit its input schema | Fix the call |
 | `not_finished` | `get_result` before the job ended | `wait_job` |
-| `result_too_large` | The full manifest exceeds 1 MiB | `tasks`, or `run.json` in the job directory |
+| `result_too_large` | `full` on a manifest over 1 MiB, or any read of a manifest over 256 MiB | `tasks`, or `run.json` in the job directory |
 | `mcp_timeout` | A runner call, or the confirmation that a submitted job exists, exceeded its deadline; retryable | `get_job` before submitting again |
 
 ### Protocol versions
@@ -497,7 +497,8 @@ The server is dual-era. A request that carries
 `io.modelcontextprotocol/protocolVersion` in `_meta` is served statelessly
 under revision 2026-07-28 (`server/discover` answers without a handshake); an
 `initialize` request selects 2025-11-25, 2025-06-18, 2025-03-26 or 2024-11-05
-for the process, and JSON-RPC batches are answered as batches. Another version
+for the process; after an `initialize` with 2025-03-26, JSON-RPC batches are
+answered as batches. Another version
 gets `UnsupportedProtocolVersion` (`-32022`) listing the supported ones. The
 server offers tools only: no resources, prompts, sampling, elicitation or
 logging, and `subscriptions/listen` delivers task notifications only.
@@ -518,7 +519,7 @@ one asynchronous tool call:
 | --- | --- | --- |
 | `submit` / `run` an envelope | `tools/call` returning a task | `submit_job`; a submission that fails returns a tool error, not a task |
 | `request_key` | Task IDs are minted by the server | Random 128-bit task IDs, stored in `NODE/mcp/tasks.json`; the same job resubmitted returns its task |
-| Job states | `working`, `completed`, `failed`, `cancelled` | `submitted` to `running` → `working`; `completed`, `timed_out`, `failed` and `interrupted` → `completed`, with the summary of `get_result` (`isError` for `failed` and `interrupted`); `cancelled` → `cancelled`, and `get_result` returns its completed tasks. A job observed with a lost launcher or after a reboot stays `working`, with the reason in `statusMessage`, until the server can finalize it as `repair_job` would, once no process may own it; a worker that outlived its launcher keeps its exact result |
+| Job states | `working`, `completed`, `failed`, `cancelled` | `submitted` to `running` → `working`; `completed`, `timed_out`, `failed` and `interrupted` → `completed`, with the summary of `get_result` (`isError` for `failed` and `interrupted`); `cancelled` → `cancelled`, and `get_result` returns its completed tasks. A job observed with a lost launcher or after a reboot stays `working`, with the reason in `statusMessage`, until no process may own the attempt; then `tasks/get` (or a task subscription) finalizes it as `repair_job` would, so a read can change the job, and a worker that outlived its launcher keeps its exact result |
 | Graceful cancel | `tasks/cancel` (cooperative) | `cancel_job`; acknowledged also when the job has already ended |
 | `--now` | Not defined | `kill_job` |
 | Journals | Results may be deleted after the task's TTL | `ttlMs` is null: tasks do not expire, and the journal stays the durable record |
@@ -551,7 +552,9 @@ The server cannot register or change workers, initialize the node or change
 its capacity, and jobs reach only registered workers, admitted against the
 node's CPU budget like any other job. Over stdio there is no per-client
 authorization: every connected client acts for the node's owner, so connect
-only clients that the owner trusts with the node.
+only clients that the owner trusts with the node. Like the runner, the
+server assumes that a node root belongs to one host: liveness checks, and so
+the finalization of interrupted jobs, look at this host's processes only.
 
 ## Detached operation and current limits
 

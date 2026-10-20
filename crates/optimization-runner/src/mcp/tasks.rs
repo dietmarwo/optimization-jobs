@@ -180,11 +180,8 @@ fn describe(task_id: &str, created: Option<f64>, job: &Value, note: Option<Strin
 /// is a manifest that cannot be read (the job's state stays in the result).
 fn final_result(job: &Value) -> Value {
     let failed = matches!(job["state"].as_str(), Some("failed" | "interrupted"));
-    match tools::manifest(job) {
-        Ok(manifest) => tools::tool_result(
-            json!({"job":job,"result":tools::summary(job, &manifest)}),
-            failed,
-        ),
+    match tools::read_manifest(job).and_then(|bytes| tools::summary(job, &bytes)) {
+        Ok(summary) => tools::tool_result(json!({"job":job,"result":summary}), failed),
         Err(error) => tools::tool_result(json!({"job":job,"error":error.value()["error"]}), true),
     }
 }

@@ -113,6 +113,8 @@ pub struct Server {
     out: Mutex<io::Stdout>,
     inflight: Mutex<HashMap<String, Arc<AtomicBool>>>,
     initialized: AtomicBool,
+    /// JSON-RPC batches, part of protocol 2025-03-26 only.
+    batches: AtomicBool,
     pub shutdown: AtomicBool,
 }
 
@@ -326,6 +328,8 @@ impl Server {
                     .filter(|v| LEGACY.contains(v))
                     .unwrap_or(LEGACY[0]);
                 self.initialized.store(true, Ordering::Relaxed);
+                self.batches
+                    .store(version == "2025-03-26", Ordering::Relaxed);
                 Reply::Ok(json!({
                     "protocolVersion": version,
                     "capabilities": {"tools": {"listChanged": false}},
@@ -562,11 +566,25 @@ impl Server {
             };
             match message {
                 // A JSON-RPC batch (protocol 2025-03-26): one array of the
-                // responses, sent when all of them are ready.
-                Value::Array(messages) if !messages.is_empty() => {
+                // responses, sent when all of them are ready, so a stream
+                // that never ends cannot be part of one.
+                Value::Array(messages)
+                    if !messages.is_empty() && self.batches.load(Ordering::Relaxed) =>
+                {
                     let handles: Vec<_> = messages
                         .into_iter()
-                        .filter_map(|m| self.accept(m))
+                        .filter_map(|m| {
+                            if m["method"] == "subscriptions/listen" {
+                                let id = m.get("id").cloned().unwrap_or(Value::Null);
+                                let reply = Self::error(
+                                    id,
+                                    INVALID_REQUEST,
+                                    "subscriptions/listen cannot be part of a batch",
+                                );
+                                return Some(thread::spawn(move || Some(reply)));
+                            }
+                            self.accept(m)
+                        })
                         .collect();
                     let server = self.clone();
                     thread::spawn(move || {
@@ -579,9 +597,15 @@ impl Server {
                         }
                     });
                 }
-                Value::Array(_) => {
-                    self.send(&Self::error(Value::Null, INVALID_REQUEST, "empty batch"))
-                }
+                Value::Array(messages) => self.send(&Self::error(
+                    Value::Null,
+                    INVALID_REQUEST,
+                    if messages.is_empty() {
+                        "empty batch"
+                    } else {
+                        "JSON-RPC batches are part of protocol 2025-03-26 only; initialize with it to send them"
+                    },
+                )),
                 message => {
                     if let Some(handle) = self.accept(message) {
                         let server = self.clone();
@@ -643,6 +667,7 @@ pub fn main() {
         out: Mutex::new(io::stdout()),
         inflight: Mutex::new(HashMap::new()),
         initialized: AtomicBool::new(false),
+        batches: AtomicBool::new(false),
         shutdown: AtomicBool::new(false),
     });
     server.serve();

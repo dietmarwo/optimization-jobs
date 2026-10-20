@@ -4,7 +4,8 @@ use super::{Ctx, Launch, Server, tasks};
 use optimization_job_api::{
     Input, MAX_INPUT_BYTES, checked_input, process::bounded_command_until, storage::digest,
 };
-use serde_json::{Value, json};
+use serde::Deserialize;
+use serde_json::{Value, json, value::RawValue};
 use std::{
     collections::BTreeMap,
     fs,
@@ -34,8 +35,8 @@ const FULL_CAP: usize = 1024 * 1024;
 const MAX_WAIT_SECONDS: f64 = 600.0;
 /// Deadline of commands that change a job; they are never aborted.
 const MUTATING: Duration = Duration::from_secs(600);
-/// Largest result manifest read.
-const MANIFEST_CAP: u64 = 1 << 30;
+/// Largest result manifest read (one in-memory copy per request).
+const MANIFEST_CAP: u64 = 256 * 1024 * 1024;
 
 pub struct ToolError {
     pub code: String,
@@ -558,6 +559,11 @@ fn stage(server: &Server, args: &Value) -> Result<Staged, Fail> {
 
 /// Parses a regular file of at most `cap` bytes as JSON.
 fn read_json_file(path: &Path, cap: u64) -> Result<Value, String> {
+    serde_json::from_slice(&read_file(path, cap)?).map_err(|e| e.to_string())
+}
+
+/// The bytes of a regular file of at most `cap` bytes.
+fn read_file(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
     use std::io::Read;
     let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
     if !metadata.is_file() {
@@ -573,7 +579,7 @@ fn read_json_file(path: &Path, cap: u64) -> Result<Value, String> {
     if bytes.len() as u64 > cap {
         return Err(format!("over the cap of {cap} bytes"));
     }
-    serde_json::from_slice(&bytes).map_err(|e| e.to_string())
+    Ok(bytes)
 }
 
 /// Writes an inline job to a staging directory with copies of its input
@@ -825,8 +831,10 @@ fn wait_job(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
     }
 }
 
-/// The result manifest of an ended job.
-pub fn manifest(job: &Value) -> Result<Value, ToolError> {
+/// The result manifest of an ended job, as bytes: the summary parses only
+/// the fields it shows, so an archive or a front of a few hundred MiB costs
+/// little more than its size in memory.
+pub fn read_manifest(job: &Value) -> Result<Vec<u8>, ToolError> {
     let id = job["job_id"].as_str().unwrap_or_default();
     if !terminal(&job["state"]) {
         let mut message = format!(
@@ -843,9 +851,9 @@ pub fn manifest(job: &Value) -> Result<Value, ToolError> {
         });
     }
     let file = Path::new(job["directory"].as_str().unwrap_or_default()).join("run.json");
-    // Read directly: a large manifest (an archive or a front) needs neither
-    // the runner's pretty printing nor its output pipe.
-    read_json_file(&file, MANIFEST_CAP).map_err(|e| {
+    // Read directly: a large manifest needs neither the runner's pretty
+    // printing nor its output pipe.
+    read_file(&file, MANIFEST_CAP).map_err(|e| {
         let code = if e.contains("over the cap") {
             "result_too_large"
         } else {
@@ -859,85 +867,167 @@ pub fn manifest(job: &Value) -> Result<Value, ToolError> {
     })
 }
 
+/// The fields of a manifest that a summary shows; task records stay raw.
+#[derive(Deserialize)]
+struct ManifestView<'a> {
+    #[serde(default)]
+    status: Value,
+    #[serde(default)]
+    schema_version: Value,
+    #[serde(default)]
+    worker: Value,
+    #[serde(default)]
+    payload_schema: Value,
+    #[serde(default)]
+    completed_tasks: Value,
+    #[serde(default)]
+    requested_tasks: Value,
+    #[serde(default)]
+    elapsed_seconds: Value,
+    #[serde(default)]
+    work: Value,
+    #[serde(default)]
+    artifacts: Value,
+    #[serde(default)]
+    runner: RunnerView,
+    #[serde(borrow, default)]
+    results: Vec<&'a RawValue>,
+}
+
+#[derive(Default, Deserialize)]
+struct RunnerView {
+    #[serde(default)]
+    accounting_complete: Value,
+}
+
+#[derive(Default, Deserialize)]
+struct RecordView {
+    #[serde(default)]
+    task_id: Value,
+    #[serde(default)]
+    outcome: OutcomeView,
+}
+
+#[derive(Default, Deserialize)]
+struct OutcomeView {
+    #[serde(default)]
+    claim: Value,
+    #[serde(default)]
+    termination: Value,
+    #[serde(default)]
+    feasible: Value,
+    #[serde(default)]
+    objective: Value,
+    #[serde(default)]
+    evidence: EvidenceView,
+    #[serde(default)]
+    objective_bounds: Value,
+    #[serde(default)]
+    imprecise: Value,
+}
+
+#[derive(Default, Deserialize)]
+struct EvidenceView {
+    #[serde(default)]
+    level: Value,
+    #[serde(default)]
+    refuted: Value,
+}
+
+fn view(bytes: &[u8]) -> Result<ManifestView<'_>, ToolError> {
+    serde_json::from_slice(bytes).map_err(|e| ToolError {
+        code: "runner_error".into(),
+        message: format!("unreadable result manifest: {e}"),
+        retryable: false,
+    })
+}
+
 /// The compact view of a result: accounting and one line per task, without
 /// points or details.
-pub fn summary(job: &Value, manifest: &Value) -> Value {
-    let results = manifest["results"].as_array().cloned().unwrap_or_default();
+pub fn summary(job: &Value, bytes: &[u8]) -> Result<Value, ToolError> {
+    let manifest = view(bytes)?;
     let mut claims = BTreeMap::<String, u64>::new();
     let mut terminations = BTreeMap::<String, u64>::new();
-    for r in &results {
-        let o = &r["outcome"];
+    let mut tasks = vec![];
+    for raw in &manifest.results {
+        let r: RecordView = serde_json::from_str(raw.get()).unwrap_or_default();
+        let o = &r.outcome;
         *claims
-            .entry(o["claim"].as_str().unwrap_or("unknown").into())
+            .entry(o.claim.as_str().unwrap_or("unknown").into())
             .or_default() += 1;
         *terminations
-            .entry(o["termination"].as_str().unwrap_or("unknown").into())
+            .entry(o.termination.as_str().unwrap_or("unknown").into())
             .or_default() += 1;
-    }
-    let tasks: Vec<Value> = results
-        .iter()
-        .take(SUMMARY_TASKS)
-        .map(|r| {
-            let o = &r["outcome"];
+        if tasks.len() < SUMMARY_TASKS {
             let mut task = json!({
-                "task_id": r["task_id"],
-                "claim": o["claim"],
-                "termination": o["termination"],
-                "feasible": o["feasible"],
-                "objective": o["objective"],
-                "evidence": o["evidence"]["level"],
+                "task_id": r.task_id,
+                "claim": o.claim,
+                "termination": o.termination,
+                "feasible": o.feasible,
+                "objective": o.objective,
+                "evidence": o.evidence.level,
             });
-            for key in ["objective_bounds", "imprecise"] {
-                if !o[key].is_null() {
-                    task[key] = o[key].clone();
+            for (key, value) in [
+                ("objective_bounds", &o.objective_bounds),
+                ("imprecise", &o.imprecise),
+                ("refuted", &o.evidence.refuted),
+            ] {
+                if !value.is_null() {
+                    task[key] = value.clone();
                 }
             }
-            if !o["evidence"]["refuted"].is_null() {
-                task["refuted"] = o["evidence"]["refuted"].clone();
-            }
-            task
-        })
-        .collect();
-    json!({
+            tasks.push(task);
+        }
+    }
+    Ok(json!({
         "job_id": job["job_id"],
         "state": job["state"],
-        "status": manifest["status"],
-        "schema_version": manifest["schema_version"],
-        "worker": manifest["worker"],
-        "payload_schema": manifest["payload_schema"],
-        "completed_tasks": manifest["completed_tasks"],
-        "requested_tasks": manifest["requested_tasks"],
-        "elapsed_seconds": manifest["elapsed_seconds"],
-        "work": manifest["work"],
-        "accounting_complete": manifest["runner"]["accounting_complete"],
+        "status": manifest.status,
+        "schema_version": manifest.schema_version,
+        "worker": manifest.worker,
+        "payload_schema": manifest.payload_schema,
+        "completed_tasks": manifest.completed_tasks,
+        "requested_tasks": manifest.requested_tasks,
+        "elapsed_seconds": manifest.elapsed_seconds,
+        "work": manifest.work,
+        "accounting_complete": manifest.runner.accounting_complete,
         "claims": claims,
         "terminations": terminations,
         "tasks": tasks,
-        "tasks_omitted": results.len().saturating_sub(SUMMARY_TASKS),
-        "artifacts": manifest["artifacts"],
+        "tasks_omitted": manifest.results.len().saturating_sub(SUMMARY_TASKS),
+        "artifacts": manifest.artifacts,
         "directory": job["directory"],
-    })
+    }))
 }
 
 fn get_result(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
     let id = job_id(args)?;
     let job = server.get(&id, ctx)?;
-    let manifest = manifest(&job).map_err(Fail::Tool)?;
+    let bytes = read_manifest(&job).map_err(Fail::Tool)?;
+    let too_large = |size: usize| {
+        fail(
+            "result_too_large",
+            format!(
+                "the result manifest has {size} bytes, over the 1 MiB inline cap; pass tasks, or read {}/run.json",
+                job["directory"].as_str().unwrap_or_default()
+            ),
+        )
+    };
     if args["full"].as_bool() == Some(true) {
+        // Pretty printing at most quadruples a manifest.
+        if bytes.len() > 4 * FULL_CAP {
+            return Err(too_large(bytes.len()));
+        }
+        let manifest: Value = serde_json::from_slice(&bytes)
+            .map_err(|e| fail("runner_error", format!("unreadable result manifest: {e}")))?;
         let size = manifest.to_string().len();
         if size > FULL_CAP {
-            return Err(fail(
-                "result_too_large",
-                format!(
-                    "the result manifest has {size} bytes, over the 1 MiB inline cap; read {}/run.json, or pass tasks",
-                    job["directory"].as_str().unwrap_or_default()
-                ),
-            ));
+            return Err(too_large(size));
         }
         return Ok(manifest);
     }
     match &args["tasks"] {
-        Value::Null => Ok(summary(&job, &manifest)),
+        Value::Null => summary(&job, &bytes).map_err(Fail::Tool),
         Value::Array(ids) => {
             let wanted: Vec<u64> = ids.iter().filter_map(Value::as_u64).collect();
             if wanted.len() != ids.len() || wanted.len() > 100 {
@@ -946,13 +1036,21 @@ fn get_result(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
                     "tasks must be at most 100 non-negative integer task IDs",
                 ));
             }
-            let records: Vec<Value> = manifest["results"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|r| r["task_id"].as_u64().is_some_and(|t| wanted.contains(&t)))
-                .cloned()
-                .collect();
+            let manifest = view(&bytes).map_err(Fail::Tool)?;
+            let mut records = vec![];
+            for raw in &manifest.results {
+                #[derive(Deserialize)]
+                struct Id {
+                    task_id: Option<u64>,
+                }
+                let selected = serde_json::from_str::<Id>(raw.get())
+                    .ok()
+                    .and_then(|r| r.task_id)
+                    .is_some_and(|t| wanted.contains(&t));
+                if selected && let Ok(record) = serde_json::from_str::<Value>(raw.get()) {
+                    records.push(record);
+                }
+            }
             Ok(json!({"job_id":id,"state":job["state"],"tasks":records}))
         }
         _ => Err(fail("invalid_arguments", "tasks must be an array")),

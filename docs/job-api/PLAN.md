@@ -209,7 +209,12 @@ decided by the runner's identity rule); no JSON-RPC batches for 2025-03-26;
 a version error that did not point legacy clients to `initialize`; an input
 file colliding with the staged job; a panic on a corrupt task store; a
 non-UTF-8 line that ended the server; two responses for a duplicate request
-ID; and launcher logs that outlived killed servers. It also found a race in
+ID; and launcher logs that outlived killed servers. Its check of the fixes
+found two more, also fixed: summaries parsed whole manifests into JSON trees
+(they now parse only the fields they show, with task records kept raw, and
+manifests are capped at 256 MiB), and batches were accepted in every
+protocol era (now only after `initialize` with 2025-03-26, and never with a
+subscription in them). It also found a race in
 `process::bounded_command_until`, which killed the command's process group
 after reaping its leader, so a reused PID could name another group; the
 group is now killed while the leader is still a zombie.
@@ -218,7 +223,7 @@ Gate: `scripts/job-api/test_mcp.py`: both protocol eras, batches, version and
 capability errors, tool definitions, idempotent submission and key conflicts,
 the worker in the job's identity, coded tool errors, graceful and immediate
 cancellation, cancelled submissions, input staging and containment, job files
-and their bounds, large manifests, the task lifecycle with cancellation and
+and their bounds, large manifests and the memory they take, the task lifecycle with cancellation and
 failure, task errors, a corrupt task store, task notifications, jobs and
 tasks across a killed server, a lost launcher, cancelled and duplicate
 requests, non-UTF-8 input, progress, concurrent requests, end of input, and

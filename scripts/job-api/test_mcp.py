@@ -667,6 +667,11 @@ class Review(Server):
         self.assertEqual(self.client.error("get_result", {"job_id": ident, "full": True})["code"], "result_too_large")
         task = self.poll_task(created["taskId"])
         self.assertFalse(task["result"]["isError"])
+        # The summary does not hold the manifest as a JSON tree, which would
+        # take several times the file's size.
+        status = Path(f"/proc/{self.client.process.pid}/status").read_text().splitlines()
+        peak = int(next(line for line in status if line.startswith("VmHWM:")).split()[1]) * 1024
+        self.assertLess(peak, 4 * manifest_path.stat().st_size)
 
     def test_an_input_named_like_the_staged_job(self):
         data = self.base / "inputs"
@@ -689,6 +694,12 @@ class Review(Server):
         self.assertEqual(sorted(m["id"] for m in message), ["a", "b"])
         self.client.send([])
         self.assertEqual(self.client.messages.get(timeout=30)["error"]["code"], -32600)
+        # Batches belong to 2025-03-26 only.
+        other = self.connect()
+        other.send([{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {"_meta": meta()}}])
+        error = other.messages.get(timeout=30)
+        self.assertEqual(error["error"]["code"], -32600)
+        self.assertIn("2025-03-26", error["error"]["message"])
         # A line that is not UTF-8 is a parse error, and the server goes on.
         self.client.process.stdin.flush()
         self.client.process.stdin.buffer.write(b"\xff\xfe\n")
