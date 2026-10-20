@@ -52,11 +52,12 @@ optimization-runner = { git = "https://github.com/dietmarwo/optimization-jobs", 
 ```
 
 A worker crate implements `optimization_job_api::worker::Worker` and calls
-`optimization_job_api::worker::run`. To build `optimization-run` in a worker
-repository with `cargo build -p optimization-runner`, one of its crates (the
-worker, say) needs `optimization-runner` as a normal dependency, even if it
-never uses it: Cargo cannot select a package that only dev-dependencies
-reach. To move to a newer revision, change `rev` and run
+`optimization_job_api::worker::run`. To build `optimization-run` next to the
+worker with `cargo build -p optimization-runner -p WORKER`, give the worker
+`optimization-runner` as a normal dependency, even if it never uses it: with
+workspace members named on the command line, Cargo selects other packages
+only among the normal dependencies of those members (a dev-dependency is not
+enough). To move to a newer revision, change `rev` and run
 `cargo update -p optimization-job-api -p optimization-runner`.
 
 To develop a worker and the shared crates together, patch the dependency with

@@ -46,8 +46,8 @@ Every 0.1 result record is a valid 0.2 record, so a registered 0.1 worker keeps
 working; its records simply carry no evidence. A runner built before 0.2
 rejects 0.2 workers at registration instead of failing on their journals.
 
-In fcmaes-rust, `fcmaes-job-api` re-exports the original public API from the
-shared crate's `legacy` module. `fcmaes-run` is a compatibility entry point into
+In fcmaes-rust, the original contract is the `legacy` module of
+`optimization-job-api`, and `fcmaes-run` is a compatibility entry point into
 the common runner. The original `fcmaes-native-worker`, `fcmaes.job/0.1` inputs,
 retry journals, evaluation accounting, comparison rules and benchmark command
 remain supported. Register that worker as `native`. Register the new adapter
