@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/optimization-job-api", "crates/optimization-runner"]
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+
+# The runner and its workers hash their staged executables (tens of MB in
+# debug builds) on every job start; unoptimized SHA-256 made debug start-up
+# take seconds. Optimize just the hashing crate in dev and test builds.
+[profile.dev.package.sha2]
+opt-level = 3
