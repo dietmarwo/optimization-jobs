@@ -8,6 +8,9 @@ publish = false
 [[bin]]
 name = "optimization-run"
 path = "src/main.rs"
+[[bin]]
+name = "optimization-mcp"
+path = "src/bin/optimization-mcp.rs"
 [dependencies]
 optimization-job-api = { path = "../optimization-job-api" }
 tempfile = "3"

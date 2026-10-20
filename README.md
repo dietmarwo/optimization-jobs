@@ -1,14 +1,15 @@
 # optimization-jobs
 
 Durable, versioned optimization jobs for agents and people: a strict job
-envelope, a result contract with claims and evidence, a worker SDK and a local
+envelope, a result contract with claims and evidence, a worker SDK, a local
 runner, `optimization-run`, that schedules native solver workers against one
-CPU budget.
+CPU budget, and `optimization-mcp`, an MCP server that gives agents the same
+jobs as tools and tasks.
 
 | Part | What it is |
 | --- | --- |
 | [`crates/optimization-job-api`](crates/optimization-job-api) | Job envelope `optimization.job/0.1`, result contract `optimization.result/0.2`, input hashes, checked journals and the worker SDK (`worker::run`, `Worker`, `Prepared`) |
-| [`crates/optimization-runner`](crates/optimization-runner) | The `optimization-run` command: worker registration, staging, idempotency, CPU-slot admission, supervision, cancellation, deadlines, recovery and coded errors |
+| [`crates/optimization-runner`](crates/optimization-runner) | The `optimization-run` command: worker registration, staging, idempotency, CPU-slot admission, supervision, cancellation, deadlines, recovery and coded errors; and `optimization-mcp`, the MCP server over stdio |
 | [`docs/job-api.md`](docs/job-api.md) | The guide: envelope, resources, lifecycle, claims and evidence, errors, recovery, agents and MCP |
 | [`docs/job-api/schemas`](docs/job-api/schemas/optimization.job-0.1.schema.json) | JSON Schemas of the job envelope and the result manifest |
 | [`docs/job-api/PLAN.md`](docs/job-api/PLAN.md) | Implementation plan and acceptance gates |
@@ -40,6 +41,21 @@ Or build the runner alone here with `cargo build --release --locked`. One
 runner serves every registered worker on a node. The
 [guide](docs/job-api.md) explains jobs, results and the CPU budget; the
 worker repositories' tutorials have complete example jobs.
+
+## Agents
+
+The same build makes `optimization-mcp`. Connect an MCP client to an
+initialized node with registered workers, for example Claude Code:
+
+```sh
+claude mcp add optimization-jobs -- "$PWD/target/release/optimization-mcp" --root /tmp/node
+```
+
+Its tools describe the node and its workers, validate, submit, follow, cancel
+and repair jobs, and read results; with the MCP Tasks extension, a submitted
+job is a task that completes with the job's result. Jobs outlive the server.
+The server cannot register workers or change the node. See
+[Agents and MCP](docs/job-api.md#agents-and-mcp).
 
 ## Depending on this repository
 
@@ -77,6 +93,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --release --locked
 cargo build --release --locked -p optimization-runner
 python3 scripts/job-api/test_review.py            # with the fake worker
+python3 scripts/job-api/test_mcp.py               # the MCP server
 python3 scripts/job-api/test_integration.py \
   --fcmaes /path/to/fcmaes-job-worker \
   --lp-ip /path/to/lp-ip-job-worker --sqp /path/to/sqp-job-worker

@@ -26,6 +26,7 @@ and [`optimization.result-0.2.schema.json`](job-api/schemas/optimization.result-
 | --- | --- |
 | `optimization-job-api` | Strict versioned envelope, resources, input hashes, checked journals, result contract and worker SDK |
 | `optimization-runner` / `optimization-run` | Worker discovery, staging, idempotency, admission, process supervision, cancellation, deadlines, journal recovery and coded errors |
+| `optimization-runner` / `optimization-mcp` | MCP server over stdio for agents: tools and tasks over `optimization-run` ([Agents and MCP](#agents-and-mcp)) |
 | `fcmaes-job-worker` | `fcmaes.retry/1` (BiteOpt or DE, serial or with parallel delayed-feedback batches, CMA-ES with optional IPOP/BIPOP restarts, CR-FM-NES or PGPE retries on registered scalar models), `fcmaes.mode/1` (MODE Pareto fronts), `fcmaes.map-elites/1` (MAP-Elites grid or CVT archives, optional CMA-ME/CMA-MAE emitters) and `fcmaes.evaluate/1` (given points): deterministic task seeds, exact or declared evaluation budgets, parallel population evaluation; application workers register their own models with parameters and hashed inputs |
 | `lp-ip-job-worker` | `lp-ip.solve/1`: sparse LP/MIP artifacts, candidate starts, node/pivot budgets and numerical checks; `lp-ip.evaluate/1`: given points |
 | `sqp-job-worker` | `sqp.solve/1`: registered smooth Rust models, initial points, active-set/Clarabel backends and independent KKT checks; `sqp.evaluate/1`: given points |
@@ -75,7 +76,8 @@ cargo build --release --locked -p optimization-runner -p WORKER_PACKAGE
 ./target/release/optimization-run --root /tmp/optimization-node problems describe WORKER_ID
 ```
 
-`describe` on a worker prints its accepted profiles, registered models, engine
+The same build makes `optimization-mcp`, the MCP server of
+[Agents and MCP](#agents-and-mcp). `describe` on a worker prints its accepted profiles, registered models, engine
 version, resource limits, claims and recovery capabilities. Executables are
 trusted local programs: registration is explicit, and jobs cannot supply
 executable paths or shell commands. This is a local single-user runner, not a
@@ -420,25 +422,130 @@ algorithms or resource widths.
 
 ## Agents and MCP
 
-The CLI is the agent interface of this release: every command prints JSON,
-every error has a code, and the schemas describe the inputs and outputs. The
-MCP Tasks extension (`io.modelcontextprotocol/tasks`, specification
-2026-07-28) maps onto the runner as follows; no MCP server ships yet.
+The CLI is one agent interface: every command prints JSON, every error has a
+code, and the schemas describe the inputs and outputs. `optimization-mcp` is
+the other: a Model Context Protocol server over stdio for one node. It is a
+second binary of the `optimization-runner` package, so
+`cargo build --release --locked -p optimization-runner` builds it next to
+`optimization-run`, here and in every worker repository. Each tool drives the
+`optimization-run` command line, so the runner's validation, idempotency,
+admission and recovery rules apply unchanged.
 
-| Runner | MCP Tasks | Adapter |
+### Connect a client
+
+The owner of the node initializes it and registers its workers with the CLI
+([Build and discover](#build-and-discover)); the server does neither. Then
+point an MCP client at the server, with absolute paths:
+
+```sh
+# Claude Code
+claude mcp add optimization-jobs -- /abs/target/release/optimization-mcp --root /abs/node
+```
+
+```json
+{"mcpServers": {"optimization-jobs": {
+  "command": "/abs/target/release/optimization-mcp",
+  "args": ["--root", "/abs/node"]}}}
+```
+
+The second form fits clients configured with an `mcpServers` file, such as
+Claude Desktop. The options are `--root` (or `OPTIMIZATION_RUN_ROOT`), the node;
+`--runner`, the `optimization-run` executable (by default the one next to the
+server); `--launch process|systemd` (see below); and `--input-dir`, the
+directory that relative input files of inline jobs are read from (by default
+the working directory). The server logs one line to stderr when it starts.
+
+### Tools
+
+| Tool | Runner command | Answer |
 | --- | --- | --- |
-| `submit` / `run` an envelope | `tools/call` returning a task | None |
-| `request_key` | Task IDs are minted by the server | Keep the key in the tool arguments; an identical resubmission returns the existing handle, a conflicting one the `request_key_conflict` error |
-| Job states | `working`, `completed`, `failed`, `cancelled` | `waiting`/`running` → `working`; the result body carries termination and claim, because a tool result with `isError` counts as `completed` |
-| Graceful cancel | `tasks/cancel` (cooperative) | None; a cancelled job may still return a best-so-far result |
-| `--now` | Not defined | A separate kill tool |
-| Journals | Results may be deleted after the task's TTL | The journal stays the durable record; read it with a result tool |
-| `jobs list` | Removed from the extension | A tool scoped to the local node |
-| `capacity_exceeded` | Servers should enforce per-requestor limits | A tool error with the slot arithmetic |
-| `describe` | Tool input schemas | Publish the profiles as JSON Schema |
+| `describe_node` | `node doctor`, `workers list` | Capacity, launch mode, the workers with their profiles and builds |
+| `describe_worker` | `problems describe` | The worker's full description: profiles, models, options, claims |
+| `validate_job` | `validate` | The resolved job with its `task_count`, or `invalid_job` |
+| `submit_job` | `run` (process) or `submit` (systemd) | The job's handle once it exists; a task for clients with the Tasks extension |
+| `get_job` | `jobs get` | State, progress, directory, `observed_state` |
+| `wait_job` | `jobs get`, repeated | Returns when the job ends or is observed interrupted, at most after `timeout_seconds` (600); progress notifications on request |
+| `get_result` | `result` | A summary: accounting, claim and termination counts, one line per task (the first 100, without points); `tasks` returns complete records, `full` the manifest up to 1 MiB |
+| `get_events` | `jobs events` | The last `limit` lifecycle events |
+| `get_artifact` | `jobs artifact` | An artifact of the result, up to 1 MiB |
+| `list_jobs` | `jobs list` | The jobs, newest first, optionally only active ones |
+| `cancel_job` | `jobs cancel` | Graceful stop; completed tasks stay in the result |
+| `kill_job` | `jobs cancel --now` | Immediate stop |
+| `repair_job` | `jobs repair` | Finalizes a job whose launcher was lost or that a reboot interrupted |
 
-Until hosts support Tasks, a server should also offer the plain handle pattern:
-a submit tool returning the job ID, plus status, result and cancel tools.
+A tool that takes a job accepts it inline, as `job` (an envelope object whose
+relative input files are read from `input_dir`, by default the server's
+`--input-dir`), or as `spec_path`, a job file whose inputs lie next to it. Its
+input schema embeds the envelope schema. An input file is copied for staging
+only after its SHA-256 matches, so a job can carry only files whose content
+its author already knows.
+
+Results carry `structuredContent` and the same JSON as text. A failed call is
+a tool result with `isError: true` and `{"error":{"code","message","retryable"}}`:
+one of the [runner's codes](#errors) or one of these:
+
+| Code | Meaning | What helps |
+| --- | --- | --- |
+| `invalid_arguments` | The tool's arguments do not fit its input schema | Fix the call |
+| `not_finished` | `get_result` before the job ended | `wait_job` |
+| `result_too_large` | The full manifest exceeds 1 MiB | `tasks`, or `run.json` in the job directory |
+| `mcp_timeout` | A runner call, or the confirmation that a submitted job exists, exceeded its deadline; retryable | `get_job` before submitting again |
+| `attempt_interrupted` | Only in a task's result: the launcher was lost or a reboot interrupted the job | `repair_job`, then `get_result` |
+
+### Protocol versions
+
+The server is dual-era. A request that carries
+`io.modelcontextprotocol/protocolVersion` in `_meta` is served statelessly
+under revision 2026-07-28 (`server/discover` answers without a handshake); an
+`initialize` request selects 2025-11-25, 2025-06-18, 2025-03-26 or 2024-11-05
+for the process. Another version gets `UnsupportedProtocolVersion` (`-32022`)
+listing the supported ones. The server offers tools only: no resources,
+prompts, sampling, elicitation or logging, and `subscriptions/listen` delivers
+task notifications only. `notifications/cancelled` stops a request, such as a
+long `wait_job`, without stopping its job.
+
+### Tasks
+
+With the Tasks extension (`io.modelcontextprotocol/tasks`, 2026-07-28) declared
+in a request's client capabilities, `submit_job` returns a task that completes
+with the job's result, so the client can drive a whole optimization run as
+one asynchronous tool call:
+
+| Runner | MCP Tasks | This server |
+| --- | --- | --- |
+| `submit` / `run` an envelope | `tools/call` returning a task | `submit_job`; a submission that fails returns a tool error, not a task |
+| `request_key` | Task IDs are minted by the server | Random 128-bit task IDs, stored in `NODE/mcp/tasks.json`; the same job resubmitted returns its task |
+| Job states | `working`, `completed`, `failed`, `cancelled` | `submitted` to `running` → `working`; `completed`, `timed_out`, `failed` and `interrupted` → `completed`, with the summary of `get_result` (`isError` for `failed` and `interrupted`); `cancelled` → `cancelled`, and `get_result` returns its completed tasks; a lost launcher or a reboot → `completed` with `attempt_interrupted` |
+| Graceful cancel | `tasks/cancel` (cooperative) | `cancel_job`; acknowledged also when the job has already ended |
+| `--now` | Not defined | `kill_job` |
+| Journals | Results may be deleted after the task's TTL | `ttlMs` is null: tasks do not expire, and the journal stays the durable record |
+| `jobs list` | Removed from the extension | `list_jobs`, scoped to the node |
+| `capacity_exceeded` | Servers should enforce per-requestor limits | A tool error with the slot arithmetic |
+| `describe` | Tool input schemas | The envelope schema in the job tools; `describe_worker` for the profiles |
+| Task notifications | `subscriptions/listen` with `taskIds` | One `notifications/tasks` per status change, checked every 2 s |
+
+A client without the extension uses the handle pattern: `submit_job` returns
+the job ID, then `wait_job` or `get_job`, `get_result` and `cancel_job`.
+
+### Launch, durability and trust
+
+With `--launch process`, the default, `submit_job` starts `optimization-run run`
+in a session of its own: the job outlives the server and ends with its result,
+its wall time, `cancel_job` or `kill_job`. It does not survive a reboot, which
+`get_job` reports as `interrupted_after_reboot` (`repair_job` finalizes the
+attempt), nor a logout whose login manager kills the user's processes. With
+`--launch systemd`, `submit_job` uses `submit` and needs a systemd user
+manager, with the caveats of [detached operation](#detached-operation-and-current-limits).
+A killed or restarted server loses only the requests in flight: a new server
+on the same root resolves the same jobs and task IDs. The server keeps its own
+files in `NODE/mcp/`: the task store, staging copies of inline jobs (removed
+once the job exists) and the logs of launchers that failed.
+
+The server cannot register or change workers, initialize the node or change
+its capacity, and jobs reach only registered workers, admitted against the
+node's CPU budget like any other job. Over stdio there is no per-client
+authorization: every connected client acts for the node's owner, so connect
+only clients that the owner trusts with the node.
 
 ## Detached operation and current limits
 
@@ -449,7 +556,7 @@ user-manager lingering. Foreground execution and the refusal without a systemd
 user manager are tested; detached execution has not yet been accepted on a real
 service host. There is no simulated background-success fallback.
 
-This release has no HTTP/MCP server, remote simulator plugins, arbitrary Python
+This release has no HTTP server (the MCP server speaks stdio), remote simulator plugins, arbitrary Python
 callbacks, ask/tell sessions, distributed scheduler, solver checkpoint/resume or
 cross-solver pipeline engine. New models are native code registered in a
 worker (fcmaes application workers, SQP's extension seam), never callbacks a
@@ -478,6 +585,7 @@ In this repository, with the fake worker and any workers built elsewhere:
 cargo test --release --locked
 cargo build --release --locked -p optimization-runner
 python3 scripts/job-api/test_review.py
+python3 scripts/job-api/test_mcp.py
 # A mixed node with independently built workers:
 python3 scripts/job-api/test_integration.py \
   --fcmaes /path/to/fcmaes-job-worker \
@@ -493,13 +601,16 @@ SHARED=$(cargo metadata --format-version 1 --locked | python3 -c 'import json, p
 JOB_API_TARGET=$PWD/target/release python3 "$SHARED/scripts/job-api/test_integration.py"
 JOB_API_TARGET=$PWD/target/release JOB_API_TUTORIALS=$PWD/tutorials/job-api \
   python3 "$SHARED/scripts/job-api/test_review.py"
+JOB_API_TARGET=$PWD/target/release python3 "$SHARED/scripts/job-api/test_mcp.py"
 ```
 
 The harness auto-detects the workers in `JOB_API_TARGET` and skips
 unavailable solver-specific cases. `test_review.py` holds the runner
 regression tests of the 0.1.1 review, the error codes and the schema checks;
 it drives a protocol fixture (`fake_worker.py`, which speaks protocol 0.1) and
-a real worker when one is built. Its schema checks need the Python
+a real worker when one is built. `test_mcp.py` tests the MCP server in both
+protocol eras, with tasks, cancellation, restarts and launch modes, against
+the same fixture and a real worker. Its schema checks need the Python
 `jsonschema` package; without it they are skipped, unless
 `JOB_API_REQUIRE_SCHEMA=1`, as in CI. This repository's CI runs them with the
 fake worker and on a mixed node with all three workers, built from their

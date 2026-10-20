@@ -166,3 +166,40 @@ Gate: the contract, durability and runner tests here; the review tests with
 the fake worker; the mixed node with all three workers built from their
 repositories; in each worker repository, its tests, its tutorial and the
 shared harness against its own worker, built on the git dependency.
+
+## 9. MCP server (October 2026)
+
+Plan: give agents the jobs over the Model Context Protocol, as the Agents and
+MCP section of the guide mapped them onto the MCP Tasks extension: one server
+per node, over stdio, that drives the documented command line instead of the
+runner's internals, so the runner's rules stay the only rules. Ship it as a
+second binary of `optimization-runner`, so worker repositories build it
+without a new dependency. Serve MCP 2026-07-28 statelessly, with the Tasks
+extension, and the handshake revisions 2025-11-25 to 2024-11-05, which the
+clients of October 2026 still speak. Keep the policy layer: no worker
+registration, node initialization or capacity change through MCP.
+
+Implemented: `optimization-mcp` with thirteen tools (describe_node,
+describe_worker, validate_job, submit_job, get_job, wait_job, get_result,
+get_events, get_artifact, list_jobs, cancel_job, kill_job, repair_job).
+`submit_job` starts `optimization-run run` in a session of its own (or
+`submit` with `--launch systemd`) and answers once `jobs get` finds the job
+with the submitted content, so a conflicting key never returns another job's
+handle. Inline jobs are staged with copies of their input files, each
+checked against its SHA-256 first. With the Tasks extension, `submit_job`
+returns a task whose status is derived from the job on every `tasks/get` and
+which completes with the result summary; task IDs are random tokens kept in
+`NODE/mcp/tasks.json`. `subscriptions/listen` sends task notifications;
+`notifications/cancelled` stops waits and subscriptions; `wait_job` reports
+progress. Results are summarized by default (one line per task, no points),
+because whole manifests (MAP-Elites archives, Pareto fronts) can exceed what
+an agent should read at once.
+
+Gate: `scripts/job-api/test_mcp.py`: both protocol eras, version and
+capability errors, tool definitions, idempotent submission and key
+conflicts, coded tool errors, graceful and immediate cancellation, input
+staging and containment, job files, the task lifecycle with cancellation and
+failure, task errors, task notifications, jobs and tasks across a killed
+server, cancelled requests, progress, concurrent requests, end of input, both
+launch modes, and a real worker's claims and evidence for each of the three
+workers.

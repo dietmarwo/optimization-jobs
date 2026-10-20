@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `optimization-mcp`, an MCP server over stdio for one node, as a second
+  binary of `optimization-runner`, so `cargo build -p optimization-runner`
+  builds it in every worker repository. Thirteen tools describe the node and
+  its workers, validate, submit, wait for, cancel, kill and repair jobs, and
+  read their events, artifacts and results (a summary by default). Each tool
+  drives the `optimization-run` command line. The server is dual-era: MCP
+  2026-07-28 statelessly, with `server/discover` and the Tasks extension
+  (`submit_job` returns a task that completes with the job's result, task
+  notifications through `subscriptions/listen`), and 2025-11-25 to 2024-11-05
+  after `initialize`. Jobs run in a session of their own (or as systemd user
+  units with `--launch systemd`) and outlive the server; task IDs are stored
+  in the node root and survive a restart. The server registers no workers and
+  never changes the node. `scripts/job-api/test_mcp.py` tests it.
 - The shared job API moved here from fcmaes-rust, LP-IP-craft and SQP-craft,
   which carried identical copies: `optimization-job-api` and
   `optimization-runner` 0.2.0 with their tests, the guide, the plan, the JSON

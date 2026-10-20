@@ -1,3 +1,6 @@
+//! The `optimization-run` runner and the `optimization-mcp` server.
+pub mod mcp;
+
 use clap::{Parser, Subcommand};
 use optimization_job_api::{legacy::discovery, process::*, result, storage::*, *};
 use serde_json::{Value, json};
