@@ -6,6 +6,11 @@ runner, `optimization-run`, that schedules native solver workers against one
 CPU budget, and `optimization-mcp`, an MCP server that gives agents the same
 jobs as tools and tasks.
 
+An AI that wants to optimize anything, over MCP or a shell, starts with
+[`ai-context.md`](ai-context.md): which of our solvers fits the problem,
+library or job, installation, the job API and the MCP server, and where the
+detailed documentation is.
+
 | Part | What it is |
 | --- | --- |
 | [`crates/optimization-job-api`](crates/optimization-job-api) | Job envelope `optimization.job/0.1`, result contract `optimization.result/0.2`, input hashes, checked journals, the worker SDK (`worker::run`, `Worker`, `Prepared`) and worker-declared artifacts (`artifact::declare`) |
@@ -25,6 +30,34 @@ maps problem classes to profiles:
 | [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | `fcmaes-job-worker` | `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.surrogate/1` (experimental), `fcmaes.evaluate/1` |
 | [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | `lp-ip-job-worker` | `lp-ip.solve/1`, `lp-ip.evaluate/1` |
 | [SQP-craft](https://github.com/dietmarwo/SQP-craft) | `sqp-job-worker` | `sqp.solve/1`, `sqp.evaluate/1` |
+
+## Install from source
+
+Nothing has been published to crates.io yet; build from source. You need
+Linux (the runner supervises processes through Linux interfaces), git, and
+Rust 1.88 or newer (`rustup` from https://rustup.rs). Cargo fetches every
+other dependency. Python 3.10 or newer is needed only for the test scripts.
+
+```sh
+git clone https://github.com/dietmarwo/optimization-jobs
+cd optimization-jobs
+cargo build --release --locked        # target/release/optimization-run, optimization-mcp
+cargo install --path crates/optimization-runner --locked   # optional: both on PATH
+```
+
+The runner has no workers of its own. Each worker lives in one of our solver
+repositories and builds there together with this runner; Cargo fetches this
+repository at the revision the worker pins, so no second checkout is needed:
+
+| Worker | Build from source |
+| --- | --- |
+| fcmaes | `git clone https://github.com/dietmarwo/fcmaes-rust && cd fcmaes-rust && cargo build --release --locked -p optimization-runner -p fcmaes-job-worker` |
+| LP/MIP | `git clone https://github.com/dietmarwo/LP-IP-craft && cd LP-IP-craft && cargo build --release --locked -p optimization-runner -p lp-ip-job-worker` |
+| Smooth NLP | `git clone https://github.com/dietmarwo/SQP-craft && cd SQP-craft && cargo build --release --locked -p optimization-runner -p sqp-job-worker` |
+
+To use a runner built here with workers built elsewhere, register the
+workers' executables by absolute path. [RELEASING.md](RELEASING.md)
+describes the crates.io release.
 
 ## Quick start
 
