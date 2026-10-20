@@ -6,6 +6,11 @@ runner, `optimization-run`, that schedules native solver workers against one
 CPU budget, and `optimization-mcp`, an MCP server that gives agents the same
 jobs as tools and tasks.
 
+An AI that wants to optimize anything, over MCP or a shell, starts with
+[`ai-context.md`](ai-context.md): which of our solvers fits the problem,
+library or job, installation, the job API and the MCP server, and where the
+detailed documentation is.
+
 | Part | What it is |
 | --- | --- |
 | [`crates/optimization-job-api`](crates/optimization-job-api) | Job envelope `optimization.job/0.1`, result contract `optimization.result/0.2`, input hashes, checked journals, the worker SDK (`worker::run`, `Worker`, `Prepared`) and worker-declared artifacts (`artifact::declare`) |

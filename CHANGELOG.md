@@ -45,7 +45,11 @@ revision. No version has been published to crates.io yet.
   registers no workers and never changes the node.
 - `ai-context.md` for agents that run optimization through the runner or the
   MCP server, and the guide's "Choosing a worker and profile" routing table
-  (#5).
+  (#5). It is now the entry point for any AI that wants to optimize
+  something: choosing among fast-cma-es, fcmaes-rust, LP-IP-craft and
+  SQP-craft, library or job, installation of each (registries and source),
+  a node with all three workers, the job API from the shell, the MCP server,
+  and pointers to the detailed documentation.
 - The shared harness runs `fcmaes.surrogate/1` when the fcmaes worker offers
   it: claims and evidence, identical results for 2 and 4 inner threads, and,
   with a worker that declares its files, the log in pages and a warm start
