@@ -4,7 +4,13 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-publish = false
+description = "Local runner (optimization-run) and MCP server (optimization-mcp) for versioned optimization jobs on one CPU budget"
+repository = "https://github.com/dietmarwo/optimization-jobs"
+documentation = "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md"
+readme = "README.md"
+keywords = ["optimization", "jobs", "runner", "mcp", "agents"]
+categories = ["science", "command-line-utilities"]
+publish = ["crates-io"]
 [[bin]]
 name = "optimization-run"
 path = "src/main.rs"
@@ -12,7 +18,7 @@ path = "src/main.rs"
 name = "optimization-mcp"
 path = "src/bin/optimization-mcp.rs"
 [dependencies]
-optimization-job-api = { path = "../optimization-job-api" }
+optimization-job-api = { path = "../optimization-job-api", version = "0.2.0" }
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }

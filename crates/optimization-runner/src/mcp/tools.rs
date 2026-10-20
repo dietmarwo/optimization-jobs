@@ -128,8 +128,10 @@ fn job_id_property() -> Value {
 
 /// The job envelope schema, embedded in the tools that take a job.
 fn envelope_schema() -> Value {
+    // A copy inside the crate, so the published package builds on its own;
+    // a test keeps it identical to docs/job-api/schemas.
     let mut schema: Value = serde_json::from_str(include_str!(
-        "../../../../docs/job-api/schemas/optimization.job-0.1.schema.json"
+        "../../schemas/optimization.job-0.1.schema.json"
     ))
     .expect("the job schema is valid JSON");
     let object = schema.as_object_mut().expect("the job schema is an object");
@@ -1166,4 +1168,23 @@ pub fn repair(server: &Server, id: &str) -> Result<Value, Fail> {
     let mut job = server.cli_mutating(&["jobs", "repair", "--", id])?;
     job["job_id"] = json!(id);
     Ok(job)
+}
+
+#[cfg(test)]
+mod tests {
+    /// The crate's copy of the job schema must equal the published one in
+    /// docs/job-api/schemas (absent outside the repository, as in a package).
+    #[test]
+    fn embedded_job_schema_matches_the_published_one() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let published =
+            manifest.join("../../docs/job-api/schemas/optimization.job-0.1.schema.json");
+        if let Ok(published) = std::fs::read_to_string(published) {
+            assert_eq!(
+                published,
+                include_str!("../../schemas/optimization.job-0.1.schema.json"),
+                "copy docs/job-api/schemas/optimization.job-0.1.schema.json to crates/optimization-runner/schemas/"
+            );
+        }
+    }
 }

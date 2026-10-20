@@ -4,7 +4,13 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-publish = false
+description = "Versioned optimization jobs for agents: job envelope, result contract with claims and evidence, checked journals and the worker SDK"
+repository = "https://github.com/dietmarwo/optimization-jobs"
+documentation = "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md"
+readme = "README.md"
+keywords = ["optimization", "jobs", "agents", "solver", "mcp"]
+categories = ["science", "api-bindings"]
+publish = ["crates-io"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
