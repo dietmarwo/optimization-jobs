@@ -1000,5 +1000,186 @@
    "objective": 1.0,
    "details": {}
   }
+ },
+ {
+  "name": "bounds in order within the tolerance (minimize)",
+  "valid": true,
+  "outcome": {
+   "termination": "test",
+   "claim": "numerical_optimum",
+   "feasible": true,
+   "objective": 7.0,
+   "x": [
+    1.0
+   ],
+   "details": {},
+   "objective_bounds": {
+    "sense": "minimize",
+    "primal": 7.0,
+    "dual": 7.000001
+   },
+   "evidence": {
+    "level": "rechecked",
+    "checks": [
+     "objective",
+     "bounds",
+     "constraints"
+    ]
+   }
+  }
+ },
+ {
+  "name": "bounds in order within the tolerance (maximize)",
+  "valid": true,
+  "outcome": {
+   "termination": "test",
+   "claim": "numerical_optimum",
+   "feasible": true,
+   "objective": -3.0,
+   "x": [
+    1.0
+   ],
+   "details": {},
+   "objective_bounds": {
+    "sense": "maximize",
+    "primal": -3.0,
+    "dual": -3.000002
+   },
+   "evidence": {
+    "level": "rechecked",
+    "checks": [
+     "objective",
+     "bounds",
+     "constraints"
+    ]
+   }
+  }
+ },
+ {
+  "name": "a dual bound above the primal one when minimizing",
+  "valid": false,
+  "schema_valid": true,
+  "outcome": {
+   "termination": "test",
+   "claim": "feasible",
+   "feasible": true,
+   "objective": 7.0,
+   "x": [
+    1.0
+   ],
+   "details": {},
+   "objective_bounds": {
+    "sense": "minimize",
+    "primal": 7.0,
+    "dual": 8.0
+   },
+   "evidence": {
+    "level": "rechecked",
+    "checks": [
+     "objective",
+     "bounds",
+     "constraints",
+     "kkt"
+    ],
+    "refuted": {
+     "claim": "numerical_optimum",
+     "verdict": "false_optimality",
+     "message": "test"
+    }
+   }
+  }
+ },
+ {
+  "name": "a dual bound below the primal one when maximizing",
+  "valid": false,
+  "schema_valid": true,
+  "outcome": {
+   "termination": "test",
+   "claim": "feasible",
+   "feasible": true,
+   "objective": 7.0,
+   "x": [
+    1.0
+   ],
+   "details": {},
+   "objective_bounds": {
+    "sense": "maximize",
+    "primal": 7.0,
+    "dual": 6.0
+   },
+   "evidence": {
+    "level": "rechecked",
+    "checks": [
+     "objective",
+     "bounds",
+     "constraints"
+    ]
+   }
+  }
+ },
+ {
+  "name": "a dual bound without a feasible point",
+  "valid": true,
+  "outcome": {
+   "termination": "test",
+   "claim": "none",
+   "feasible": null,
+   "objective": null,
+   "x": null,
+   "details": {},
+   "objective_bounds": {
+    "sense": "minimize",
+    "primal": null,
+    "dual": 5.0
+   }
+  }
+ },
+ {
+  "name": "a primal bound without a feasible point",
+  "valid": false,
+  "schema_valid": true,
+  "outcome": {
+   "termination": "test",
+   "claim": "none",
+   "feasible": false,
+   "objective": 2.0,
+   "x": [
+    1.0
+   ],
+   "details": {},
+   "objective_bounds": {
+    "sense": "minimize",
+    "primal": 2.0,
+    "dual": null
+   }
+  }
+ },
+ {
+  "name": "a primal bound that is not the point's objective",
+  "valid": false,
+  "schema_valid": true,
+  "outcome": {
+   "termination": "test",
+   "claim": "feasible",
+   "feasible": true,
+   "objective": 7.0,
+   "x": [
+    1.0
+   ],
+   "details": {},
+   "objective_bounds": {
+    "sense": "minimize",
+    "primal": 6.0,
+    "dual": null
+   },
+   "evidence": {
+    "level": "rechecked",
+    "checks": [
+     "objective",
+     "bounds",
+     "constraints"
+    ]
+   }
+  }
  }
 ]

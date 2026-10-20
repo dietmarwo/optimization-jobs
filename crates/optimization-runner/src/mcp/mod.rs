@@ -20,13 +20,14 @@ use clap::{Parser, ValueEnum};
 use serde_json::{Map, Value, json};
 use std::{
     collections::HashMap,
-    io::{self, BufRead, Write},
+    io::{self, BufRead, Read, Write},
     path::PathBuf,
     sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        Arc, Condvar, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread,
+    time::Duration,
 };
 
 /// Protocol revisions served statelessly, with per-request `_meta`.
@@ -47,6 +48,19 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_REQUEST: i64 = -32600;
 const PARSE_ERROR: i64 = -32700;
 const INTERNAL_ERROR: i64 = -32603;
+/// The server is at one of its limits below; the request may be retried.
+const SERVER_BUSY: i64 = -32000;
+/// Largest message, in bytes: the input files of a job are files, not part
+/// of it. A longer line is skipped unread and answered with an error.
+const MAX_MESSAGE: usize = 64 * 1024 * 1024;
+/// Requests answered at the same time (each runs on a thread of its own).
+const MAX_REQUESTS: usize = 64;
+/// Of these, requests that wait (`wait_job`, `subscriptions/listen`): the
+/// rest stays free for status, cancellation and other short calls.
+const MAX_WAITING: usize = 32;
+/// Calls that run worker validation (`validate_job`, `submit_job`) at the
+/// same time; further ones queue. Validation runs before CPU-slot admission.
+const MAX_VALIDATIONS: usize = 4;
 /// How long clients may cache `tools/list` and `server/discover`.
 const CACHE_MS: u64 = 3_600_000;
 
@@ -116,6 +130,21 @@ pub struct Server {
     /// JSON-RPC batches, part of protocol 2025-03-26 only.
     batches: AtomicBool,
     pub shutdown: AtomicBool,
+    /// Requests counted against [`MAX_WAITING`].
+    waiting: AtomicUsize,
+    /// Running validations and the signal that one ended.
+    validations: (Mutex<usize>, Condvar),
+}
+
+/// One of the `MAX_VALIDATIONS` validation places, given back on drop.
+pub struct Permit<'a>(&'a Server);
+
+impl Drop for Permit<'_> {
+    fn drop(&mut self) {
+        let (count, ended) = &self.0.validations;
+        *count.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        ended.notify_one();
+    }
 }
 
 /// One request: its era and whether it may be cancelled or report progress.
@@ -176,6 +205,23 @@ fn job_error(job_id: &str, action: &str, e: &tools::ToolError) -> Reply {
 }
 
 impl Server {
+    /// Waits for a validation place; a cancelled request stops waiting.
+    pub fn validation_permit(&self, ctx: &Ctx) -> Result<Permit<'_>, tools::Fail> {
+        let (count, ended) = &self.validations;
+        let mut running = count.lock().unwrap_or_else(|e| e.into_inner());
+        while *running >= MAX_VALIDATIONS {
+            if ctx.stopped(self) {
+                return Err(tools::Fail::Cancelled);
+            }
+            running = ended
+                .wait_timeout(running, Duration::from_millis(100))
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+        *running += 1;
+        Ok(Permit(self))
+    }
+
     /// Writes one message as one line; a closed stdout ends the server.
     pub fn send(&self, message: &Value) {
         let mut out = self.out.lock().unwrap_or_else(|e| e.into_inner());
@@ -502,6 +548,11 @@ impl Server {
         json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
     }
 
+    fn busy(id: Value, message: String) -> Value {
+        json!({"jsonrpc":"2.0","id":id,"error":{"code":SERVER_BUSY,"message":message,
+            "data":{"retryable":true}}})
+    }
+
     /// Starts one message of the input: a request runs on a thread of its
     /// own and yields its response through the handle; a notification or a
     /// client's response yields nothing.
@@ -518,6 +569,8 @@ impl Server {
             }
             (Some(method), Some(id)) if id.is_string() || id.is_number() => {
                 let cancel = Arc::new(AtomicBool::new(false));
+                let waits = method == "subscriptions/listen"
+                    || (method == "tools/call" && params["name"] == "wait_job");
                 {
                     let mut inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
                     if inflight.contains_key(&id.to_string()) {
@@ -529,12 +582,33 @@ impl Server {
                             &format!("request id {id} is already in use"),
                         ));
                     }
+                    if inflight.len() >= MAX_REQUESTS {
+                        return immediate(Self::busy(
+                            id.clone(),
+                            format!(
+                                "server busy: {MAX_REQUESTS} requests in progress; retry later"
+                            ),
+                        ));
+                    }
+                    if waits && self.waiting.fetch_add(1, Ordering::Relaxed) >= MAX_WAITING {
+                        self.waiting.fetch_sub(1, Ordering::Relaxed);
+                        return immediate(Self::busy(
+                            id.clone(),
+                            format!(
+                                "server busy: {MAX_WAITING} waiting requests (wait_job, subscriptions/listen) in progress; retry later"
+                            ),
+                        ));
+                    }
                     inflight.insert(id.to_string(), cancel.clone());
                 }
                 let server = self.clone();
                 let id = id.clone();
                 Some(thread::spawn(move || {
-                    server.request(id, method, params, cancel)
+                    let response = server.request(id, method, params, cancel);
+                    if waits {
+                        server.waiting.fetch_sub(1, Ordering::Relaxed);
+                    }
+                    response
                 }))
             }
             _ => immediate(Self::error(Value::Null, INVALID_REQUEST, "Invalid request")),
@@ -545,10 +619,17 @@ impl Server {
         let mut input = io::stdin().lock();
         let mut line = Vec::new();
         loop {
-            line.clear();
-            match input.read_until(b'\n', &mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
+            match read_message(&mut input, &mut line) {
+                Ok(Frame::End) | Err(_) => break,
+                Ok(Frame::TooLong) => {
+                    self.send(&Self::error(
+                        Value::Null,
+                        INVALID_REQUEST,
+                        &format!("message longer than {MAX_MESSAGE} bytes; skipped"),
+                    ));
+                    continue;
+                }
+                Ok(Frame::Message) => {}
             }
             if line.iter().all(u8::is_ascii_whitespace) {
                 continue;
@@ -623,6 +704,47 @@ impl Server {
     }
 }
 
+enum Frame {
+    Message,
+    TooLong,
+    End,
+}
+
+/// Reads one line of at most [`MAX_MESSAGE`] bytes into `line`. The rest of
+/// a longer line is consumed without being kept.
+fn read_message(input: &mut impl BufRead, line: &mut Vec<u8>) -> io::Result<Frame> {
+    line.clear();
+    if input
+        .by_ref()
+        .take(MAX_MESSAGE as u64 + 1)
+        .read_until(b'\n', line)?
+        == 0
+    {
+        return Ok(Frame::End);
+    }
+    if line.len() <= MAX_MESSAGE || line.ends_with(b"\n") {
+        return Ok(Frame::Message);
+    }
+    line.clear();
+    line.shrink_to(1 << 16);
+    loop {
+        let buffer = input.fill_buf()?;
+        if buffer.is_empty() {
+            return Ok(Frame::TooLong);
+        }
+        match buffer.iter().position(|&b| b == b'\n') {
+            Some(end) => {
+                input.consume(end + 1);
+                return Ok(Frame::TooLong);
+            }
+            None => {
+                let all = buffer.len();
+                input.consume(all);
+            }
+        }
+    }
+}
+
 pub fn main() {
     if !cfg!(target_os = "linux") {
         eprintln!("optimization-mcp: Linux is required");
@@ -669,6 +791,8 @@ pub fn main() {
         initialized: AtomicBool::new(false),
         batches: AtomicBool::new(false),
         shutdown: AtomicBool::new(false),
+        waiting: AtomicUsize::new(0),
+        validations: (Mutex::new(0), Condvar::new()),
     });
     server.serve();
 }

@@ -170,6 +170,33 @@ fn stop_request(dir: &Path) -> Stop {
         from_signals
     }
 }
+/// Strength of a published stop request: no marker, the launcher's own
+/// timeout marker, a graceful cancellation, an immediate one. An unreadable
+/// marker counts as immediate, as in [`stop_request`].
+fn stop_rank(marker: &Result<Value>) -> u8 {
+    match marker {
+        Ok(v) if v.as_object().is_some_and(|o| o.is_empty()) => 0,
+        Ok(v) if v["reason"] == "timed_out" => 1,
+        Ok(v) if v["mode"] == "graceful" => 2,
+        _ => 3,
+    }
+}
+/// Publishes `marker` as `cancel.request` unless a request at least as
+/// strong is already there, and returns whether it did. Requests only
+/// escalate: the CLI (`jobs cancel`), the launcher's timeout and its signal
+/// handler all write through here under `cancel.lock`, a short-held lock of
+/// its own (`job.lock` is held by the launcher for its whole life), so a
+/// graceful request read before an immediate one was written can no longer
+/// replace it.
+fn publish_stop(dir: &Path, marker: Value) -> Result<bool> {
+    let _guard = lock(&dir.join("cancel.lock"))?;
+    let path = dir.join("cancel.request");
+    if stop_rank(&Ok(marker.clone())) <= stop_rank(&optional(&path)) {
+        return Ok(false);
+    }
+    write_atomic_json(&path, &marker)?;
+    Ok(true)
+}
 fn read(path: &Path) -> Result<Value> {
     let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?)
@@ -762,6 +789,7 @@ fn execute_worker(
     let hard_deadline = start + wall + Duration::from_secs_f64(s.grace());
     let mut reason = None;
     let mut immediate_deadline: Option<Instant> = None;
+    let mut signalled = 0;
     let polled = (|| -> Result<std::process::ExitStatus> {
         loop {
             if let Some(exit) = child.try_wait()? {
@@ -773,22 +801,24 @@ fn execute_worker(
                     reason = Some("cancelled");
                 } else if start.elapsed() >= wall {
                     reason = Some("timed_out");
-                    write_atomic_json(
-                        &dir.join("cancel.request"),
-                        &json!({"mode":"graceful","reason":"timed_out"}),
-                    )?;
+                    // A cancellation published since the request was read
+                    // stays: the marker never replaces a stronger one.
+                    publish_stop(dir, json!({"mode":"graceful","reason":"timed_out"}))?;
                 }
             }
-            // A signal-only request must still reach the worker.
-            if request != Stop::None && !dir.join("cancel.request").exists() {
-                let mode = if request == Stop::Immediate {
+            // A signal-only request must still reach the worker; one already
+            // published at that strength or above stays as it is.
+            let from_signals = SIGNALS.load(Ordering::Relaxed);
+            if from_signals > signalled {
+                signalled = from_signals;
+                let mode = if from_signals > 1 {
                     "immediate"
                 } else {
                     "graceful"
                 };
-                write_atomic_json(
-                    &dir.join("cancel.request"),
-                    &json!({"mode":mode,"reason":"signal","requested_at":now()}),
+                publish_stop(
+                    dir,
+                    json!({"mode":mode,"reason":"signal","requested_at":now()}),
                 )?;
             }
             if request == Stop::Immediate && immediate_deadline.is_none() {
@@ -1104,14 +1134,10 @@ fn main_result() -> Result<()> {
                         ),
                     ));
                 }
-                let path = dir.join("cancel.request");
-                // Never downgrade an immediate request to a graceful one.
-                let existing = optional(&path)?;
-                if immediate || existing["mode"] != "immediate" || existing["reason"] == "timed_out"
-                {
-                    let mode = if immediate { "immediate" } else { "graceful" };
-                    write_atomic_json(&path, &json!({"mode":mode,"requested_at":now()}))?;
-                }
+                // Never downgrade: an immediate request stays immediate, also
+                // when a graceful one races it (publish_stop serializes them).
+                let mode = if immediate { "immediate" } else { "graceful" };
+                publish_stop(&dir, json!({"mode":mode,"requested_at":now()}))?;
                 output(get(&root, &id)?)
             }
             Jobs::Reconcile => {
@@ -1236,5 +1262,31 @@ pub fn main() {
             json!({"error":{"code":code,"message":e.to_string(),"retryable":retryable(code)}})
         );
         std::process::exit(2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stop_requests_only_escalate() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = |dir: &Path| read(&dir.join("cancel.request")).unwrap();
+        let timeout = json!({"mode":"graceful","reason":"timed_out"});
+        let graceful = json!({"mode":"graceful"});
+        let immediate = json!({"mode":"immediate"});
+        assert!(publish_stop(dir.path(), timeout.clone()).unwrap());
+        assert!(!publish_stop(dir.path(), timeout.clone()).unwrap());
+        // A cancellation replaces the launcher's timeout marker ...
+        assert!(publish_stop(dir.path(), graceful.clone()).unwrap());
+        assert!(!publish_stop(dir.path(), timeout).unwrap());
+        assert!(publish_stop(dir.path(), immediate.clone()).unwrap());
+        // ... and nothing replaces an immediate one.
+        assert!(!publish_stop(dir.path(), graceful).unwrap());
+        assert_eq!(marker(dir.path()), immediate);
+        // An unreadable marker counts as the strongest request.
+        fs::write(dir.path().join("cancel.request"), b"{").unwrap();
+        assert!(!publish_stop(dir.path(), immediate).unwrap());
     }
 }

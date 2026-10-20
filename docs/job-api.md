@@ -199,7 +199,11 @@ front or archive. Evaluation profiles stop between points. Workers stopped at
 the wall deadline may report `termination: "cancelled"`; the job state says
 `timed_out`. `--now` allows at most one further second before process-group
 termination. The wall limit plus its declared grace always bounds process
-supervision. Cancelling a job that has already ended is an error
+supervision. Stop requests only escalate: `jobs cancel`, the launcher's
+timeout and its signal handler publish `cancel.request` under a short-held
+lock (`cancel.lock` in the job directory), so an immediate request is never
+replaced by a graceful one that raced it, nor by the timeout marker.
+Cancelling a job that has already ended is an error
 (`already_terminal`, like HTTP 409) and writes nothing; a cancel that races
 with the job's own end may still be accepted, without effect.
 
@@ -336,16 +340,24 @@ stored values disagree with their re-evaluation. The SDK checks every outcome
 against the rules before committing it, so a worker defect fails one task and
 the job, but never discards the results already committed.
 
-`objective_bounds` gives `primal` (the objective of the best feasible point)
-and `dual` (a bound on the optimum the solver proved: a lower bound when
+`objective_bounds` gives `primal` (the objective of the returned feasible
+point) and `dual` (a bound on the optimum the solver proved: a lower bound when
 minimizing, an upper bound when maximizing) in the model's `sense`; either may
-be null. LP/MIP results and LP evaluations report it. `imprecise: true` marks
+be null. LP/MIP results and LP evaluations report it. `Outcome::check`
+enforces their consistency with `BOUND_TOLERANCE` (relative 1e-6, against
+max(1, |a|, |b|)): a `primal` needs `feasible: true` and equals `objective`,
+and a `dual` may lie beyond the `primal` by at most the tolerance, so a
+minimization with primal 7 and dual 8 is rejected. A worker that cannot
+establish a bound leaves it null and keeps the solver's value in `details`
+(LP-IP: `reported_best_bound`). `imprecise: true` marks
 a claim the engine reached only at relaxed accuracy; it never qualifies `none`.
 No current worker sets it.
 
 The runner checks these rules on every journal record and writes manifests
 in canonical form: optional objects are omitted rather than null. The schema
-and the Rust validator agree, also on null and absent fields:
+and the Rust validator agree, also on null and absent fields, except where a
+rule compares two values (the bound rules above), which the schema cannot
+express; such cases carry `schema_valid` in the shared list:
 `scripts/job-api/outcome_cases.json`, a shared list of valid and invalid
 outcomes, runs through `Outcome::check`, through the schema, and as journal
 records through the runner.
@@ -548,6 +560,17 @@ removed when the launcher succeeds while the server runs. A server that
 starts removes staging copies and empty logs older than a day. A job file
 passed as `spec_path` must be a regular file of at most 64 MiB.
 
+The server bounds what clients make it hold. A message is at most 64 MiB (a
+job's input files are files, not part of the message); a longer line is
+skipped and answered with `-32600`. At most 64 requests run at a time, of
+which at most 32 may wait (`wait_job`, `subscriptions/listen`), so status
+calls and cancellations always find room; a request beyond either limit gets
+`-32000` with `data.retryable: true`. At most four `validate_job` and
+`submit_job` calls run worker validation at a time, which happens before
+CPU-slot admission; further ones queue, and a cancelled request leaves the
+queue. Input files of an inline job are copied only when the envelope is
+valid apart from them (at most 16 inputs of at most 64 MiB each).
+
 The server cannot register or change workers, initialize the node or change
 its capacity, and jobs reach only registered workers, admitted against the
 node's CPU budget like any other job. Over stdio there is no per-client
@@ -622,8 +645,13 @@ protocol eras, with tasks, cancellation, restarts and launch modes, against
 the same fixture and a real worker. Its schema checks need the Python
 `jsonschema` package; without it they are skipped, unless
 `JOB_API_REQUIRE_SCHEMA=1`, as in CI. This repository's CI runs them with the
-fake worker and on a mixed node with all three workers, built from their
-repositories' `main`.
+fake worker, again in a nested PID namespace whose /proc belongs to the
+enclosing one, and on a mixed node with all three workers, built from their
+repositories' `main` twice: with the shared revision each worker pins (this
+runner with released workers), and with their shared dependencies patched to
+the checkout under test (a change of the worker SDK inside the real workers,
+before they move to it). `scripts/job-api/sdk_source.py` checks which
+`optimization-job-api` each build resolved; the workflow also runs weekly.
 
 A change to the shared crates lands here first. A worker repository then
 moves to the new revision by changing `rev` in its `Cargo.toml` and running

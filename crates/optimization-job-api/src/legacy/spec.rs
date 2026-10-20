@@ -113,6 +113,11 @@ impl Problem {
         Ok(self)
     }
 }
+/// Largest population x dimension of a BiteOpt or DE run: each of the
+/// optimizer's population tables then holds at most 80 MB of coordinates.
+/// The default BiteOpt population, 9 + 3 * dimension, exceeds it from
+/// dimension 1825 on; set a smaller population there.
+pub const MAX_POPULATION_CELLS: usize = 10_000_000;
 /// Canonical Cassini1 box; job bounds must lie inside it.
 pub const CASSINI1_LOWER: [f64; 6] = [-1000.0, 30.0, 100.0, 30.0, 400.0, 1000.0];
 /// Canonical Cassini1 box; job bounds must lie inside it.
@@ -162,6 +167,14 @@ impl JobSpec {
             });
         if !(4..=1_000_000).contains(&p) {
             return Err("population must be 4..1000000".into());
+        }
+        // The optimizer keeps several population x dimension tables; the
+        // evaluation budget does not bound them, as they are allocated first.
+        if p.saturating_mul(n) > MAX_POPULATION_CELLS {
+            return Err(format!(
+                "population * dimension must be at most {MAX_POPULATION_CELLS} (population {p}, dimension {n}); set a smaller optimizer.parameters.population"
+            )
+            .into());
         }
         match (
             self.optimizer.kind.as_str(),
@@ -215,6 +228,7 @@ pub fn discovery() -> serde_json::Value {
         {"id":"gtop.cassini1","version":"1","dimensions":6,
         "lower":CASSINI1_LOWER,"upper":CASSINI1_UPPER,"bounds":"must lie inside lower/upper"}],
         "optimizers":{"biteopt":{"limit":"hard"},"de":{"limit":"soft","maximum_overshoot_per_retry":"2*population-1"}},
+        "population":"4..1000000; population * dimension <= 1e7 (default: biteopt 9 + 3 * dimension, de 31)",
         "parallelism":"independent retries; one evaluation thread per retry"
     })
 }
@@ -250,6 +264,32 @@ mod tests {
         assert_eq!(s.optimizer.parameters.population, Some(9 + 3 * 3));
         assert_eq!(s.requested().unwrap(), 400);
         assert_eq!(s.maximum_evaluations().unwrap(), 400);
+    }
+
+    #[test]
+    fn population_tables_are_bounded_before_allocation() {
+        // Review FC-01: 10000 x 1000000 coordinates would be 80 GB per table.
+        let mut v = base();
+        v["problem"]["config"]["dimension"] = json!(10000);
+        v["optimizer"] = json!({"kind": "de", "parameters": {"population": 1000000}});
+        v["budget"]["evaluation_limit_mode"] = json!("soft");
+        v["budget"]["evaluations_per_retry"] = json!(1);
+        let error = resolve(v.clone()).unwrap_err().to_string();
+        assert!(error.contains("population * dimension"), "{error}");
+        // The limit itself is accepted, one cell more is not.
+        v["optimizer"]["parameters"]["population"] = json!(1000);
+        assert!(resolve(v.clone()).is_ok());
+        v["problem"]["config"]["dimension"] = json!(10001);
+        assert!(resolve(v.clone()).is_err());
+        // The default BiteOpt population: dimension 1824 fits, 1825 does not.
+        let mut v = base();
+        v["problem"]["config"]["dimension"] = json!(1824);
+        assert_eq!(
+            resolve(v.clone()).unwrap().optimizer.parameters.population,
+            Some(9 + 3 * 1824)
+        );
+        v["problem"]["config"]["dimension"] = json!(1825);
+        assert!(resolve(v).is_err());
     }
 
     #[test]

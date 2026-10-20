@@ -54,6 +54,12 @@ const NO_FEASIBLE_POINT: [&str; 2] = ["infeasible", "locally_infeasible"];
 /// Claims about the whole problem that no recomputation of returned points
 /// can confirm: their evidence is `claimed` or `certified`, never `rechecked`.
 const PROBLEM_CLAIMS: [&str; 3] = ["infeasible", "unbounded", "infeasible_or_unbounded"];
+/// Relative tolerance of the objective-bound rules of [`Outcome::check`]:
+/// two objective values `a` and `b` agree, and a dual bound may lie beyond
+/// the primal bound, by at most `BOUND_TOLERANCE * max(1, |a|, |b|)`. Workers
+/// with tighter tolerances decide more strictly on their own and keep a
+/// rejected value in `details`.
+pub const BOUND_TOLERANCE: f64 = 1e-6;
 /// Evidence levels, weakest first.
 pub const LEVELS: [&str; 3] = ["claimed", "rechecked", "certified"];
 /// Properties a worker recomputes independently of the solver.
@@ -155,6 +161,29 @@ pub struct ObjectiveBounds {
     pub dual: Option<f64>,
 }
 
+/// Whether objective values `a` and `b` agree within [`BOUND_TOLERANCE`].
+pub fn objectives_agree(a: f64, b: f64) -> bool {
+    (a - b).abs() <= BOUND_TOLERANCE * 1f64.max(a.abs()).max(b.abs())
+}
+
+impl ObjectiveBounds {
+    /// Whether the bounds are in order: when both exist, the dual bound lies
+    /// below the primal one when minimizing and above it when maximizing,
+    /// within [`BOUND_TOLERANCE`]. A dual bound beyond the objective of a
+    /// feasible point contradicts it: one of the two is wrong.
+    pub fn ordered(&self) -> bool {
+        let (Some(primal), Some(dual)) = (self.primal, self.dual) else {
+            return true;
+        };
+        let slack = BOUND_TOLERANCE * 1f64.max(primal.abs()).max(dual.abs());
+        match self.sense.as_str() {
+            "minimize" => dual <= primal + slack,
+            "maximize" => dual >= primal - slack,
+            _ => false,
+        }
+    }
+}
+
 impl Evidence {
     /// The solver's report alone; `checks` may list recomputations of
     /// returned points that the claim does not depend on.
@@ -237,6 +266,26 @@ impl Outcome {
                 || b.dual.is_some_and(|v| !v.is_finite()))
         {
             return Err("objective_bounds need a sense and finite (or null) bounds".into());
+        }
+        if let Some(b) = &self.objective_bounds {
+            // The primal bound is the objective of the returned feasible
+            // point, not of an incumbent the outcome does not show.
+            if let Some(primal) = b.primal
+                && (self.feasible != Some(true)
+                    || self.objective.is_none_or(|v| !objectives_agree(v, primal)))
+            {
+                return Err(format!(
+                    "objective_bounds.primal {primal} must be the objective of the returned feasible point"
+                ));
+            }
+            if !b.ordered() {
+                return Err(format!(
+                    "the dual bound {} contradicts the primal bound {} of a {} problem",
+                    b.dual.unwrap_or_default(),
+                    b.primal.unwrap_or_default(),
+                    b.sense
+                ));
+            }
         }
         let level = self
             .evidence
