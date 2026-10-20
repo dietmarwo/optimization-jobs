@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `artifact::page` streams the file once: records before the page are only
+  counted, and only the page's records are parsed and checked. On a 99 MB
+  trace of 150,000 records a page took 31 ms instead of 240 ms and 3 MB
+  instead of 108 MB of memory. A record counts once its line is complete; a
+  whole envelope still missing its newline is no longer counted.
+
 Artifacts declared by workers (prerequisites of `fcmaes.surrogate/1` from its
 plan):
 

@@ -143,3 +143,32 @@ fn pages_hold_complete_checked_records_within_the_cap() {
     assert!(page(&huge, 0, 1).is_err());
     let _: Vec<Value> = read_checked(&big, 1).unwrap();
 }
+
+#[test]
+fn a_record_counts_once_its_line_is_complete() {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("log.jsonl");
+    append_checked(&p, 1, &json!({"id":0})).unwrap();
+    // A blank line is no record; a whole envelope without its newline is
+    // still being written.
+    let mut data = fs::read(&p).unwrap();
+    data.extend_from_slice(b"\n");
+    fs::write(&p, &data).unwrap();
+    append_checked(&p, 1, &json!({"id":1})).unwrap();
+    let mut data = fs::read(&p).unwrap();
+    let complete = data.len();
+    data.pop();
+    fs::write(&p, &data).unwrap();
+    let page1 = page(&p, 0, 10).unwrap();
+    assert_eq!(
+        (page1["available"].clone(), page1["records"].clone()),
+        (json!(1), json!([{"id":0}]))
+    );
+    data.push(b'\n');
+    assert_eq!(data.len(), complete);
+    fs::write(&p, &data).unwrap();
+    assert_eq!(page(&p, 1, 10).unwrap()["records"], json!([{"id":1}]));
+    // A line that is no checked record fails the page that contains it.
+    fs::write(&p, b"not json\n").unwrap();
+    assert!(page(&p, 0, 1).is_err());
+}

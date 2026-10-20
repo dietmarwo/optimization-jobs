@@ -15,7 +15,7 @@ use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeSet,
     fs,
-    io::{self, Read},
+    io::{self, BufRead, Read},
     path::Path,
 };
 
@@ -343,6 +343,12 @@ pub fn content(path: &Path, format: &str) -> Result<Value> {
 /// payload (always at least one record). `next_offset` is where the next
 /// page starts; `available` counts the complete records now in the file,
 /// which a running job may extend.
+///
+/// A record is a newline-terminated, non-blank line; a final line without
+/// its newline is still being written and does not count. The file is read
+/// once as a stream: records before `offset` are only counted, and only the
+/// page's records are parsed and checked, so a page costs one pass over the
+/// bytes and memory for the page alone, however long the artifact is.
 pub fn page(path: &Path, offset: usize, limit: usize) -> Result<Value> {
     if !(1..=MAX_PAGE).contains(&limit) {
         return Err(coded(
@@ -350,34 +356,43 @@ pub fn page(path: &Path, offset: usize, limit: usize) -> Result<Value> {
             format!("limit must lie in 1..={MAX_PAGE}"),
         ));
     }
-    let lines: Vec<storage::Envelope> = storage::read_jsonl_resilient(path)?;
-    let available = lines.len();
+    let mut reader = io::BufReader::with_capacity(1 << 16, fs::File::open(path)?);
+    let mut line = Vec::new();
+    let (mut index, mut size, mut full) = (0usize, 0usize, false);
     let mut records = Vec::new();
-    let mut size = 0usize;
-    for line in lines.iter().skip(offset).take(limit) {
-        if line.checksum != storage::digest(line.payload_json.as_bytes()) {
-            return Err(format!(
-                "record {} of the artifact fails its checksum",
-                offset + records.len()
-            )
-            .into());
-        }
-        size += line.payload_json.len();
-        if size > INLINE_CAP {
-            if records.is_empty() {
-                return Err(coded(
-                    "artifact_too_large",
-                    format!(
-                        "record {offset} alone exceeds the {INLINE_CAP}-byte inline cap; read the file in the job directory"
-                    ),
-                ));
-            }
+    loop {
+        line.clear();
+        if reader.read_until(b'\n', &mut line)? == 0 || line.last() != Some(&b'\n') {
             break;
         }
-        records.push(serde_json::from_str::<Value>(&line.payload_json)?);
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        if index >= offset && records.len() < limit && !full {
+            let envelope: storage::Envelope = serde_json::from_slice(&line)
+                .map_err(|e| format!("record {index} of the artifact is no checked record: {e}"))?;
+            if envelope.checksum != storage::digest(envelope.payload_json.as_bytes()) {
+                return Err(format!("record {index} of the artifact fails its checksum").into());
+            }
+            if size + envelope.payload_json.len() > INLINE_CAP {
+                if records.is_empty() {
+                    return Err(coded(
+                        "artifact_too_large",
+                        format!(
+                            "record {index} alone exceeds the {INLINE_CAP}-byte inline cap; read the file in the job directory"
+                        ),
+                    ));
+                }
+                full = true;
+            } else {
+                size += envelope.payload_json.len();
+                records.push(serde_json::from_str::<Value>(&envelope.payload_json)?);
+            }
+        }
+        index += 1;
     }
-    let next = offset.min(available) + records.len();
+    let next = offset.min(index) + records.len();
     Ok(
-        json!({"format":"records","offset":offset,"records":records,"next_offset":next,"available":available}),
+        json!({"format":"records","offset":offset,"records":records,"next_offset":next,"available":index}),
     )
 }
