@@ -27,7 +27,7 @@ and [`optimization.result-0.2.schema.json`](job-api/schemas/optimization.result-
 | `optimization-job-api` | Strict versioned envelope, resources, input hashes, checked journals, result contract and worker SDK |
 | `optimization-runner` / `optimization-run` | Worker discovery, staging, idempotency, admission, process supervision, cancellation, deadlines, journal recovery and coded errors |
 | `optimization-runner` / `optimization-mcp` | MCP server over stdio for agents: tools and tasks over `optimization-run` ([Agents and MCP](#agents-and-mcp)) |
-| `fcmaes-job-worker` | `fcmaes.retry/1` (BiteOpt or DE, serial or with parallel delayed-feedback batches, CMA-ES with optional IPOP/BIPOP restarts, CR-FM-NES or PGPE retries on registered scalar models), `fcmaes.mode/1` (MODE Pareto fronts), `fcmaes.map-elites/1` (MAP-Elites grid or CVT archives, optional CMA-ME/CMA-MAE emitters) and `fcmaes.evaluate/1` (given points): deterministic task seeds, exact or declared evaluation budgets, parallel population evaluation; application workers register their own models with parameters and hashed inputs |
+| `fcmaes-job-worker` | `fcmaes.retry/1` (BiteOpt or DE, serial or with parallel delayed-feedback batches, CMA-ES with optional IPOP/BIPOP restarts, CR-FM-NES or PGPE retries on registered scalar models), `fcmaes.mode/1` (MODE Pareto fronts), `fcmaes.map-elites/1` (MAP-Elites grid or CVT archives, optional CMA-ME/CMA-MAE emitters), `fcmaes.surrogate/1` (experimental exact-GP Bayesian optimization of expensive deterministic scalar models, including cancellable `Scalar::simulation` callbacks) and `fcmaes.evaluate/1` (given points): deterministic task seeds, exact or declared evaluation budgets, parallel population evaluation; application workers register their own models with parameters and hashed inputs |
 | `lp-ip-job-worker` | `lp-ip.solve/1`: sparse LP/MIP artifacts, candidate starts, node/pivot budgets and numerical checks; `lp-ip.evaluate/1`: given points |
 | `sqp-job-worker` | `sqp.solve/1`: registered smooth Rust models, initial points, active-set/Clarabel backends and independent KKT checks; `sqp.evaluate/1`: given points |
 
@@ -58,6 +58,31 @@ not silently converted.
 The new runner defaults to `.optimization-jobs`; `fcmaes-run` retains
 `.fcmaes-jobs`. `--root` takes precedence over `OPTIMIZATION_RUN_ROOT`, then the
 legacy `FCMAES_RUN_ROOT`. Always use the same absolute root when sharing a node.
+
+## Choosing a worker and profile
+
+The profile follows from what is known about the problem, not from the
+solver's popularity. Each worker repository's `ai-context.md` has the detailed
+rules ([fcmaes](https://github.com/dietmarwo/fcmaes-rust/blob/main/ai-context.md),
+[LP-IP](https://github.com/dietmarwo/LP-IP-craft/blob/main/ai-context.md),
+[SQP](https://github.com/dietmarwo/SQP-craft/blob/main/ai-context.md)).
+
+| Problem | Profile | Model |
+| --- | --- | --- |
+| Linear objective and constraints, continuous or integer variables | `lp-ip.solve/1` | Sparse LP/MIP model artifact (hashed JSON input) |
+| Smooth nonlinear objective and constraints with usable derivatives, a local optimum suffices or good starts exist | `sqp.solve/1` | Smooth model registered in a Rust worker |
+| Black-box, nonsmooth or multimodal scalar objective with box bounds, evaluations cheap enough for thousands of calls | `fcmaes.retry/1` (BiteOpt, DE, CMA-ES with optional IPOP/BIPOP restarts, CR-FM-NES or PGPE) | Scalar model registered in a Rust worker |
+| Expensive deterministic scalar objective (seconds to a minute per call), 1–32 variables, at most 256 calls | `fcmaes.surrogate/1` (experimental) | Scalar or cancellable simulation model |
+| Several objectives, a Pareto front is wanted | `fcmaes.mode/1` | Multi-objective model, optional constraints |
+| Many diverse good solutions over behavior descriptors | `fcmaes.map-elites/1` | Model with descriptors |
+| Check given points, recheck a claim | `fcmaes.evaluate/1`, `lp-ip.evaluate/1`, `sqp.evaluate/1` | As for the solve profiles |
+
+`describe_worker` (MCP) or `problems describe` (CLI) lists each worker's
+registered models, options and claims; a profile can only run what a worker
+registered. Combinations are separate jobs that pass points on explicitly.
+For example, the best points of an `fcmaes.retry/1` job can be the `starts`
+of an `sqp.solve/1` job when both workers register the same model, and a
+result's points can be rechecked with the matching `evaluate` profile.
 
 ## Build and discover
 
@@ -282,7 +307,7 @@ Each outcome answers three separate questions:
 | --- | --- | --- |
 | `none` | No claim; inspect termination, details and `evidence.refuted` | MOI `NO_SOLUTION` |
 | `feasible` | A point within the declared tolerances; `objective` may be absent (several objectives) | MathOpt `FEASIBLE` |
-| `best_found` | fcmaes retry: the best point the optimizer evaluated, not a model mean or a recommendation; no global certificate | COIN-OR OSrL `bestSoFar` |
+| `best_found` | fcmaes retry and surrogate: the best point the optimizer evaluated, not a model mean or a recommendation; no global certificate | COIN-OR OSrL `bestSoFar` |
 | `numerical_optimum` | LP/MIP optimal status within numerical tolerances; not an exact certificate | MathOpt, Gurobi `OPTIMAL` |
 | `first_order` | SQP convergence whose KKT residuals pass a recomputation; no global or second-order certificate | MOI `LOCALLY_SOLVED` |
 | `certified_optimum` | Optimality proven by a certificate that an independent checker verified; no worker emits it yet | SCIP exact mode with VIPR |
