@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+Fixes from the October 2026 review:
+
+- Cancellation escalates only. `jobs cancel`, the launcher's timeout and its
+  signal handler write `cancel.request` under `cancel.lock`; before, a graceful
+  request that read the marker first could replace a concurrent immediate one
+  (and the timeout marker a concurrent cancellation).
+- `Outcome::check` rejects inconsistent objective bounds: `primal` must be the
+  objective of the returned feasible point, and a `dual` bound must not lie
+  beyond it by more than `BOUND_TOLERANCE` (relative 1e-6). New
+  `ObjectiveBounds::ordered` and `objectives_agree` let workers decide the same
+  way before they publish a bound. The shared outcome cases mark rules the
+  JSON Schema cannot express with `schema_valid`.
+- Legacy `fcmaes.job/0.1` validation caps population x dimension at 1e7
+  (`legacy::MAX_POPULATION_CELLS`); before, a one-evaluation DE job with
+  dimension 10000 and population 1000000 passed validation and would have
+  allocated 80 GB per population table.
+- `optimization-mcp` limits messages to 64 MiB, requests in flight to 64 (32
+  of them waiting) and concurrent validations to 4, and copies the input files
+  of an inline job only for an otherwise valid envelope.
+- The process-inspecting tests map PIDs through `NSpid`, so they pass where
+  /proc belongs to an enclosing PID namespace; CI runs them in one.
+- CI: the mixed node also builds the three workers with their shared
+  dependencies patched to this checkout (`sdk_source.py` checks which one was
+  used), next to their pinned revisions, and runs weekly.
+
 - `optimization-mcp`, an MCP server over stdio for one node, as a second
   binary of `optimization-runner`, so `cargo build -p optimization-runner`
   builds it in every worker repository. Thirteen tools describe the node and

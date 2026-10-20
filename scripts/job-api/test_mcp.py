@@ -29,7 +29,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_review import LP_MODEL, REAL  # noqa: E402
+from test_review import LP_MODEL, REAL, proc_entry, processes  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 TARGET = Path(os.environ.get("JOB_API_TARGET", REPO / "target/release"))
@@ -59,16 +59,11 @@ def fake(key, payload, slots=1, wall=60.0):
 
 
 def launcher(root):
-    """PID of the optimization-run launcher of a job on this node."""
-    for entry in Path("/proc").iterdir():
-        if not entry.name.isdigit():
-            continue
-        try:
-            argv = (entry / "cmdline").read_bytes().split(b"\0")
-        except OSError:
-            continue
+    """PID, in this process's PID namespace, of the optimization-run launcher
+    of a job on this node."""
+    for pid, argv in processes():
         if str(root).encode() in argv and b"run" in argv:
-            return int(entry.name)
+            return pid
     raise AssertionError("no launcher found")
 
 
@@ -669,7 +664,7 @@ class Review(Server):
         self.assertFalse(task["result"]["isError"])
         # The summary does not hold the manifest as a JSON tree, which would
         # take several times the file's size.
-        status = Path(f"/proc/{self.client.process.pid}/status").read_text().splitlines()
+        status = (proc_entry(self.client.process.pid) / "status").read_text().splitlines()
         peak = int(next(line for line in status if line.startswith("VmHWM:")).split()[1]) * 1024
         self.assertLess(peak, 4 * manifest_path.stat().st_size)
 
@@ -724,6 +719,65 @@ class Review(Server):
         error = self.client.response(ident)["error"]
         self.assertEqual(error["code"], -32022)
         self.assertIn("initialize", error["message"])
+
+
+class Limits(Server):
+    """Bounds on what one client can make the server hold (review OJ-03)."""
+
+    def test_an_overlong_message_is_skipped_and_the_server_goes_on(self):
+        self.client.process.stdin.flush()
+        chunk = b"x" * (1 << 20)
+        for _ in range(65):
+            self.client.process.stdin.buffer.write(chunk)
+        self.client.process.stdin.buffer.write(b"\n")
+        self.client.process.stdin.buffer.flush()
+        error = self.client.messages.get(timeout=60)
+        self.assertEqual((error["id"], error["error"]["code"]), (None, -32600))
+        self.assertIn("longer than", error["error"]["message"])
+        self.assertEqual(self.client.request("tools/list")["result"]["resultType"], "complete")
+        # The rest of the overlong line was consumed, not kept: the server
+        # holds about one message, not the 65 MiB line.
+        status = proc_entry(self.client.process.pid) / "status"
+        peak = int(next(line for line in status.read_text().splitlines()
+                        if line.startswith("VmHWM:")).split()[1]) * 1024
+        self.assertLess(peak, 200 * 1024 * 1024)
+
+    def test_waiting_requests_leave_room_for_short_ones(self):
+        ident = self.client.ok("submit_job", {"job": fake("waits", {"mode": "sleep", "seconds": 60})})["job_id"]
+        waits = [self.client.start("tools/call", {"name": "wait_job",
+                                                  "arguments": {"job_id": ident, "timeout_seconds": 60}})
+                 for _ in range(32)]
+        time.sleep(0.5)
+        refused = self.client.request("tools/call", {"name": "wait_job",
+                                                     "arguments": {"job_id": ident, "timeout_seconds": 1}})
+        self.assertEqual(refused["error"]["code"], -32000)
+        self.assertTrue(refused["error"]["data"]["retryable"])
+        # Status and cancellation still get through.
+        self.assertEqual(self.client.ok("get_job", {"job_id": ident})["state"], "running")
+        self.assertIn(self.client.ok("cancel_job", {"job_id": ident})["state"], {"running", "cancelled"})
+        for ident in waits:
+            self.client.send({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                              "params": {"requestId": ident}})
+        # Ended waits give their places back.
+        deadline = time.time() + 20
+        while True:
+            reply = self.client.request("tools/call", {"name": "wait_job", "arguments": {
+                "job_id": job_id("waits"), "timeout_seconds": 1}})
+            if "result" in reply or time.time() > deadline:
+                break
+            time.sleep(0.2)
+        self.assertIn("result", reply)
+
+    def test_inputs_of_an_invalid_envelope_are_not_copied(self):
+        # Seventeen inputs that do not exist: the envelope is rejected for
+        # its input count before any of them is looked at.
+        job = fake("inputs", {"mode": "complete"})
+        job["inputs"] = [{"name": f"i{k}", "file": f"missing-{k}.json", "sha256": "0" * 64}
+                         for k in range(17)]
+        error = self.client.error("validate_job", {"job": job})
+        self.assertEqual(error["code"], "invalid_job")
+        self.assertIn("input count", error["message"])
+        self.assertNotIn("missing-", error["message"])
 
 
 class Requests(Server):

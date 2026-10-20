@@ -18,6 +18,7 @@ The schema tests need the `jsonschema` package; without it they are skipped,
 unless JOB_API_REQUIRE_SCHEMA=1 (as in CI) makes them fail.
 """
 import copy
+import fcntl
 import hashlib
 import json
 import os
@@ -64,6 +65,52 @@ REAL = {
 }
 WORKER = next((name for name, (binary, _, _) in REAL.items()
                if (TARGET / binary).exists()), None)
+
+
+def _nspid(entry):
+    """The PIDs of a /proc entry in each PID namespace it belongs to, from
+    the namespace of this /proc mount down to the process's own."""
+    for line in (entry / "status").read_text().splitlines():
+        if line.startswith("NSpid:"):
+            return [int(pid) for pid in line.split()[1:]]
+    return [int(entry.name)]
+
+
+def processes():
+    """(PID in this process's namespace, argv) of every visible process.
+
+    /proc may belong to an enclosing PID namespace (a container whose /proc
+    was not remounted): its directory names are then not the PIDs that
+    os.kill and Popen.pid use here. NSpid maps them; processes outside this
+    namespace are skipped.
+    """
+    depth = len(_nspid(Path("/proc/self")))
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            pids = _nspid(entry)
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+        except (OSError, ValueError):
+            continue
+        if len(pids) >= depth:
+            yield pids[depth - 1], argv
+
+
+def proc_entry(pid):
+    """The /proc directory of the process `pid` of this PID namespace."""
+    depth = len(_nspid(Path("/proc/self")))
+    direct = Path(f"/proc/{pid}")
+    for entry in [direct, *Path("/proc").iterdir()]:
+        if not entry.name.isdigit():
+            continue
+        try:
+            pids = _nspid(entry)
+        except (OSError, ValueError):
+            continue
+        if len(pids) >= depth and pids[depth - 1] == pid:
+            return entry
+    raise AssertionError(f"no /proc entry for process {pid}")
 
 
 def envelope(worker, payload, wall=30.0, grace=0.2):
@@ -249,9 +296,10 @@ class Review(Node):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=10)
         self.assertNotEqual(runner.returncode, 0)
-        validators = subprocess.run(
-            ["pgrep", "-f", f"{staging}/worker validate"], capture_output=True, text=True,
-        ).stdout.split()
+        # Scanning /proc, unlike pgrep, cannot match itself, also when /proc
+        # belongs to an enclosing PID namespace.
+        validators = [pid for pid, argv in processes()
+                      if f"{staging}/worker".encode() in argv and b"validate" in argv]
         self.assertEqual(validators, [])
         self.assertFalse(staging.exists())
 
@@ -279,6 +327,55 @@ class Review(Node):
         self.assertIn("cancelled", error["message"])
         self.assertFalse((directory / "cancel.request").exists())
         self.assertEqual(self.error("jobs", "repair", ident)["code"], "already_terminal")
+
+    def cancel_while_locked(self, directory, ident, flags, before_release=None):
+        """Starts `jobs cancel` once per entry of `flags` while this test holds
+        the job's cancel.lock, so the requests queue on it and then run in
+        the order the lock grants; returns their exit codes."""
+        with open(directory / "cancel.lock", "a") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            calls = []
+            for flag in flags:
+                calls.append(subprocess.Popen(
+                    [str(RUN), "--root", str(self.root), "jobs", "cancel", ident, *flag],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+                time.sleep(0.3)
+            if before_release:
+                before_release()
+            # Every writer of the marker waits for the lock.
+            self.assertFalse((directory / "cancel.request").exists())
+            fcntl.flock(held, fcntl.LOCK_UN)
+        return [(c.communicate(timeout=30), c.returncode)[1] for c in calls]
+
+    def test_an_immediate_cancellation_is_never_downgraded(self):
+        # Review OJ-01: a graceful request that read the marker before an
+        # immediate one was written used to replace it. Whichever order the
+        # lock grants, the immediate request stands, and the worker (which
+        # ignores graceful requests) is killed long before its wall time.
+        for flags in ([[], ["--now"]], [["--now"], []]):
+            with self.subTest(order=flags):
+                process, ident, directory = self.start(envelope("fake", {"mode": "sleep"}, wall=60))
+                self.wait_for(lambda: self.state(directory) == "running")
+                self.assertEqual(self.cancel_while_locked(directory, ident, flags), [0, 0])
+                marker = json.loads((directory / "cancel.request").read_text())
+                self.assertEqual(marker["mode"], "immediate")
+                process.communicate(timeout=10)
+                self.assertEqual(self.state(directory), "cancelled")
+
+    def test_the_timeout_marker_does_not_replace_a_cancellation(self):
+        # The launcher's timeout marker goes through the same lock: it waits
+        # behind the test, and an immediate request queued with it survives.
+        process, ident, directory = self.start(
+            envelope("fake", {"mode": "sleep"}, wall=1.0, grace=60.0))
+        self.wait_for(lambda: self.state(directory) == "running")
+        started = time.monotonic()
+        codes = self.cancel_while_locked(
+            directory, ident, [["--now"]], before_release=lambda: time.sleep(1.5))
+        self.assertEqual(codes, [0])
+        process.communicate(timeout=15)
+        self.assertLess(time.monotonic() - started, 20)
+        self.assertEqual(json.loads((directory / "cancel.request").read_text())["mode"], "immediate")
+        self.assertIn(self.state(directory), {"cancelled", "timed_out"})
 
     def test_request_errors_have_stable_codes(self):
         path, key = self.write(envelope("fake", {"mode": "sleep", "seconds": 0}))
@@ -394,8 +491,11 @@ class Schemas(Node):
                    if key not in ("type", "required", "properties", "additionalProperties")}
         outcome["$ref"] = "#/$defs/outcome"
         validator = jsonschema.Draft202012Validator(outcome)
+        # The schema cannot compare two values (bound order, the primal bound
+        # against the objective): such cases say so with schema_valid.
         for case in json.loads(CASES.read_text()):
-            self.assertEqual(validator.is_valid(case["outcome"]), case["valid"], case["name"])
+            expected = case.get("schema_valid", case["valid"])
+            self.assertEqual(validator.is_valid(case["outcome"]), expected, case["name"])
 
     def test_job_envelopes_and_tutorial_jobs_are_valid(self):
         self.valid(self.job_schema, envelope("fake", {"mode": "sleep"}))

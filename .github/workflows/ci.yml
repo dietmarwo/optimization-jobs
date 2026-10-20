@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The mixed node clones the workers at their main: a weekly run notices a
+  # worker change that breaks this runner even when nothing changed here.
+  schedule:
+    - cron: "17 4 * * 1"
 
 permissions:
   contents: read
@@ -40,6 +44,15 @@ jobs:
           cargo build --release --locked -p optimization-runner
           python3 scripts/job-api/test_review.py
           python3 scripts/job-api/test_mcp.py
+      # In a container whose /proc belongs to an enclosing PID namespace,
+      # /proc directory names are not the PIDs this namespace uses; the tests
+      # that inspect processes map them (review OJ-05).
+      - name: The same tests in a nested PID namespace with the outer /proc
+        run: |
+          for suite in test_review.py test_mcp.py; do
+            sudo -E unshare --pid --fork --kill-child --setuid "$(id -u)" --setgid "$(id -g)" \
+              "$(command -v python3)" "scripts/job-api/$suite"
+          done
 
   msrv:
     name: Rust 1.88 (declared rust-version)
@@ -51,14 +64,24 @@ jobs:
       - run: cargo check --locked --workspace --all-targets
 
   mixed-node:
-    name: Mixed node with the fcmaes, LP-IP and SQP workers
+    # pinned: each worker built with the optimization-jobs revision it pins,
+    # against this runner (new runner, released workers). checkout: the
+    # workers' shared dependencies replaced by this checkout, so a change of
+    # the worker SDK is built and run inside the real workers before they
+    # are repinned to it.
+    name: Mixed node with the fcmaes, LP-IP and SQP workers (${{ matrix.sdk }} SDK)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [pinned, checkout]
     steps:
       - uses: actions/checkout@v4
       - name: Worker repositories at main
         run: |
           for repo in fcmaes-rust LP-IP-craft SQP-craft; do
             git clone --depth 1 "https://github.com/dietmarwo/$repo" "$RUNNER_TEMP/$repo"
+            echo "$repo $(git -C "$RUNNER_TEMP/$repo" rev-parse HEAD)"
           done
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -73,11 +96,25 @@ jobs:
           python-version: "3.12"
       - run: python3 -m pip install "jsonschema>=4.18,<5"
       - name: Build this runner and the three workers
+        env:
+          SDK: ${{ matrix.sdk }}
         run: |
           cargo build --release --locked -p optimization-runner
-          (cd "$RUNNER_TEMP/fcmaes-rust" && cargo build --release --locked -p fcmaes-job-worker)
-          (cd "$RUNNER_TEMP/LP-IP-craft" && cargo build --release --locked -p lp-ip-job-worker)
-          (cd "$RUNNER_TEMP/SQP-craft" && cargo build --release --locked -p sqp-job-worker)
+          url=https://github.com/dietmarwo/optimization-jobs
+          if [ "$SDK" = checkout ]; then
+            # The lockfiles name the pinned revision, so --locked cannot hold.
+            flags=(--config "patch.\"$url\".optimization-job-api.path=\"$PWD/crates/optimization-job-api\""
+                   --config "patch.\"$url\".optimization-runner.path=\"$PWD/crates/optimization-runner\"")
+          else
+            flags=(--locked)
+          fi
+          for build in fcmaes-rust:fcmaes-job-worker LP-IP-craft:lp-ip-job-worker SQP-craft:sqp-job-worker; do
+            repo=${build%%:*} package=${build#*:}
+            (cd "$RUNNER_TEMP/$repo" && cargo build --release "${flags[@]}" -p "$package")
+            # Which optimization-job-api the worker was built with.
+            (cd "$RUNNER_TEMP/$repo" && cargo metadata --format-version 1 "${flags[@]}") |
+              python3 scripts/job-api/sdk_source.py "$SDK" "$PWD" "$repo"
+          done
       - name: Harness on one node with all three workers
         run: >-
           python3 scripts/job-api/test_integration.py

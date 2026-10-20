@@ -2,7 +2,7 @@
 //! them.
 use super::{Ctx, Launch, Server, tasks};
 use optimization_job_api::{
-    Input, MAX_INPUT_BYTES, checked_input, process::bounded_command_until, storage::digest,
+    Input, JobSpec, MAX_INPUT_BYTES, checked_input, process::bounded_command_until, storage::digest,
 };
 use serde::Deserialize;
 use serde_json::{Value, json, value::RawValue};
@@ -291,7 +291,8 @@ pub fn call(server: &Server, name: &str, args: &Value, ctx: &Ctx) -> Outcome {
         "describe_node" => describe_node(server, ctx),
         "describe_worker" => string(args, "worker")
             .and_then(|worker| server.cli(&["problems", "describe", "--", &worker], QUICK, ctx)),
-        "validate_job" => stage(server, args).and_then(|staged| {
+        "validate_job" => server.validation_permit(ctx).and_then(|_permit| {
+            let staged = stage(server, args)?;
             server.cli(
                 &["validate", &format!("--spec={}", path(&staged.spec))],
                 SLOW,
@@ -599,7 +600,13 @@ fn stage_inline(server: &Server, args: &Value) -> Result<Staged, Fail> {
         .prefix("job-")
         .tempdir_in(&parent)
         .map_err(|e| fail("runner_error", format!("{}: {e}", parent.display())))?;
-    if let Some(inputs) = job["inputs"].as_array() {
+    // Inputs are copied only for an envelope that is valid apart from them
+    // (at most 16 inputs of at most 64 MiB each); the runner reports what is
+    // wrong with any other.
+    let envelope_valid = serde_json::from_value::<JobSpec>(job.clone())
+        .ok()
+        .is_some_and(|spec| spec.validate().is_ok());
+    if let Some(inputs) = job["inputs"].as_array().filter(|_| envelope_valid) {
         for value in inputs {
             // Malformed declarations are left to the runner's own message.
             let Ok(input) = serde_json::from_value::<Input>(value.clone()) else {
@@ -651,6 +658,12 @@ fn stage_inline(server: &Server, args: &Value) -> Result<Staged, Fail> {
 }
 
 fn submit_job(server: &Server, args: &Value, ctx: &Ctx) -> Outcome {
+    // The place is held until the job exists, which is after its validation.
+    let permit = match server.validation_permit(ctx) {
+        Ok(permit) => permit,
+        Err(Fail::Tool(error)) => return Outcome::Failed(error),
+        Err(Fail::Cancelled) => return Outcome::Cancelled,
+    };
     let submitted = stage(server, args).and_then(|staged| match server.launch {
         Launch::Systemd => {
             let job =
@@ -660,6 +673,7 @@ fn submit_job(server: &Server, args: &Value, ctx: &Ctx) -> Outcome {
         }
         Launch::Process => launch_process(server, staged),
     });
+    drop(permit);
     let job = match submitted {
         Ok(job) => job,
         Err(Fail::Tool(error)) => return Outcome::Failed(error),
