@@ -35,10 +35,11 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --release --locked
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
-      - name: Runner regressions with the protocol fixture worker
+      - name: Runner regressions and the MCP server with the protocol fixture worker
         run: |
           cargo build --release --locked -p optimization-runner
           python3 scripts/job-api/test_review.py
+          python3 scripts/job-api/test_mcp.py
 
   msrv:
     name: Rust 1.88 (declared rust-version)
@@ -83,3 +84,16 @@ jobs:
           --fcmaes "$RUNNER_TEMP/fcmaes-rust/target/release/fcmaes-job-worker"
           --lp-ip "$RUNNER_TEMP/LP-IP-craft/target/release/lp-ip-job-worker"
           --sqp "$RUNNER_TEMP/SQP-craft/target/release/sqp-job-worker"
+      - name: MCP server with each worker
+        env:
+          JOB_API_REQUIRE_WORKER: "1"
+        run: |
+          for worker in fcmaes-rust/target/release/fcmaes-job-worker \
+              LP-IP-craft/target/release/lp-ip-job-worker SQP-craft/target/release/sqp-job-worker; do
+            target="$RUNNER_TEMP/mcp-$(basename "$worker")"
+            mkdir -p "$target"
+            ln -sf "$PWD/target/release/optimization-run" "$PWD/target/release/optimization-mcp" \
+              "$RUNNER_TEMP/$worker" "$target/"
+            JOB_API_TARGET="$target" python3 scripts/job-api/test_mcp.py \
+              Jobs.test_a_real_worker_reports_claims_and_evidence
+          done
