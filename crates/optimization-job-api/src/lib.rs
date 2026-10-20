@@ -1,4 +1,5 @@
 //! Versioned optimization jobs, durable journals, worker SDK and legacy compatibility.
+pub mod artifact;
 pub mod legacy;
 pub mod process;
 pub mod result;

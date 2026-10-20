@@ -467,6 +467,98 @@ class Review(Node):
         self.assertNotIn("evidence", run["results"][0]["outcome"])
 
 
+class Artifacts(Node):
+    """Worker-declared artifacts: readable while the job runs, in pages of
+    checked records, and indexed with their SHA-256 when the job ends."""
+
+    def records(self, ident, offset, limit):
+        return self.call("jobs", "artifact", ident, "log", "--offset", offset, "--limit", limit)
+
+    def test_declared_artifacts_while_running_and_after_the_end(self):
+        process, ident, directory = self.start(envelope("fake", {"mode": "artifacts"}))
+        self.wait_for(lambda: self.state(directory) == "running"
+                      and (directory / "snapshot.json").exists())
+        job = self.call("jobs", "get", ident)
+        self.assertEqual(job["artifact_index"]["log"]["format"], "records")
+        self.assertEqual(job["artifact_index"]["log"]["description"], "Evaluation log")
+        self.assertEqual(job["artifact_index"]["snapshot"]["task_id"], 0)
+        page = self.records(ident, 1, 10)
+        self.assertEqual((page["records"], page["next_offset"], page["available"], page["final"]),
+                         ([{"id": 1, "x": [1.0]}, {"id": 2, "x": [2.0]}], 3, 3, False))
+        self.assertEqual(json.loads(self.call("jobs", "artifact", ident, "snapshot")["content"]),
+                         {"observations": 3})
+        # A record being appended is not served.
+        with open(directory / "log.jsonl", "a") as f:
+            f.write('{"schema_version":1,"chec')
+        self.assertEqual(self.records(ident, 0, 100)["available"], 3)
+        self.assertTrue(self.call("jobs", "artifact", ident, "log")["content"].endswith("\n"))
+        (directory / "log.jsonl").write_bytes((directory / "log.jsonl").read_bytes().rsplit(b"\n", 1)[0] + b"\n")
+        (directory / "release").touch()
+        _, err = process.communicate(timeout=30)
+        self.assertEqual(process.returncode, 0, err)
+        run = self.call("result", directory)
+        self.assertEqual(run["artifacts"], {"results": "results.jsonl", "log": "log.jsonl",
+                                            "snapshot": "snapshot.json"})
+        index = run["runner"]["artifact_index"]
+        for name, file in run["artifacts"].items():
+            data = (directory / file).read_bytes()
+            self.assertEqual((index[name]["bytes"], index[name]["sha256"]),
+                             (len(data), hashlib.sha256(data).hexdigest()), name)
+        self.assertNotIn("artifact_errors", run["runner"])
+        page = self.records(ident, 3, 10)
+        self.assertEqual((len(page["records"]), page["next_offset"], page["available"], page["final"]),
+                         (2, 5, 5, True))
+        whole = self.call("jobs", "artifact", ident, "snapshot")
+        self.assertEqual((whole["sha256"], whole["final"]), (index["snapshot"]["sha256"], True))
+        results = self.call("jobs", "artifact", ident, "results", "--limit", 5)
+        self.assertEqual(results["records"][0]["task_id"], 0)
+        # Errors: unknown names, pages of a JSON artifact, bad limits, files
+        # changed after sealing.
+        self.assertEqual(self.error("jobs", "artifact", ident, "nothing")["code"], "unknown_artifact")
+        self.assertEqual(self.error("jobs", "artifact", ident, "snapshot", "--offset", 0)["code"],
+                         "invalid_command")
+        self.assertEqual(self.error("jobs", "artifact", ident, "log", "--limit", 0)["code"],
+                         "invalid_command")
+        (directory / "snapshot.json").write_text("{}")
+        self.assertIn("changed after the job ended", self.error("jobs", "artifact", ident, "snapshot")["message"])
+
+    def test_large_artifacts_are_paged_and_bad_declarations_do_not_fail_the_job(self):
+        declarations = [{"name": "log", "file": "log.jsonl", "format": "records"},
+                        {"name": "evil", "file": "run.json", "format": "json"}]
+        process, ident, directory = self.start(envelope("fake", {"mode": "artifacts",
+                                                                 "declarations": declarations}))
+        self.wait_for(lambda: (directory / "snapshot.json").exists())
+        # A broken declaration file still serves the results artifact.
+        self.assertEqual(self.error("jobs", "artifact", ident, "log")["code"], "unknown_artifact")
+        self.assertIn("artifact_errors", self.call("jobs", "get", ident))
+        (directory / "release").touch()
+        process.communicate(timeout=30)
+        self.assertEqual(self.state(directory), "completed")
+        run = self.call("result", directory)
+        self.assertEqual(run["artifacts"], {"results": "results.jsonl"})
+        self.assertEqual(len(run["runner"]["artifact_errors"]), 1)
+        self.assertEqual(run["results"][0]["outcome"]["claim"], "best_found")
+        # An artifact over the inline cap is read in pages.
+        process, ident, directory = self.start(envelope("fake", {"mode": "artifacts"}))
+        self.wait_for(lambda: (directory / "snapshot.json").exists())
+        with open(directory / "log.jsonl", "a") as f:
+            for i in range(6):
+                text = json.dumps({"id": 10 + i, "text": "x" * 300_000})
+                f.write(json.dumps({"schema_version": 1, "checksum": hashlib.sha256(text.encode()).hexdigest(),
+                                    "payload_json": text}) + "\n")
+        self.assertEqual(self.error("jobs", "artifact", ident, "log")["code"], "artifact_too_large")
+        offset, ids = 0, []
+        while True:
+            page = self.records(ident, offset, 100)
+            ids += [r["id"] for r in page["records"]]
+            if page["next_offset"] >= page["available"]:
+                break
+            offset = page["next_offset"]
+        self.assertEqual(ids, [0, 1, 2, *range(10, 16)])
+        (directory / "release").touch()
+        process.communicate(timeout=30)
+
+
 class Schemas(Node):
     """The published JSON Schemas agree with the runner and the workers."""
 
@@ -521,6 +613,15 @@ class Schemas(Node):
             else:
                 self.assertEqual((run["status"], run["results"]), ("failed", []), case["name"])
                 self.assertIn("journal_error", run["runner"], case["name"])
+
+    def test_artifact_indexes_are_valid(self):
+        process, _, directory = self.start(envelope("fake", {"mode": "artifacts"}))
+        self.wait_for(lambda: (directory / "snapshot.json").exists())
+        (directory / "release").touch()
+        process.communicate(timeout=30)
+        run = self.call("result", directory)
+        self.assertEqual(set(run["runner"]["artifact_index"]), {"results", "log", "snapshot"})
+        self.valid(self.result_schema, run)
 
     def test_result_manifests_are_valid(self):
         path, _ = self.write(envelope("fake", {"mode": "garbage_journal"}))

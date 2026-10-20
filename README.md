@@ -8,19 +8,21 @@ jobs as tools and tasks.
 
 | Part | What it is |
 | --- | --- |
-| [`crates/optimization-job-api`](crates/optimization-job-api) | Job envelope `optimization.job/0.1`, result contract `optimization.result/0.2`, input hashes, checked journals and the worker SDK (`worker::run`, `Worker`, `Prepared`) |
+| [`crates/optimization-job-api`](crates/optimization-job-api) | Job envelope `optimization.job/0.1`, result contract `optimization.result/0.2`, input hashes, checked journals, the worker SDK (`worker::run`, `Worker`, `Prepared`) and worker-declared artifacts (`artifact::declare`) |
 | [`crates/optimization-runner`](crates/optimization-runner) | The `optimization-run` command: worker registration, staging, idempotency, CPU-slot admission, supervision, cancellation, deadlines, recovery and coded errors; and `optimization-mcp`, the MCP server over stdio |
 | [`docs/job-api.md`](docs/job-api.md) | The guide: envelope, resources, lifecycle, claims and evidence, errors, recovery, agents and MCP |
 | [`docs/job-api/schemas`](docs/job-api/schemas/optimization.job-0.1.schema.json) | JSON Schemas of the job envelope and the result manifest |
 | [`docs/job-api/PLAN.md`](docs/job-api/PLAN.md) | Implementation plan and acceptance gates |
 | [`scripts/job-api`](scripts/job-api/test_integration.py) | Shared acceptance harness, runner regression tests and a protocol fixture worker |
 
-The solvers live in their own repositories, each with a worker and a runnable
-tutorial:
+The solvers live in their own repositories, each with a worker, a runnable
+tutorial and an `ai-context.md` for agents that model problems with it.
+[Choosing a worker and profile](docs/job-api.md#choosing-a-worker-and-profile)
+maps problem classes to profiles:
 
 | Repository | Worker | Profiles |
 | --- | --- | --- |
-| [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | `fcmaes-job-worker` | `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.evaluate/1` |
+| [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | `fcmaes-job-worker` | `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.surrogate/1` (experimental), `fcmaes.evaluate/1` |
 | [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | `lp-ip-job-worker` | `lp-ip.solve/1`, `lp-ip.evaluate/1` |
 | [SQP-craft](https://github.com/dietmarwo/SQP-craft) | `sqp-job-worker` | `sqp.solve/1`, `sqp.evaluate/1` |
 
@@ -53,10 +55,12 @@ claude mcp add optimization-jobs -- "$PWD/target/release/optimization-mcp" --roo
 ```
 
 Its tools describe the node and its workers, validate, submit, follow, cancel
-and repair jobs, and read results; with the MCP Tasks extension, a submitted
+and repair jobs, and read results and artifacts, such as a running surrogate
+job's evaluation log in pages; with the MCP Tasks extension, a submitted
 job is a task that completes with the job's result. Jobs outlive the server.
 The server cannot register workers or change the node. See
-[Agents and MCP](docs/job-api.md#agents-and-mcp).
+[Agents and MCP](docs/job-api.md#agents-and-mcp) and, for agents,
+[`ai-context.md`](ai-context.md).
 
 ## Depending on this repository
 

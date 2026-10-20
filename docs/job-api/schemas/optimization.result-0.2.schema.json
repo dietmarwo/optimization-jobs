@@ -98,6 +98,7 @@
       }
     },
     "artifacts": {
+      "description": "Artifact name to file in the attempt directory: results (the result journal) and every file the worker declared that exists. Read them with jobs artifact or MCP get_artifact.",
       "type": "object",
       "additionalProperties": {
         "type": "string"
@@ -144,11 +145,63 @@
             "null"
           ]
         },
-        "build": {}
+        "build": {},
+        "artifact_index": {
+          "description": "Every artifact file of the sealed attempt (results and those its worker declared) with its format, size and SHA-256 at sealing; absent in manifests of runners before artifact declarations.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "artifact_errors": {
+          "description": "Problems with declared artifacts (a broken declaration file, a file that is no regular file). They never affect the results.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     }
   },
   "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": [
+        "file",
+        "format",
+        "bytes",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]{1,80}$"
+        },
+        "format": {
+          "enum": [
+            "records",
+            "json"
+          ]
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "task_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
     "counters": {
       "type": "object",
       "propertyNames": {
