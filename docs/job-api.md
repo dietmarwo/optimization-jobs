@@ -484,7 +484,10 @@ optimization-run --root NODE jobs artifact JOB_ID NAME --offset 0 --limit 100
 A whole read returns `content`, `bytes` and `sha256`, at most 1 MiB. A page
 returns the payloads of records `offset` to `offset + limit - 1` (`limit` 1 to
 10,000, by default 100; at most 1 MiB of payload, but always one record),
-`next_offset` and `available`, the number of complete records in the file now.
+`next_offset` and `available`, the number of complete (newline-terminated)
+records in the file now. A page reads the file once and keeps only its own
+records in memory, so long logs page in time proportional to their size and
+constant memory.
 Continue at `next_offset` while it is below `available`; while the job runs
 (`final: false`), `available` grows. When the attempt is sealed, the manifest
 lists every declared file that exists in `artifacts` (name to file), and
