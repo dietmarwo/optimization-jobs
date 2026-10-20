@@ -67,7 +67,7 @@ own requirements. Use the repository's lockfile:
 
 ```sh
 # In a worker repository; replace WORKER_PACKAGE with its worker. In this
-# repository, -p optimization-runner alone builds the runner.
+# repository, -p optimization-runner alone builds the runner and the MCP server.
 cargo build --release --locked -p optimization-runner -p WORKER_PACKAGE
 ./target/release/optimization-run --root /tmp/optimization-node node init --capacity 8
 ./target/release/optimization-run --root /tmp/optimization-node workers add \
