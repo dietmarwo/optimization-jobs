@@ -37,7 +37,8 @@ cargo build --release --locked -p optimization-runner -p fcmaes-job-worker
 ./target/release/optimization-run --root /tmp/node run --spec JOB.json
 ```
 
-Or build the runner alone here with `cargo build --release --locked`. One
+Or build the runner and the MCP server alone here with
+`cargo build --release --locked`. One
 runner serves every registered worker on a node. The
 [guide](docs/job-api.md) explains jobs, results and the CPU budget; the
 worker repositories' tutorials have complete example jobs.
