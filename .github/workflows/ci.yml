@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # The review tests validate against the JSON Schemas; they must not skip.
+  JOB_API_REQUIRE_SCHEMA: "1"
+
+jobs:
+  rust:
+    name: Format, lint, tests, docs and runner regressions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install "jsonschema>=4.18,<5"
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --release --locked
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
+      - name: Runner regressions with the protocol fixture worker
+        run: |
+          cargo build --release --locked -p optimization-runner
+          python3 scripts/job-api/test_review.py
+
+  msrv:
+    name: Rust 1.88 (declared rust-version)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked --workspace --all-targets
+
+  mixed-node:
+    name: Mixed node with the fcmaes, LP-IP and SQP workers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Worker repositories at main
+        run: |
+          for repo in fcmaes-rust LP-IP-craft SQP-craft; do
+            git clone --depth 1 "https://github.com/dietmarwo/$repo" "$RUNNER_TEMP/$repo"
+          done
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            ${{ runner.temp }}/fcmaes-rust
+            ${{ runner.temp }}/LP-IP-craft
+            ${{ runner.temp }}/SQP-craft
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install "jsonschema>=4.18,<5"
+      - name: Build this runner and the three workers
+        run: |
+          cargo build --release --locked -p optimization-runner
+          (cd "$RUNNER_TEMP/fcmaes-rust" && cargo build --release --locked -p fcmaes-job-worker)
+          (cd "$RUNNER_TEMP/LP-IP-craft" && cargo build --release --locked -p lp-ip-job-worker)
+          (cd "$RUNNER_TEMP/SQP-craft" && cargo build --release --locked -p sqp-job-worker)
+      - name: Harness on one node with all three workers
+        run: >-
+          python3 scripts/job-api/test_integration.py
+          --fcmaes "$RUNNER_TEMP/fcmaes-rust/target/release/fcmaes-job-worker"
+          --lp-ip "$RUNNER_TEMP/LP-IP-craft/target/release/lp-ip-job-worker"
+          --sqp "$RUNNER_TEMP/SQP-craft/target/release/sqp-job-worker"
