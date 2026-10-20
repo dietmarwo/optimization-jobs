@@ -231,9 +231,14 @@ pub fn definitions() -> Vec<Value> {
             "get_artifact",
             "Read a job artifact",
             read.clone(),
-            "The content of an artifact named in the job's result manifest (artifacts), up to 1 MiB.",
+            "A file of a job, also while it runs: results (the result journal) or an artifact its worker declared, such as an evaluation log or a warm-start snapshot. get_job lists them with format and size (artifact_index); the result adds their SHA-256. Without offset and limit, the whole content up to 1 MiB; with them, a page of the checked records of a records artifact, continued from next_offset while it is below available.",
             object(
-                json!({"job_id":job_id,"name":{"type":"string","description":"Artifact name from the result's artifacts."}}),
+                json!({
+                    "job_id":job_id,
+                    "name":{"type":"string","description":"Artifact name from artifact_index of get_job or the result."},
+                    "offset":{"type":"integer","minimum":0,"description":"First record of the page; records artifacts only."},
+                    "limit":{"type":"integer","minimum":1,"maximum":10000,"description":"Records of the page (default 100); records artifacts only."},
+                }),
                 &["job_id", "name"],
             ),
         ),
@@ -304,10 +309,7 @@ pub fn call(server: &Server, name: &str, args: &Value, ctx: &Ctx) -> Outcome {
         "wait_job" => wait_job(server, args, ctx),
         "get_result" => get_result(server, args, ctx),
         "get_events" => get_events(server, args, ctx),
-        "get_artifact" => job_id(args).and_then(|id| {
-            let name = string(args, "name")?;
-            server.cli(&["jobs", "artifact", "--", &id, &name], QUICK, ctx)
-        }),
+        "get_artifact" => get_artifact(server, args, ctx),
         "list_jobs" => list_jobs(server, args, ctx),
         "cancel_job" => job_id(args).and_then(|id| cancel(server, &id, false)),
         "kill_job" => job_id(args).and_then(|id| cancel(server, &id, true)),
@@ -912,6 +914,8 @@ struct ManifestView<'a> {
 struct RunnerView {
     #[serde(default)]
     accounting_complete: Value,
+    #[serde(default)]
+    artifact_index: Value,
 }
 
 #[derive(Default, Deserialize)]
@@ -993,7 +997,7 @@ pub fn summary(job: &Value, bytes: &[u8]) -> Result<Value, ToolError> {
             tasks.push(task);
         }
     }
-    Ok(json!({
+    let mut summary = json!({
         "job_id": job["job_id"],
         "state": job["state"],
         "status": manifest.status,
@@ -1011,7 +1015,11 @@ pub fn summary(job: &Value, bytes: &[u8]) -> Result<Value, ToolError> {
         "tasks_omitted": manifest.results.len().saturating_sub(SUMMARY_TASKS),
         "artifacts": manifest.artifacts,
         "directory": job["directory"],
-    }))
+    });
+    if !manifest.runner.artifact_index.is_null() {
+        summary["artifact_index"] = manifest.runner.artifact_index;
+    }
+    Ok(summary)
 }
 
 fn get_result(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
@@ -1069,6 +1077,32 @@ fn get_result(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
         }
         _ => Err(fail("invalid_arguments", "tasks must be an array")),
     }
+}
+
+fn get_artifact(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
+    let id = job_id(args)?;
+    let name = string(args, "name")?;
+    let mut argv = vec!["jobs".to_string(), "artifact".into()];
+    for (key, low, high) in [("offset", 0, u32::MAX as u64), ("limit", 1, 10_000)] {
+        match &args[key] {
+            Value::Null => {}
+            v => {
+                let n = v
+                    .as_u64()
+                    .filter(|n| (low..=high).contains(n))
+                    .ok_or_else(|| {
+                        fail(
+                            "invalid_arguments",
+                            format!("{key} must be an integer from {low} to {high}"),
+                        )
+                    })?;
+                argv.push(format!("--{key}={n}"));
+            }
+        }
+    }
+    argv.extend(["--".into(), id, name]);
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+    server.cli(&argv, QUICK, ctx)
 }
 
 fn get_events(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {

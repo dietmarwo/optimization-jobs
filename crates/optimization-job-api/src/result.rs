@@ -1,4 +1,4 @@
-use crate::{JobSpec, Request, Result, legacy, safe_name, storage};
+use crate::{JobSpec, Request, Result, artifact, legacy, safe_name, storage};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -419,15 +419,22 @@ pub fn manifest(
     };
     let records = replay(dir, s)?;
     let known = counts(&records)?;
-    Ok(json!({
+    // Declared artifacts are indexed with their digests; a problem with them
+    // is reported, never a reason to distrust the results.
+    let (artifacts, index, errors) = artifact::sealed(dir);
+    let mut run = json!({
         "schema_version":SCHEMA, "status":status,
         "worker":s.worker,"payload_schema":s.payload_schema,"elapsed_seconds":elapsed,
         "completed_tasks":records.len(),"requested_tasks":s.task_count,
         "work":if complete { Some(&known) } else { None },"known_work_lower_bound":known,
         "results":records,
-        "artifacts":if dir.join("results.jsonl").exists(){json!({"results":"results.jsonl"})}else{json!({})},
-        "runner":{"profile":"optimization.runner/0.1","spec_digest":s.digest()?,"worker_digest":worker_digest,"accounting_complete":complete,"resources":s.resources,"recovery":"journal_only_no_resume"}
-    }))
+        "artifacts":artifacts,
+        "runner":{"profile":"optimization.runner/0.1","spec_digest":s.digest()?,"worker_digest":worker_digest,"accounting_complete":complete,"resources":s.resources,"recovery":"journal_only_no_resume","artifact_index":index}
+    });
+    if !errors.is_empty() {
+        run["runner"]["artifact_errors"] = json!(errors);
+    }
+    Ok(run)
 }
 /// The manifest of an attempt whose journal cannot be replayed (a corrupt or
 /// invalid record before its final line). No record is trusted, so there are
@@ -463,9 +470,12 @@ pub fn progress(dir: &Path, s: &Request) -> Result<Value> {
         }
         Request::Job(s) => {
             let r = replay(dir, s)?;
-            Ok(
-                json!({"completed_tasks":r.len(),"requested_tasks":s.task_count,"known_work_lower_bound":counts(&r)?}),
-            )
+            let (index, errors) = artifact::progress(dir);
+            let mut v = json!({"completed_tasks":r.len(),"requested_tasks":s.task_count,"known_work_lower_bound":counts(&r)?,"artifact_index":index});
+            if !errors.is_empty() {
+                v["artifact_errors"] = json!(errors);
+            }
+            Ok(v)
         }
     }
 }

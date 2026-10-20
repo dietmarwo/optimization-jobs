@@ -201,6 +201,7 @@ optimization-run --root NODE jobs events JOB_ID
 optimization-run --root NODE jobs wait JOB_ID --timeout 60
 optimization-run --root NODE result JOB_DIRECTORY
 optimization-run --root NODE jobs artifact JOB_ID results
+optimization-run --root NODE jobs artifact JOB_ID NAME --offset 0 --limit 100
 optimization-run --root NODE jobs cancel JOB_ID
 optimization-run --root NODE jobs cancel JOB_ID --now
 ```
@@ -250,7 +251,7 @@ prints one JSON line on stderr (`--help` and `--version` print normally):
 | Code | Meaning | What helps |
 | --- | --- | --- |
 | `invalid_job` | The specification is missing or not a valid envelope; an input is missing, escapes its directory or fails its hash; the worker rejected the payload; or the resolved job exceeds the 4 MiB validation output or 30 s | Fix the job |
-| `invalid_command` | The command line does not parse | See `--help` |
+| `invalid_command` | The command line does not parse, asks for pages of an artifact that is not `records`, or a page `limit` outside 1–10,000 | See `--help` |
 | `unknown_worker` | No worker is registered under that ID | `workers add` |
 | `unsupported_profile` | The worker does not accept the `payload_schema` | Another worker or profile |
 | `worker_changed` | The registered executable changed since registration | Register it again |
@@ -259,6 +260,8 @@ prints one JSON line on stderr (`--help` and `--version` print normally):
 | `node_not_initialized` | The root has no `node.json` | `node init --capacity N` |
 | `unknown_job` | No job with this ID on this root | Check the ID and root |
 | `already_terminal` | Cancel or repair of a job that has already ended | Nothing to do |
+| `unknown_artifact` | The job has no artifact of that name, or its file does not exist yet | A name from `artifact_index` (`jobs get` or the result) |
+| `artifact_too_large` | A whole read of an artifact over 1 MiB, or a page whose first record exceeds 1 MiB | Pages (`--offset`, `--limit`) of a `records` artifact, or the file in the job directory |
 | `attempt_active` | Repair while the attempt's launcher or worker still holds its lock | Wait, then repeat |
 | `liveness_unknown` | Repair of an attempt whose locks are free, but whose process group still exists or whose detached unit may still start | Inspect it (`jobs get`, `systemctl --user`); an attempt recorded on an earlier boot counts as ended |
 | `systemd_unavailable` | `submit` without a systemd user manager | Foreground `run` |
@@ -451,6 +454,56 @@ creation and durable process-group recording, reservations are conservatively
 retained; reboot reconciliation can clear the old boot. Only unfinished jobs
 are flagged after a reboot.
 
+### Artifacts
+
+Artifacts are files of a job attempt that agents read through the runner,
+while the job runs and after it ends. `results` (the journal `results.jsonl`)
+is always one. A worker adds its own, such as an evaluation log or a
+warm-start snapshot, by declaring each before its first write:
+`artifact::declare(base, &Declaration::records(name, file).task(task).describe(text))`
+in `Prepared::solve`, where `base` is the directory `Worker::prepare`
+received; never in `prepare`, which also runs for validation. A declaration
+is a checked record (the journal framing, version 1) in `artifacts.jsonl` of
+the attempt directory, with `name`, `file`, `format` and optionally
+`task_id` and a `description` of at most 200 bytes, so workers written in
+other languages declare artifacts the same way. Names and files are unique
+plain names: not `results`, no file of the runner, nothing that starts with
+`.` or ends in `.lock` or `.tmp`; at most 4096 per attempt.
+
+| Format | Written with | Read |
+| --- | --- | --- |
+| `records` | `storage::append_checked`, any record version | Whole up to the last complete line, or in pages of complete records whose checksums hold |
+| `json` | `storage::write_atomic_json` | Whole |
+
+```sh
+optimization-run --root NODE jobs get JOB_ID   # artifact_index: file, format, bytes, task, description
+optimization-run --root NODE jobs artifact JOB_ID NAME
+optimization-run --root NODE jobs artifact JOB_ID NAME --offset 0 --limit 100
+```
+
+A whole read returns `content`, `bytes` and `sha256`, at most 1 MiB. A page
+returns the payloads of records `offset` to `offset + limit - 1` (`limit` 1 to
+10,000, by default 100; at most 1 MiB of payload, but always one record),
+`next_offset` and `available`, the number of complete records in the file now.
+Continue at `next_offset` while it is below `available`; while the job runs
+(`final: false`), `available` grows. When the attempt is sealed, the manifest
+lists every declared file that exists in `artifacts` (name to file), and
+`runner.artifact_index` records its format, size, SHA-256, task and
+description; a whole read after the end fails if the file no longer matches
+its digest. Problems with declarations (a broken declaration file, a file
+that is not a regular file) appear in `runner.artifact_errors` and in
+`jobs get`; they never fail the job or change its results, and a broken
+declaration file leaves `results` alone. A runner that predates declarations
+ignores `artifacts.jsonl`, so workers that declare artifacts run on it
+unchanged. Artifacts are what the worker reports, not rechecked claims.
+
+An artifact can be an input of a later job, which is how a run continues
+(the surrogate profile's warm start, for example): the input names the
+artifact's `file` with the SHA-256 from `runner.artifact_index`. Over MCP,
+pass the earlier job's `directory` (from `get_job` or `get_result`) as
+`input_dir`; with the CLI, copy the file next to the job file. An input file
+holds at most 64 MiB.
+
 `compare` supports the legacy fcmaes behavior. Common results require identical
 resolved experiment digests and payload profiles and never select a winner
 automatically; it reads 0.1 and 0.2 manifests and warns when arms mix them.
@@ -500,11 +553,11 @@ the working directory). The server logs one line to stderr when it starts.
 | `describe_worker` | `problems describe` | The worker's full description: profiles, models, options, claims |
 | `validate_job` | `validate` | The resolved job with its `task_count`, or `invalid_job` |
 | `submit_job` | `run` (process) or `submit` (systemd) | The job's handle once it exists; a task for clients with the Tasks extension |
-| `get_job` | `jobs get` | State, progress, directory, `observed_state` |
+| `get_job` | `jobs get` | State, progress, directory, `artifact_index`, `observed_state` |
 | `wait_job` | `jobs get`, repeated | Returns when the job ends or is observed interrupted, at most after `timeout_seconds` (600); progress notifications on request |
-| `get_result` | `result` | A summary: accounting, claim and termination counts, one line per task (the first 100, without points); `tasks` returns complete records, `full` the manifest up to 1 MiB |
+| `get_result` | `result` | A summary: accounting, claim and termination counts, one line per task (the first 100, without points) and the artifact index; `tasks` returns complete records, `full` the manifest up to 1 MiB |
 | `get_events` | `jobs events` | The last `limit` lifecycle events |
-| `get_artifact` | `jobs artifact` | An artifact of the result, up to 1 MiB |
+| `get_artifact` | `jobs artifact` | An [artifact](#artifacts), also while the job runs: whole up to 1 MiB, or a page of records with `offset` and `limit` |
 | `list_jobs` | `jobs list` | The jobs, newest first, optionally only active ones |
 | `cancel_job` | `jobs cancel` | Graceful stop; completed tasks stay in the result |
 | `kill_job` | `jobs cancel --now` | Immediate stop |
@@ -631,8 +684,9 @@ payload and resolve defaults. Return a `Prepared` object with task count,
 cooperative cancellation and a task-local solve operation. A task must return
 its numerical outcome, with evidence, and work counters; `Outcome::check`
 states the rules. Record a claim that fails your independent check as a
-refutation (`Evidence::refuting`), not as an error. The SDK handles
-concurrency, journal commits and final manifests. Do not put solver-specific
+refutation (`Evidence::refuting`), not as an error. Declare files that agents
+should read, such as logs and snapshots, as [artifacts](#artifacts). The SDK
+handles concurrency, journal commits and final manifests. Do not put solver-specific
 assumptions in the runner. Bump a profile version when changing mathematical
 input/result meaning.
 

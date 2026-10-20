@@ -8,7 +8,7 @@ jobs as tools and tasks.
 
 | Part | What it is |
 | --- | --- |
-| [`crates/optimization-job-api`](crates/optimization-job-api) | Job envelope `optimization.job/0.1`, result contract `optimization.result/0.2`, input hashes, checked journals and the worker SDK (`worker::run`, `Worker`, `Prepared`) |
+| [`crates/optimization-job-api`](crates/optimization-job-api) | Job envelope `optimization.job/0.1`, result contract `optimization.result/0.2`, input hashes, checked journals, the worker SDK (`worker::run`, `Worker`, `Prepared`) and worker-declared artifacts (`artifact::declare`) |
 | [`crates/optimization-runner`](crates/optimization-runner) | The `optimization-run` command: worker registration, staging, idempotency, CPU-slot admission, supervision, cancellation, deadlines, recovery and coded errors; and `optimization-mcp`, the MCP server over stdio |
 | [`docs/job-api.md`](docs/job-api.md) | The guide: envelope, resources, lifecycle, claims and evidence, errors, recovery, agents and MCP |
 | [`docs/job-api/schemas`](docs/job-api/schemas/optimization.job-0.1.schema.json) | JSON Schemas of the job envelope and the result manifest |
@@ -55,7 +55,8 @@ claude mcp add optimization-jobs -- "$PWD/target/release/optimization-mcp" --roo
 ```
 
 Its tools describe the node and its workers, validate, submit, follow, cancel
-and repair jobs, and read results; with the MCP Tasks extension, a submitted
+and repair jobs, and read results and artifacts, such as a running surrogate
+job's evaluation log in pages; with the MCP Tasks extension, a submitted
 job is a task that completes with the job's result. Jobs outlive the server.
 The server cannot register workers or change the node. See
 [Agents and MCP](docs/job-api.md#agents-and-mcp) and, for agents,

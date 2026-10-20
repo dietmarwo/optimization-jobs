@@ -400,6 +400,36 @@ class Jobs(Server):
                  self.client.ok("get_events", {"job_id": graceful, "limit": 1000})["events"]]
         self.assertTrue(kinds)
 
+    def test_artifacts_while_running_in_pages_and_as_inputs_of_the_next_job(self):
+        ident = self.client.ok("submit_job", {"job": fake("artifacts", {"mode": "artifacts"})})["job_id"]
+        directory = self.root / "jobs" / ident
+        deadline = time.time() + 20
+        while not (directory / "snapshot.json").exists() and time.time() < deadline:
+            time.sleep(0.05)
+        index = self.client.ok("get_job", {"job_id": ident})["artifact_index"]
+        self.assertEqual(index["log"]["format"], "records")
+        page = self.client.ok("get_artifact", {"job_id": ident, "name": "log", "offset": 2, "limit": 5})
+        self.assertEqual((page["records"], page["next_offset"], page["available"], page["final"]),
+                         ([{"id": 2, "x": [2.0]}], 3, 3, False))
+        self.assertEqual(self.client.error("get_artifact", {"job_id": ident, "name": "log", "limit": 0})["code"],
+                         "invalid_arguments")
+        self.assertEqual(self.client.error("get_artifact", {"job_id": ident, "name": "none"})["code"],
+                         "unknown_artifact")
+        (directory / "release").touch()
+        self.assertEqual(self.wait(ident)["state"], "completed")
+        summary = self.client.ok("get_result", {"job_id": ident})
+        snapshot = summary["artifact_index"]["snapshot"]
+        self.assertEqual(summary["artifacts"]["snapshot"], "snapshot.json")
+        content = self.client.ok("get_artifact", {"job_id": ident, "name": "snapshot"})["content"]
+        self.assertEqual(json.loads(content), {"observations": 5})
+        # The documented reuse: the next job names the file in the old job's
+        # directory with the SHA-256 the index recorded.
+        job = fake("next", {"mode": "complete"})
+        job["inputs"] = [{"name": "previous", "file": snapshot["file"], "sha256": snapshot["sha256"]}]
+        follow = self.client.ok("submit_job", {"job": job, "input_dir": summary["directory"]})["job_id"]
+        self.assertEqual(self.wait(follow)["state"], "completed")
+        self.assertEqual((self.root / "jobs" / follow / "inputs" / "previous").read_text(), content)
+
     def test_inputs_spec_path_and_input_dir(self):
         data = self.base / "data"
         data.mkdir()

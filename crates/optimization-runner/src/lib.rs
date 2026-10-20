@@ -117,9 +117,18 @@ enum Jobs {
     Repair {
         id: String,
     },
+    /// Read an artifact, also while the job runs: its whole content (at
+    /// most 1 MiB), or with `--offset`/`--limit` a page of the checked
+    /// records of a `records` artifact.
     Artifact {
         id: String,
         name: String,
+        /// First record of the page (records artifacts only).
+        #[arg(long)]
+        offset: Option<usize>,
+        /// Records of the page, 1 to 10000 (default 100 when only --offset is given).
+        #[arg(long)]
+        limit: Option<usize>,
     },
 }
 /// Number of SIGINT/SIGTERM/SIGHUP received: one requests a graceful stop,
@@ -1232,20 +1241,98 @@ fn main_result() -> Result<()> {
                 }
                 output(get(&root, &id)?)
             }
-            Jobs::Artifact { id, name } => {
+            Jobs::Artifact {
+                id,
+                name,
+                offset,
+                limit,
+            } => {
                 let dir = directory(&root, &id)?;
-                let run = read(&dir.join("run.json"))?;
-                let rel = run["artifacts"][&name]
-                    .as_str()
-                    .ok_or("unknown artifact id")?;
-                let path = fs::canonicalize(dir.join(rel))?;
-                if !path.starts_with(fs::canonicalize(&dir)?) {
-                    return Err("artifact escapes job directory".into());
+                let unknown = |why: &[String]| {
+                    coded(
+                        "unknown_artifact",
+                        format!(
+                            "job {id} has no artifact {name:?}{}",
+                            if why.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" ({})", why.join("; "))
+                            }
+                        ),
+                    )
+                };
+                // A sealed attempt serves what its manifest lists, checked
+                // against the recorded digest; a running one its declarations.
+                let sealed = dir.join("run.json").exists();
+                let (file, format, sha256) = if sealed {
+                    let run = read(&dir.join("run.json"))?;
+                    let file = run["artifacts"][&name]
+                        .as_str()
+                        .ok_or_else(|| unknown(&[]))?;
+                    let index = &run["runner"]["artifact_index"][&name];
+                    // Manifests before artifact indexes list `results` only.
+                    let format = index["format"]
+                        .as_str()
+                        .unwrap_or(if name == artifact::RESULTS {
+                            "records"
+                        } else {
+                            "file"
+                        });
+                    (
+                        file.to_string(),
+                        format.to_string(),
+                        index["sha256"].as_str().map(String::from),
+                    )
+                } else {
+                    let (list, errors) = artifact::all_or_results(&dir);
+                    let d = list
+                        .into_iter()
+                        .find(|d| d.name == name)
+                        .ok_or_else(|| unknown(&errors))?;
+                    (d.file, d.format, None)
+                };
+                let path = match fs::canonicalize(dir.join(&file)) {
+                    Ok(path) => path,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        return Err(coded(
+                            "unknown_artifact",
+                            format!("artifact {name:?} of job {id} has no file yet"),
+                        ));
+                    }
+                    Err(e) => return Err(e.into()),
+                };
+                if !path.starts_with(fs::canonicalize(&dir)?) || !path.is_file() {
+                    return Err("artifact escapes job directory or is no file".into());
                 }
-                if fs::metadata(&path)?.len() > 1_048_576 {
-                    return Err("artifact exceeds inline cap; use job directory".into());
+                // A whole read checks the whole file, a torn final record
+                // included (it was sealed too); pages check their records.
+                let paged = offset.is_some() || limit.is_some();
+                if let Some(sealed) = sha256
+                    && !paged
+                    && artifact::digest_file(&path)?.1 != sealed
+                {
+                    return Err(format!(
+                        "artifact {name:?} changed after the job ended: its SHA-256 differs from the manifest"
+                    )
+                    .into());
                 }
-                output(json!({"name":name,"content":fs::read_to_string(path)?}))
+                let mut value = if paged {
+                    if format != "records" {
+                        return Err(coded(
+                            "invalid_command",
+                            format!(
+                                "artifact {name:?} has format {format}; only records artifacts have pages"
+                            ),
+                        ));
+                    }
+                    artifact::page(&path, offset.unwrap_or(0), limit.unwrap_or(100))?
+                } else {
+                    artifact::content(&path, &format)?
+                };
+                value["name"] = json!(name);
+                value["file"] = json!(file);
+                value["final"] = json!(sealed);
+                output(value)
             }
         },
     }

@@ -249,6 +249,43 @@ else:
                 else:self.assertEqual(o['claim'],'best_found',o);self.assertAlmostEqual(o['objective'],sum(x*x for x in o['x']))
         s=self.fixture('fcmaes');s['resources']={'cpu_slots':8,'outer_workers':2,'inner_threads':4};p,_=self.write(s);self.call('validate','--spec',p,ok=False)
 
+    def test_fcmaes_surrogate_profile(self):
+        if 'fcmaes' not in WORKERS:self.skipTest('fcmaes worker not supplied')
+        described=self.call('problems','describe','fcmaes')
+        if 'fcmaes.surrogate/1' not in described['profiles']:self.skipTest('fcmaes worker without fcmaes.surrogate/1')
+        def branin(x):return (x[1]-5.1*x[0]**2/(4*math.pi**2)+5*x[0]/math.pi-6)**2+10*(1-1/(8*math.pi))*math.cos(x[0])+10
+        s=envelope('fcmaes',{'problem':{'id':'benchmark.branin','version':'1','config':{'dimension':2},'bounds':{'lower':[-5.,0.],'upper':[10.,15.],'broadcast':False}},'seed':41,'evaluations':16,'runs':2,'concurrent':2})
+        s['payload_schema']='fcmaes.surrogate/1';s['resources']={'cpu_slots':8,'outer_workers':2,'inner_threads':2}
+        _,_,j,d,r=self.run_spec(s);self.assertEqual(j['state'],'completed');self.assertEqual(r['completed_tasks'],2)
+        for rec in r['results']:
+            o=rec['outcome'];self.assertEqual((o['claim'],o['evidence']['level']),('best_found','rechecked'),o)
+            self.assertEqual((rec['work']['evaluations'],rec['work']['validation_evaluations']),(16,1))
+            self.assertAlmostEqual(o['objective'],branin(o['x']),places=12);self.assertLess(o['objective'],5.)
+        # The thread count changes neither points nor values.
+        s['resources']={'cpu_slots':8,'outer_workers':2,'inner_threads':4};_,_,_,_,wide=self.run_spec(s)
+        self.assertEqual([(x['outcome']['x'],x['outcome']['objective'],x['work']) for x in r['results']],[(x['outcome']['x'],x['outcome']['objective'],x['work']) for x in wide['results']])
+        s['resources']={'cpu_slots':8,'outer_workers':8,'inner_threads':1};p,_=self.write(s);self.call('validate','--spec',p,ok=False)
+        if 'artifacts' not in described['surrogate']:return  # an older worker keeps its files local
+        index=r['runner']['artifact_index']
+        for task in range(2):
+            log=index[f'surrogate-{task}'];snapshot=index[f'surrogate-observations-{task}']
+            self.assertEqual((log['format'],log['task_id'],snapshot['format']),('records',task,'json'))
+            data=(d/snapshot['file']).read_bytes();self.assertEqual(snapshot['sha256'],hashlib.sha256(data).hexdigest())
+            records,offset=[],0
+            while True:
+                page=self.call('jobs','artifact',j['id'],f'surrogate-{task}','--offset',offset,'--limit',7);records+=page['records'];offset=page['next_offset']
+                if offset>=page['available']:break
+            self.assertEqual(records[0]['record'],'header')
+            self.assertEqual(sum(1 for x in records if x['record']=='event' and x['data']['event']=='completed'),16)
+            self.assertEqual(len(json.loads(self.call('jobs','artifact',j['id'],f'surrogate-observations-{task}')['content'])['observations']),16)
+        # A warm start continues from task 0's snapshot artifact.
+        snapshot=index['surrogate-observations-0'];(self.base/snapshot['file']).write_bytes((d/snapshot['file']).read_bytes())
+        warm=copy.deepcopy(s);warm['resources']={'cpu_slots':8,'outer_workers':1,'inner_threads':2}
+        warm['payload'].update(runs=1,evaluations=4,warm_start={'input':'previous'});warm['inputs']=[{'name':'previous','file':snapshot['file'],'sha256':snapshot['sha256']}]
+        _,_,j,_,r=self.run_spec(warm);self.assertEqual(j['state'],'completed');rec=r['results'][0]
+        self.assertEqual((rec['outcome']['details']['warm_start_points'],rec['work']['evaluations']),(16,4))
+        self.assertLessEqual(rec['outcome']['objective'],min(x['outcome']['objective'] for x in wide['results'][:1]))
+
     def test_evaluate_profiles_check_given_points(self):
         sphere={'id':'benchmark.sphere','version':'1','config':{'dimension':2},'bounds':{'lower':[-5.],'upper':[5.],'broadcast':True}}
         cases={'fcmaes':('fcmaes.evaluate/1',{'problem':sphere,'points':[[1.,2.],[0.,0.]]},[(True,5.),(True,0.)]),

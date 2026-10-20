@@ -61,7 +61,11 @@ MCP server cannot do either. Connect as described in
 5. `submit_job`; with the MCP Tasks extension the submission is a task.
 6. `wait_job` (at most 600 s per call) or `get_job` until the job ends.
 7. `get_result` for the summary, `tasks` or `full` for records,
-   `get_artifact` for files the result names.
+   `get_artifact` for [artifacts](docs/job-api.md#artifacts): `results` and
+   the files a worker declared (an evaluation log, a warm-start snapshot).
+   `get_job` lists them in `artifact_index` while the job runs; pass
+   `offset` and `limit` to read a `records` artifact in pages, continuing at
+   `next_offset` while it is below `available`.
 8. `cancel_job` keeps completed tasks; `kill_job` stops at once; `repair_job`
    finalizes a job whose launcher was lost.
 
@@ -109,5 +113,10 @@ added across profiles as if they measured the same work.
   or second-order optimum, or `numerical_optimum` as an exact certificate.
 - A job that failed validation consumed nothing; a job that ran out of time
   can still carry useful completed tasks.
-- Logs and artifacts live in the node's job directories; MCP returns at most
-  1 MiB per call (`result_too_large` points to the files).
+- MCP returns at most 1 MiB per call: page large `records` artifacts, read
+  other large files in the job directory (`result_too_large` and
+  `artifact_too_large` say so). Worker logs (`stderr.log`) are not artifacts.
+- To continue a run (the surrogate's warm start), submit a new job whose
+  input names the earlier job's artifact `file` with the SHA-256 from
+  `artifact_index` of its result, and pass that job's `directory` as
+  `input_dir`. Jobs are never resumed in place.

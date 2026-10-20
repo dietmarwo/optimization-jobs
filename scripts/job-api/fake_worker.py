@@ -34,7 +34,34 @@ elif mode == "garbage_journal":
     sys.exit(3)
 elif mode == "crash":
     signal.raise_signal(signal.SIGSEGV)
-elif mode == "complete":
+elif mode == "artifacts":
+    # Declares a log of checked records and a JSON snapshot the way the Rust
+    # SDK's artifact::declare does, appends three records, waits until the
+    # test creates `release` in the attempt directory, appends two more and
+    # completes like "complete" below.
+    def append_checked(path, value):
+        text = json.dumps(value)
+        line = {"schema_version": 1, "checksum": hashlib.sha256(text.encode()).hexdigest(),
+                "payload_json": text}
+        with open(path, "a") as f:
+            f.write(json.dumps(line) + "\n")
+    declarations = payload.get("declarations", [
+        {"name": "log", "file": "log.jsonl", "format": "records", "task_id": 0,
+         "description": "Evaluation log"},
+        {"name": "snapshot", "file": "snapshot.json", "format": "json", "task_id": 0}])
+    for d in declarations:
+        append_checked(directory / "artifacts.jsonl", d)
+    for i in range(3):
+        append_checked(directory / "log.jsonl", {"id": i, "x": [float(i)]})
+    (directory / "snapshot.json").write_text(json.dumps({"observations": 3}))
+    deadline = time.monotonic() + 30
+    while not (directory / "release").exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    for i in range(3, 5):
+        append_checked(directory / "log.jsonl", {"id": i, "x": [float(i)]})
+    (directory / "snapshot.json").write_text(json.dumps({"observations": 5}))
+    mode = "complete"
+if mode == "complete":
     # After an optional delay, one 0.1 result record (no evidence), committed
     # like the Rust SDK does, then the worker manifest the runner
     # cross-checks against the journal.

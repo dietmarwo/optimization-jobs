@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+Artifacts declared by workers (prerequisites of `fcmaes.surrogate/1` from its
+plan):
+
+- `artifact::declare` lets a task declare extra files of its attempt, such
+  as an evaluation log (`records`: checked records) or a warm-start snapshot
+  (`json`: replaced atomically). Declarations are checked records in
+  `artifacts.jsonl`, so workers in other languages can write them; runners
+  without this change ignore the file, so declaring workers run on them.
+- `jobs get` lists the artifacts with format and size (`artifact_index`)
+  while the job runs. `jobs artifact` reads them while the job runs too:
+  whole up to 1 MiB, or with `--offset`/`--limit` a page of complete, checked
+  records. New codes `unknown_artifact` and `artifact_too_large`.
+- The sealed manifest lists every declared file that exists in `artifacts`;
+  `runner.artifact_index` records format, size, SHA-256, task and
+  description (the result schema 0.2 describes it as an optional runner
+  property), and a whole read after the end checks the file against it.
+  Problems with declarations go to `runner.artifact_errors` and never fail a
+  job.
+- MCP `get_artifact` takes `offset` and `limit`; `get_result` summaries
+  include the artifact index. The guide documents how a later job takes an
+  artifact as input (`input_dir` set to the earlier job's directory).
+- The shared harness runs `fcmaes.surrogate/1` when the fcmaes worker
+  offers it: claims and evidence, identical results for 2 and 4 inner
+  threads, and, with a worker that declares its files, the log in pages and
+  a warm start from the snapshot artifact.
+
 Fixes from the October 2026 review:
 
 - Cancellation escalates only. `jobs cancel`, the launcher's timeout and its
