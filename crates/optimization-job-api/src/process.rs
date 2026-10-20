@@ -74,23 +74,25 @@ pub fn bounded_command_until(
     let b = thread::spawn(move || drain(stderr, maximum));
     let start = Instant::now();
     let mut aborted = false;
-    let status = loop {
-        if let Some(s) = child.try_wait()? {
-            break Some(s);
+    let finished = loop {
+        if exited(&mut child)? {
+            break true;
         }
         if abort() {
             aborted = true;
-            break None;
+            break false;
         }
         if start.elapsed() >= timeout {
-            break None;
+            break false;
         }
         thread::sleep(Duration::from_millis(10));
     };
     // A parent may exit leaving descendants holding the pipes. Clean the group
-    // even on success before joining bounded pipe readers.
+    // even on success before joining bounded pipe readers. The exited leader
+    // is not reaped yet, so its PID, which names the group, cannot have been
+    // reused by another process group.
     terminate_process_group(&mut child);
-    let _ = child.wait();
+    let status = child.wait();
     let write_result = writer
         .join()
         .map_err(|_| io::Error::other("stdin thread panicked"))?;
@@ -106,13 +108,36 @@ pub fn bounded_command_until(
             "command interrupted",
         ));
     }
-    let status = status
+    let status = finished
+        .then_some(status?)
         .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "command deadline exceeded"))?;
     write_result?;
     if oa || ob {
         return Err(io::Error::other("command stream exceeds configured cap"));
     }
     Ok((status, out, err))
+}
+/// True once the child has exited, without reaping it: while the child is a
+/// zombie, its PID cannot be reused.
+#[cfg(target_os = "linux")]
+fn exited(child: &mut Child) -> io::Result<bool> {
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    let rc = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            child.id() as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+        )
+    };
+    if rc < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { info.si_pid() } != 0)
+}
+#[cfg(not(target_os = "linux"))]
+fn exited(child: &mut Child) -> io::Result<bool> {
+    Ok(child.try_wait()?.is_some())
 }
 /// Bounded on-disk diagnostics, with pipes drained after cap is reached.
 pub fn drain_file(

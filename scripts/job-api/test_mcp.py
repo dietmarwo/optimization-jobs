@@ -58,6 +58,20 @@ def fake(key, payload, slots=1, wall=60.0):
     }
 
 
+def launcher(root):
+    """PID of the optimization-run launcher of a job on this node."""
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if str(root).encode() in argv and b"run" in argv:
+            return int(entry.name)
+    raise AssertionError("no launcher found")
+
+
 def meta(tasks=False):
     capabilities = {"extensions": {TASKS: {}}} if tasks else {}
     return {"io.modelcontextprotocol/protocolVersion": VERSION,
@@ -553,7 +567,7 @@ class Tasks(Server):
         self.assertEqual(error["code"], -32021)
 
     def test_tasks_and_jobs_survive_a_server_restart(self):
-        created = self.client.tool("submit_job", {"job": fake("durable", {"mode": "sleep", "seconds": 3})},
+        created = self.client.tool("submit_job", {"job": fake("durable", {"mode": "complete", "seconds": 3})},
                                    tasks=True)
         self.running(job_id("durable"))
         self.client.process.send_signal(signal.SIGKILL)
@@ -562,7 +576,143 @@ class Tasks(Server):
         self.assertEqual(fresh.ok("get_job", {"job_id": job_id("durable")})["state"], "running")
         task = self.poll_task(created["taskId"], client=fresh)
         self.assertEqual(task["status"], "completed")
-        self.assertEqual(task["result"]["structuredContent"]["job"]["state"], "failed")
+        self.assertFalse(task["result"]["isError"])
+        self.assertEqual(task["result"]["structuredContent"]["result"]["claims"], {"best_found": 1})
+
+    def test_a_lost_launcher_keeps_the_task_working_until_the_worker_ends(self):
+        created = self.client.tool("submit_job", {"job": fake("orphan", {"mode": "complete", "seconds": 3})},
+                                   tasks=True)
+        ident = job_id("orphan")
+        self.running(ident)
+        os.kill(launcher(self.root), signal.SIGKILL)
+        deadline = time.time() + 10
+        while self.client.ok("get_job", {"job_id": ident}).get("observed_state") != "launcher_lost":
+            self.assertLess(time.time(), deadline, "the lost launcher was not observed")
+            time.sleep(0.1)
+        task = self.client.request("tasks/get", {"taskId": created["taskId"]}, tasks=True)["result"]
+        self.assertEqual(task["status"], "working")
+        self.assertIn("launcher_lost", task["statusMessage"])
+        # The orphaned worker finishes; the server finalizes the attempt with
+        # the worker's exact result.
+        task = self.poll_task(created["taskId"])
+        self.assertEqual(task["status"], "completed")
+        self.assertFalse(task["result"]["isError"])
+        self.assertEqual(task["result"]["structuredContent"]["job"]["state"], "completed")
+        self.assertEqual(task["result"]["structuredContent"]["result"]["claims"], {"best_found": 1})
+
+    def test_a_corrupt_task_store_is_an_error_not_a_hang(self):
+        (self.root / "mcp").mkdir(exist_ok=True)
+        (self.root / "mcp" / "tasks.json").write_text("[]")
+        error = self.client.request("tasks/get", {"taskId": "task-x"}, tasks=True)["error"]
+        self.assertEqual(error["code"], -32603)
+        # The job still starts; the client gets its handle instead of a task.
+        result = self.client.tool("submit_job", {"job": fake("store", {"mode": "complete"})}, tasks=True)
+        self.assertEqual(result["structuredContent"]["job_id"], job_id("store"))
+        self.assertNotIn("taskId", result)
+
+
+class Review(Server):
+    """Defects found by the review of the first version, kept fixed."""
+
+    def test_a_cancelled_submission_still_creates_its_job(self):
+        job = fake("cancelled-submit", {"mode": "complete", "validate_sleep": 2})
+        ident = self.client.start("tools/call", {"name": "submit_job", "arguments": {"job": job}})
+        time.sleep(1)
+        self.client.send({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": ident}})
+        deadline = time.time() + 20
+        while True:
+            reply = self.client.tool("get_job", {"job_id": job_id("cancelled-submit")})
+            if not reply.get("isError") and reply["structuredContent"]["state"] in TERMINAL:
+                break
+            self.assertLess(time.time(), deadline, f"the job was not created: {reply}")
+            time.sleep(0.2)
+        self.assertNotIn(ident, self.client.responses)
+        # The key stays usable: the same job comes back.
+        self.assertEqual(self.client.ok("submit_job", {"job": job})["job_id"], job_id("cancelled-submit"))
+
+    def test_identity_includes_the_worker(self):
+        job = fake("identity", {"mode": "complete"})
+        self.wait(self.client.ok("submit_job", {"job": job})["job_id"])
+        changed = self.base / "fake_worker_changed.py"
+        changed.write_text(FAKE.read_text() + "\n# another build\n")
+        changed.chmod(0o755)
+        self.call("workers", "add", "--id", "fake", "--executable", str(changed))
+        self.assertEqual(self.client.error("submit_job", {"job": job})["code"], "request_key_conflict")
+        self.assertTrue(self.client.tool("submit_job", {"job": job}, tasks=True)["isError"])
+
+    def test_spec_path_must_be_a_bounded_regular_file(self):
+        fifo = self.base / "fifo"
+        os.mkfifo(fifo)
+        for path in ["/dev/zero", str(fifo), str(self.base)]:
+            with self.subTest(path=path):
+                start = time.time()
+                error = self.client.error("validate_job", {"spec_path": path})
+                self.assertEqual(error["code"], "invalid_arguments")
+                self.assertLess(time.time() - start, 5)
+
+    def test_large_result_manifests(self):
+        ident = self.client.ok("submit_job", {"job": fake("large", {"mode": "complete"})})["job_id"]
+        self.wait(ident)
+        created = self.client.tool("submit_job", {"job": fake("large", {"mode": "complete"})}, tasks=True)
+        manifest_path = self.root / "jobs" / ident / "run.json"
+        manifest = json.loads(manifest_path.read_text())
+        record = manifest["results"][0]
+        manifest["results"] = [{**record, "task_id": i} for i in range(250_000)]
+        manifest_path.write_text(json.dumps(manifest, indent=2))
+        self.assertGreater(manifest_path.stat().st_size, 64 * 1024 * 1024)
+        summary = self.client.ok("get_result", {"job_id": ident})
+        self.assertEqual(summary["claims"], {"best_found": 250_000})
+        self.assertEqual((len(summary["tasks"]), summary["tasks_omitted"]), (100, 249_900))
+        self.assertEqual(len(self.client.ok("get_result", {"job_id": ident, "tasks": [7, 249_999]})["tasks"]), 2)
+        self.assertEqual(self.client.error("get_result", {"job_id": ident, "full": True})["code"], "result_too_large")
+        task = self.poll_task(created["taskId"])
+        self.assertFalse(task["result"]["isError"])
+
+    def test_an_input_named_like_the_staged_job(self):
+        data = self.base / "inputs"
+        data.mkdir()
+        (data / "job.json").write_text("{}")
+        job = fake("named", {"mode": "complete"})
+        job["inputs"] = [{"name": "model", "file": "job.json",
+                          "sha256": hashlib.sha256(b"{}").hexdigest()}]
+        ident = self.client.ok("submit_job", {"job": job, "input_dir": str(data)})["job_id"]
+        self.assertEqual(self.wait(ident)["state"], "completed")
+
+    def test_batches_bytes_duplicates_and_version_messages(self):
+        self.client.request("initialize", {"protocolVersion": "2025-03-26", "capabilities": {},
+                                           "clientInfo": {"name": "batch", "version": "1"}}, modern=False)
+        self.client.send([{"jsonrpc": "2.0", "id": "a", "method": "tools/list"},
+                          {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                          {"jsonrpc": "2.0", "id": "b", "method": "ping"}])
+        message = self.client.messages.get(timeout=30)
+        self.assertIsInstance(message, list)
+        self.assertEqual(sorted(m["id"] for m in message), ["a", "b"])
+        self.client.send([])
+        self.assertEqual(self.client.messages.get(timeout=30)["error"]["code"], -32600)
+        # A line that is not UTF-8 is a parse error, and the server goes on.
+        self.client.process.stdin.flush()
+        self.client.process.stdin.buffer.write(b"\xff\xfe\n")
+        self.client.process.stdin.buffer.flush()
+        self.assertEqual(self.client.messages.get(timeout=30)["error"]["code"], -32700)
+        self.assertEqual(self.client.request("tools/list")["result"]["resultType"], "complete")
+        # A request ID in use is rejected without answering under that ID.
+        ident = self.client.ok("submit_job", {"job": fake("dup", {"mode": "sleep", "seconds": 60})})["job_id"]
+        self.client.send({"jsonrpc": "2.0", "id": "dup", "method": "tools/call", "params": {
+            "_meta": meta(), "name": "wait_job", "arguments": {"job_id": ident, "timeout_seconds": 3}}})
+        self.client.send({"jsonrpc": "2.0", "id": "dup", "method": "tools/list", "params": {"_meta": meta()}})
+        rejected = self.client.messages.get(timeout=30)
+        self.assertEqual((rejected["id"], rejected["error"]["code"]), (None, -32600))
+        self.assertIn("result", self.client.response("dup"))
+        while self.client.pump(1):
+            pass
+        self.assertNotIn("dup", self.client.responses)
+        # A legacy version in _meta is pointed to initialize.
+        ident = self.client.start("tools/list", modern=False, extra_meta={
+            "io.modelcontextprotocol/protocolVersion": "2025-11-25",
+            "io.modelcontextprotocol/clientCapabilities": {}})
+        error = self.client.response(ident)["error"]
+        self.assertEqual(error["code"], -32022)
+        self.assertIn("initialize", error["message"])
 
 
 class Requests(Server):

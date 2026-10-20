@@ -1,7 +1,9 @@
 //! The tools of `optimization-mcp` and the `optimization-run` calls behind
 //! them.
 use super::{Ctx, Launch, Server, tasks};
-use optimization_job_api::{Input, checked_input, process::bounded_command_until, storage::digest};
+use optimization_job_api::{
+    Input, MAX_INPUT_BYTES, checked_input, process::bounded_command_until, storage::digest,
+};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -30,6 +32,10 @@ const OUTPUT_CAP: usize = 64 * 1024 * 1024;
 const SUMMARY_TASKS: usize = 100;
 const FULL_CAP: usize = 1024 * 1024;
 const MAX_WAIT_SECONDS: f64 = 600.0;
+/// Deadline of commands that change a job; they are never aborted.
+const MUTATING: Duration = Duration::from_secs(600);
+/// Largest result manifest read.
+const MANIFEST_CAP: u64 = 1 << 30;
 
 pub struct ToolError {
     pub code: String,
@@ -283,9 +289,14 @@ pub fn call(server: &Server, name: &str, args: &Value, ctx: &Ctx) -> Outcome {
     let result = match name {
         "describe_node" => describe_node(server, ctx),
         "describe_worker" => string(args, "worker")
-            .and_then(|worker| server.cli(&["problems", "describe", &worker], QUICK, ctx)),
-        "validate_job" => stage(server, args)
-            .and_then(|staged| server.cli(&["validate", "--spec", &path(&staged.spec)], SLOW, ctx)),
+            .and_then(|worker| server.cli(&["problems", "describe", "--", &worker], QUICK, ctx)),
+        "validate_job" => stage(server, args).and_then(|staged| {
+            server.cli(
+                &["validate", &format!("--spec={}", path(&staged.spec))],
+                SLOW,
+                ctx,
+            )
+        }),
         "submit_job" => return submit_job(server, args, ctx),
         "get_job" => job_id(args).and_then(|id| server.get(&id, ctx)),
         "wait_job" => wait_job(server, args, ctx),
@@ -293,12 +304,12 @@ pub fn call(server: &Server, name: &str, args: &Value, ctx: &Ctx) -> Outcome {
         "get_events" => get_events(server, args, ctx),
         "get_artifact" => job_id(args).and_then(|id| {
             let name = string(args, "name")?;
-            server.cli(&["jobs", "artifact", &id, &name], QUICK, ctx)
+            server.cli(&["jobs", "artifact", "--", &id, &name], QUICK, ctx)
         }),
         "list_jobs" => list_jobs(server, args, ctx),
-        "cancel_job" => job_id(args).and_then(|id| cancel(server, &id, false, ctx)),
-        "kill_job" => job_id(args).and_then(|id| cancel(server, &id, true, ctx)),
-        "repair_job" => job_id(args).and_then(|id| server.cli(&["jobs", "repair", &id], SLOW, ctx)),
+        "cancel_job" => job_id(args).and_then(|id| cancel(server, &id, false)),
+        "kill_job" => job_id(args).and_then(|id| cancel(server, &id, true)),
+        "repair_job" => job_id(args).and_then(|id| repair(server, &id)),
         _ => Err(fail("invalid_arguments", format!("unknown tool {name}"))),
     };
     match result {
@@ -375,12 +386,29 @@ fn runner_error(stderr: &[u8]) -> ToolError {
 
 impl Server {
     /// Runs `optimization-run --root ROOT ARGS` and returns its JSON output,
-    /// or its coded error.
+    /// or its coded error. A read stops early when the request is cancelled.
     pub fn cli(&self, args: &[&str], timeout: Duration, ctx: &Ctx) -> Result<Value, Fail> {
+        self.invoke(args, timeout, Some(&|| ctx.stopped(self)))
+    }
+
+    /// [`Server::cli`] for commands that change a job: once started they run
+    /// to their end, even when the request is cancelled (whose response is
+    /// then dropped), because killing the runner halfway could leave a job
+    /// half created or half stopped.
+    pub fn cli_mutating(&self, args: &[&str]) -> Result<Value, Fail> {
+        self.invoke(args, MUTATING, None)
+    }
+
+    fn invoke(
+        &self,
+        args: &[&str],
+        timeout: Duration,
+        abort: Option<&dyn Fn() -> bool>,
+    ) -> Result<Value, Fail> {
         let mut argv = vec![path(&self.runner), "--root".into(), path(&self.root)];
         argv.extend(args.iter().map(|a| a.to_string()));
-        let abort = || ctx.stopped(self);
-        match bounded_command_until(&argv, vec![], timeout, OUTPUT_CAP, &abort) {
+        let never = || false;
+        match bounded_command_until(&argv, vec![], timeout, OUTPUT_CAP, abort.unwrap_or(&never)) {
             Ok((status, out, _)) if status.success() => serde_json::from_slice(&out)
                 .map_err(|e| fail("runner_error", format!("unreadable runner output: {e}"))),
             Ok((_, _, err)) => Err(Fail::Tool(runner_error(&err))),
@@ -403,7 +431,7 @@ impl Server {
 
     /// `jobs get`, with the job ID also under `job_id`.
     pub fn get(&self, id: &str, ctx: &Ctx) -> Result<Value, Fail> {
-        let mut job = self.cli(&["jobs", "get", id], QUICK, ctx)?;
+        let mut job = self.cli(&["jobs", "get", "--", id], QUICK, ctx)?;
         job["job_id"] = json!(id);
         Ok(job)
     }
@@ -451,27 +479,41 @@ struct Staged {
     spec: PathBuf,
     job: Value,
     request_key: String,
-    _dir: Option<tempfile::TempDir>,
+    dir: Option<tempfile::TempDir>,
 }
 
 fn staging(root: &Path) -> PathBuf {
     root.join("mcp").join("staging")
 }
 
-/// Removes staging directories that a killed server left behind.
+fn launch_logs(root: &Path) -> PathBuf {
+    root.join("mcp").join("launch")
+}
+
+fn older_than_a_day(entry: &fs::DirEntry) -> bool {
+    entry
+        .metadata()
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age > Duration::from_secs(86_400))
+}
+
+/// Removes what servers that were killed left behind: staging directories
+/// and empty launcher logs older than a day.
 pub fn clean_staging(root: &Path) {
-    let Ok(entries) = fs::read_dir(staging(root)) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let old = entry
-            .metadata()
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|t| t.elapsed().ok())
-            .is_some_and(|age| age > Duration::from_secs(86_400));
-        if old {
+    for entry in fs::read_dir(staging(root)).into_iter().flatten().flatten() {
+        if older_than_a_day(&entry) {
             let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+    for entry in fs::read_dir(launch_logs(root))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        if older_than_a_day(&entry) && entry.metadata().is_ok_and(|m| m.len() == 0) {
+            let _ = fs::remove_file(entry.path());
         }
     }
 }
@@ -482,15 +524,13 @@ fn stage(server: &Server, args: &Value) -> Result<Staged, Fail> {
         (Value::Null, Value::String(file)) => {
             let spec = fs::canonicalize(file)
                 .map_err(|e| fail("invalid_arguments", format!("spec_path {file}: {e}")))?;
-            let bytes = fs::read(&spec)
+            let job = read_json_file(&spec, MAX_INPUT_BYTES)
                 .map_err(|e| fail("invalid_arguments", format!("spec_path {file}: {e}")))?;
-            let job: Value = serde_json::from_slice(&bytes)
-                .map_err(|e| fail("invalid_job", format!("spec_path {file}: {e}")))?;
             Staged {
                 request_key: String::new(),
                 spec,
                 job,
-                _dir: None,
+                dir: None,
             }
         }
         _ => {
@@ -514,6 +554,26 @@ fn stage(server: &Server, args: &Value) -> Result<Staged, Fail> {
         request_key,
         ..staged
     })
+}
+
+/// Parses a regular file of at most `cap` bytes as JSON.
+fn read_json_file(path: &Path, cap: u64) -> Result<Value, String> {
+    use std::io::Read;
+    let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
+    if !metadata.is_file() {
+        return Err("not a regular file".into());
+    }
+    if metadata.len() > cap {
+        return Err(format!("{} bytes, over the cap of {cap}", metadata.len()));
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .and_then(|f| f.take(cap + 1).read_to_end(&mut bytes))
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > cap {
+        return Err(format!("over the cap of {cap} bytes"));
+    }
+    serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }
 
 /// Writes an inline job to a staging directory with copies of its input
@@ -565,25 +625,34 @@ fn stage_inline(server: &Server, args: &Value) -> Result<Staged, Fail> {
                 .map_err(|e| fail("runner_error", format!("{}: {e}", target.display())))?;
         }
     }
-    let spec = dir.path().join("job.json");
+    // A name no input file uses.
+    let spec = loop {
+        let spec = dir
+            .path()
+            .join(format!(".mcp-job-{}.json", &random_hex()[..12]));
+        if !spec.exists() {
+            break spec;
+        }
+    };
     fs::write(&spec, job.to_string())
         .map_err(|e| fail("runner_error", format!("{}: {e}", spec.display())))?;
     Ok(Staged {
         spec,
         job,
         request_key: String::new(),
-        _dir: Some(dir),
+        dir: Some(dir),
     })
 }
 
 fn submit_job(server: &Server, args: &Value, ctx: &Ctx) -> Outcome {
     let submitted = stage(server, args).and_then(|staged| match server.launch {
         Launch::Systemd => {
-            let job = server.cli(&["submit", "--spec", &path(&staged.spec)], SLOW, ctx)?;
+            let job =
+                server.cli_mutating(&["submit", &format!("--spec={}", path(&staged.spec))])?;
             let id = job["id"].as_str().unwrap_or_default().to_owned();
             server.get(&id, ctx)
         }
-        Launch::Process => launch_process(server, &staged, ctx),
+        Launch::Process => launch_process(server, staged),
     });
     let job = match submitted {
         Ok(job) => job,
@@ -601,12 +670,31 @@ fn submit_job(server: &Server, args: &Value, ctx: &Ctx) -> Outcome {
     }
 }
 
+/// A context that is never cancelled, for submissions: once the launcher is
+/// started, its job is followed until it exists, whatever the request does.
+fn uninterrupted() -> Ctx {
+    Ctx {
+        modern: false,
+        tasks: false,
+        cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        progress: None,
+        id: Value::Null,
+    }
+}
+
 /// Starts `optimization-run run` in a session of its own, so the job
-/// outlives this server, and returns once the job exists: when `jobs get`
-/// finds it with this submission's content, or when the launcher has exited.
-fn launch_process(server: &Server, staged: &Staged, ctx: &Ctx) -> Result<Value, Fail> {
+/// outlives this server, and returns once the job exists. A job that did not
+/// exist before is confirmed when `jobs get` finds it with this submission's
+/// content; for an existing job, the launcher's own answer decides, so the
+/// runner's identity rule (content and worker) applies unchanged. Once
+/// started, a submission is not abandoned: a cancelled request only loses
+/// its response, and the staging directory stays until the runner has read
+/// it.
+fn launch_process(server: &Server, staged: Staged) -> Result<Value, Fail> {
+    let quiet = uninterrupted();
     let id = digest(staged.request_key.as_bytes())[..32].to_owned();
-    let logs = server.root.join("mcp").join("launch");
+    let existed = server.get(&id, &quiet).is_ok();
+    let logs = launch_logs(&server.root);
     fs::create_dir_all(&logs)
         .map_err(|e| fail("runner_error", format!("{}: {e}", logs.display())))?;
     let log = logs.join(format!("{id}-{}.log", &random_hex()[..8]));
@@ -617,8 +705,7 @@ fn launch_process(server: &Server, staged: &Staged, ctx: &Ctx) -> Result<Value, 
         .arg("--root")
         .arg(&server.root)
         .arg("run")
-        .arg("--spec")
-        .arg(&staged.spec)
+        .arg(format!("--spec={}", path(&staged.spec)))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(stderr);
@@ -640,15 +727,19 @@ fn launch_process(server: &Server, staged: &Staged, ctx: &Ctx) -> Result<Value, 
             format!("cannot start {}: {e}", server.runner.display()),
         )
     })?;
-    // The launcher must be reaped whatever this request does next; a log of
-    // a launcher that failed after creating its job stays for diagnosis.
-    let reap = move |mut child: std::process::Child, log: PathBuf| {
-        thread::spawn(move || {
-            if child.wait().is_ok_and(|s| s.success()) {
-                let _ = fs::remove_file(log);
-            }
-        });
-    };
+    let Staged { job, dir, .. } = staged;
+    // The launcher is reaped whatever happens next. Its log is kept only if
+    // it fails after this request has returned.
+    let reap =
+        move |mut child: std::process::Child, log: PathBuf, dir: Option<tempfile::TempDir>| {
+            thread::spawn(move || {
+                let succeeded = child.wait().is_ok_and(|s| s.success());
+                drop(dir);
+                if succeeded {
+                    let _ = fs::remove_file(log);
+                }
+            });
+        };
     let start = Instant::now();
     loop {
         match child.try_wait() {
@@ -659,27 +750,30 @@ fn launch_process(server: &Server, staged: &Staged, ctx: &Ctx) -> Result<Value, 
                     return Err(Fail::Tool(runner_error(&text)));
                 }
                 // An existing identical job, or one that already finished.
-                return server.get(&id, ctx);
+                return server.get(&id, &quiet);
             }
             Ok(None) => {}
-            Err(e) => return Err(fail("runner_error", format!("launcher: {e}"))),
+            Err(e) => {
+                reap(child, log, dir);
+                return Err(fail("runner_error", format!("launcher: {e}")));
+            }
         }
-        if let Ok(job) = server.get(&id, ctx)
-            && job["directory"]
+        if !existed
+            && let Ok(job_now) = server.get(&id, &quiet)
+            && job_now["directory"]
                 .as_str()
-                .and_then(|dir| fs::read(Path::new(dir).join("submitted.json")).ok())
+                .and_then(|d| fs::read(Path::new(d).join("submitted.json")).ok())
                 .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-                .is_some_and(|submitted| submitted == staged.job)
+                .is_some_and(|submitted| submitted == job)
         {
-            reap(child, log);
-            return Ok(job);
-        }
-        if ctx.stopped(server) {
-            reap(child, log);
-            return Err(Fail::Cancelled);
+            // The runner registers a job only after it has read the
+            // specification and its inputs: the staging copy is done with.
+            reap(child, log, None);
+            drop(dir);
+            return Ok(job_now);
         }
         if start.elapsed() > SLOW {
-            reap(child, log);
+            reap(child, log, dir);
             return Err(Fail::Tool(ToolError {
                 code: "mcp_timeout".into(),
                 message: format!(
@@ -732,7 +826,7 @@ fn wait_job(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
 }
 
 /// The result manifest of an ended job.
-pub fn manifest(server: &Server, job: &Value, ctx: &Ctx) -> Result<Value, Fail> {
+pub fn manifest(job: &Value) -> Result<Value, ToolError> {
     let id = job["job_id"].as_str().unwrap_or_default();
     if !terminal(&job["state"]) {
         let mut message = format!(
@@ -742,10 +836,27 @@ pub fn manifest(server: &Server, job: &Value, ctx: &Ctx) -> Result<Value, Fail> 
         if let Some(observed) = job["observed_state"].as_str() {
             message = format!("job {id} was observed {observed}; repair_job finalizes it");
         }
-        return Err(fail("not_finished", message));
+        return Err(ToolError {
+            code: "not_finished".into(),
+            message,
+            retryable: false,
+        });
     }
-    let dir = job["directory"].as_str().unwrap_or_default();
-    server.cli(&["result", dir], QUICK, ctx)
+    let file = Path::new(job["directory"].as_str().unwrap_or_default()).join("run.json");
+    // Read directly: a large manifest (an archive or a front) needs neither
+    // the runner's pretty printing nor its output pipe.
+    read_json_file(&file, MANIFEST_CAP).map_err(|e| {
+        let code = if e.contains("over the cap") {
+            "result_too_large"
+        } else {
+            "runner_error"
+        };
+        ToolError {
+            code: code.into(),
+            message: format!("{}: {e}", file.display()),
+            retryable: false,
+        }
+    })
 }
 
 /// The compact view of a result: accounting and one line per task, without
@@ -811,7 +922,7 @@ pub fn summary(job: &Value, manifest: &Value) -> Value {
 fn get_result(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
     let id = job_id(args)?;
     let job = server.get(&id, ctx)?;
-    let manifest = manifest(server, &job, ctx)?;
+    let manifest = manifest(&job).map_err(Fail::Tool)?;
     if args["full"].as_bool() == Some(true) {
         let size = manifest.to_string().len();
         if size > FULL_CAP {
@@ -851,7 +962,7 @@ fn get_result(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
 fn get_events(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
     let id = job_id(args)?;
     let limit = limit(args, 50)?;
-    let events = server.cli(&["jobs", "events", &id], QUICK, ctx)?;
+    let events = server.cli(&["jobs", "events", "--", &id], QUICK, ctx)?;
     let events = events.as_array().cloned().unwrap_or_default();
     let skip = events.len().saturating_sub(limit);
     Ok(json!({"job_id":id,"total":events.len(),"events":events[skip..]}))
@@ -894,12 +1005,19 @@ fn list_jobs(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
     Ok(json!({"total":total,"jobs":jobs}))
 }
 
-pub fn cancel(server: &Server, id: &str, now: bool, ctx: &Ctx) -> Result<Value, Fail> {
-    let mut args = vec!["jobs", "cancel", id];
+pub fn cancel(server: &Server, id: &str, now: bool) -> Result<Value, Fail> {
+    let mut args = vec!["jobs", "cancel"];
     if now {
         args.push("--now");
     }
-    let mut job = server.cli(&args, QUICK, ctx)?;
+    args.extend(["--", id]);
+    let mut job = server.cli_mutating(&args)?;
+    job["job_id"] = json!(id);
+    Ok(job)
+}
+
+pub fn repair(server: &Server, id: &str) -> Result<Value, Fail> {
+    let mut job = server.cli_mutating(&["jobs", "repair", "--", id])?;
     job["job_id"] = json!(id);
     Ok(job)
 }

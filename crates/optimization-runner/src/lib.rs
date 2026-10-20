@@ -223,8 +223,17 @@ fn invalid(e: Error) -> Error {
         coded("invalid_job", e.to_string())
     }
 }
-fn staged(root: &Path, input: &Path) -> Result<(Request, Value, Vec<u8>, tempfile::TempDir)> {
-    let mut s = spec(input).map_err(invalid)?;
+/// Stages and validates the job file `input`, read once: the parsed request,
+/// the worker registration, the worker executable, the staging directory and
+/// the file's JSON as submitted.
+fn staged(
+    root: &Path,
+    input: &Path,
+) -> Result<(Request, Value, Vec<u8>, tempfile::TempDir, Value)> {
+    let raw = fs::read(input).map_err(|e| invalid(format!("{}: {e}", input.display()).into()))?;
+    let submitted: Value = serde_json::from_slice(&raw)
+        .map_err(|e| invalid(format!("{}: {e}", input.display()).into()))?;
+    let mut s = Request::parse(&raw)?;
     let w = worker(root, s.worker())?;
     let exe = Path::new(w["executable"].as_str().ok_or("invalid executable")?);
     let bytes = fs::read(exe)?;
@@ -316,7 +325,7 @@ fn staged(root: &Path, input: &Path) -> Result<(Request, Value, Vec<u8>, tempfil
         }
         *job = resolved;
     }
-    Ok((s, w, bytes, tmp))
+    Ok((s, w, bytes, tmp, submitted))
 }
 /// True when neither the launcher (`job.lock`) nor the worker (`worker.lock`)
 /// of an attempt is alive. Both hold their lock for their whole lifetime and
@@ -428,7 +437,7 @@ fn prepare(
     dest: Option<PathBuf>,
     detached: bool,
 ) -> Result<(String, bool)> {
-    let (mut resolved, w, bytes, tmp) = staged(root, input)?;
+    let (mut resolved, w, bytes, tmp, submitted) = staged(root, input)?;
     let node = capacity(root)?;
     if resolved.slots() as u64 > node {
         return Err(coded(
@@ -484,7 +493,7 @@ fn prepare(
     if let Request::Job(ref mut job) = resolved {
         stage_inputs(job, tmp.path(), &dir)?;
     }
-    write_atomic_json(&dir.join("submitted.json"), &read(input)?)?;
+    write_atomic_json(&dir.join("submitted.json"), &submitted)?;
     write_atomic_json(&dir.join("resolved.json"), &resolved)?;
     fs::write(dir.join("worker"), bytes)?;
     #[cfg(unix)]
@@ -1007,7 +1016,7 @@ fn main_result() -> Result<()> {
                 json!({"valid":true,"requested_evaluations":s.requested()?,"maximum_actual_evaluations":s.maximum_evaluations()?,"resolved":s}),
             ),
             Request::Job(_) => {
-                let (s, _, _, _) = staged(&root, &p)?;
+                let (s, _, _, _, _) = staged(&root, &p)?;
                 output(json!({"valid":true,"resolved":s}))
             }
         },

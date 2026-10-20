@@ -15,6 +15,12 @@
   units with `--launch systemd`) and outlive the server; task IDs are stored
   in the node root and survive a restart. The server registers no workers and
   never changes the node. `scripts/job-api/test_mcp.py` tests it.
+- `process::bounded_command_until` kills the command's process group while
+  the exited leader is still a zombie, so a reused PID can no longer make it
+  kill an unrelated process group.
+- The runner reads a job file once, so `submitted.json` always records the
+  content it validated.
+- `fake_worker.py`: mode `complete` takes an optional delay (`seconds`).
 - The shared job API moved here from fcmaes-rust, LP-IP-craft and SQP-craft,
   which carried identical copies: `optimization-job-api` and
   `optimization-runner` 0.2.0 with their tests, the guide, the plan, the JSON

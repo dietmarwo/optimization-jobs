@@ -195,11 +195,33 @@ progress. Results are summarized by default (one line per task, no points),
 because whole manifests (MAP-Elites archives, Pareto fronts) can exceed what
 an agent should read at once.
 
-Gate: `scripts/job-api/test_mcp.py`: both protocol eras, version and
-capability errors, tool definitions, idempotent submission and key
-conflicts, coded tool errors, graceful and immediate cancellation, input
-staging and containment, job files, the task lifecycle with cancellation and
-failure, task errors, task notifications, jobs and tasks across a killed
-server, cancelled requests, progress, concurrent requests, end of input, both
-launch modes, and a real worker's claims and evidence for each of the three
-workers.
+An independent review of the first version reported one severe and eleven
+smaller defects, all fixed and covered by tests: a submission cancelled
+during worker validation deleted the staged job under the runner and left
+its key unusable (submissions now run to their end; only the response is
+dropped, and the runner reads a job file once); a task reported a lost
+launcher as final while its worker still ran (the task now stays working
+until the attempt can be finalized as `repair_job` would); an unbounded read
+of `spec_path` (now a regular file of at most 64 MiB); large manifests read
+through the runner's output pipe (now read directly); a resubmission
+accepted by content although the worker had changed (an existing job is now
+decided by the runner's identity rule); no JSON-RPC batches for 2025-03-26;
+a version error that did not point legacy clients to `initialize`; an input
+file colliding with the staged job; a panic on a corrupt task store; a
+non-UTF-8 line that ended the server; two responses for a duplicate request
+ID; and launcher logs that outlived killed servers. It also found a race in
+`process::bounded_command_until`, which killed the command's process group
+after reaping its leader, so a reused PID could name another group; the
+group is now killed while the leader is still a zombie.
+
+Gate: `scripts/job-api/test_mcp.py`: both protocol eras, batches, version and
+capability errors, tool definitions, idempotent submission and key conflicts,
+the worker in the job's identity, coded tool errors, graceful and immediate
+cancellation, cancelled submissions, input staging and containment, job files
+and their bounds, large manifests, the task lifecycle with cancellation and
+failure, task errors, a corrupt task store, task notifications, jobs and
+tasks across a killed server, a lost launcher, cancelled and duplicate
+requests, non-UTF-8 input, progress, concurrent requests, end of input, and
+a real worker's claims and evidence for each of the three workers. The
+systemd launch runs where a systemd user manager is available; elsewhere,
+as on the CI runners, the test checks its refusal (`systemd_unavailable`).

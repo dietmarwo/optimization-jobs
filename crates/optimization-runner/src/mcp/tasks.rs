@@ -26,11 +26,18 @@ fn store(root: &Path) -> PathBuf {
 }
 
 fn read(root: &Path) -> io::Result<Value> {
-    match fs::read(store(root)) {
-        Ok(bytes) => serde_json::from_slice(&bytes).map_err(io::Error::other),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(json!({})),
-        Err(e) => Err(e),
+    let tasks: Value = match fs::read(store(root)) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(io::Error::other)?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => json!({}),
+        Err(e) => return Err(e),
+    };
+    if !tasks.is_object() {
+        return Err(io::Error::other(format!(
+            "{} is not a JSON object",
+            store(root).display()
+        )));
     }
+    Ok(tasks)
 }
 
 fn now() -> f64 {
@@ -81,7 +88,8 @@ pub fn create(server: &Server, job_id: &str, job: &Value, ctx: &Ctx) -> Result<V
         }
     };
     let created = read(&server.root).map_err(store_error)?[&task_id]["created_at"].as_f64();
-    let mut task = describe(server, &task_id, created, job, ctx)?;
+    let (job, note) = settle(server, job.clone(), ctx)?;
+    let mut task = describe(&task_id, created, &job, note);
     // A CreateTaskResult carries the task, not its result: tasks/get does.
     if let Some(object) = task.as_object_mut() {
         object.remove("result");
@@ -95,16 +103,38 @@ pub fn create(server: &Server, job_id: &str, job: &Value, ctx: &Ctx) -> Result<V
 pub fn detailed(server: &Server, task_id: &str, job_id: &str, ctx: &Ctx) -> Result<Value, Fail> {
     let created = read(&server.root).map_err(store_error)?[task_id]["created_at"].as_f64();
     let job = server.get(job_id, ctx)?;
-    describe(server, task_id, created, &job, ctx)
+    let (job, note) = settle(server, job, ctx)?;
+    Ok(describe(task_id, created, &job, note))
 }
 
-fn describe(
-    server: &Server,
-    task_id: &str,
-    created: Option<f64>,
-    job: &Value,
-    ctx: &Ctx,
-) -> Result<Value, Fail> {
+/// Finalizes a job whose launcher was lost or that a reboot interrupted, as
+/// `repair_job` would, once its processes are provably gone; until then the
+/// task keeps working, with the reason as a note. The runner refuses the
+/// repair while a process may still own the attempt, so a worker that
+/// outlived its launcher keeps its exact result.
+fn settle(server: &Server, job: Value, ctx: &Ctx) -> Result<(Value, Option<String>), Fail> {
+    let Some(observed) = job["observed_state"].as_str().map(str::to_owned) else {
+        return Ok((job, None));
+    };
+    if tools::terminal(&job["state"]) {
+        return Ok((job, None));
+    }
+    let id = job["job_id"].as_str().unwrap_or_default().to_owned();
+    match tools::repair(server, &id) {
+        Ok(repaired) => Ok((repaired, None)),
+        Err(Fail::Cancelled) => Err(Fail::Cancelled),
+        Err(Fail::Tool(e)) if e.code == "already_terminal" => Ok((server.get(&id, ctx)?, None)),
+        Err(Fail::Tool(e)) => Ok((
+            job,
+            Some(format!(
+                "observed {observed}; the job is finalized once its processes are gone ({}: {})",
+                e.code, e.message
+            )),
+        )),
+    }
+}
+
+fn describe(task_id: &str, created: Option<f64>, job: &Value, note: Option<String>) -> Value {
     let created = created.unwrap_or_else(now);
     let updated = ["submitted_at", "started_at", "finished_at"]
         .iter()
@@ -127,19 +157,10 @@ fn describe(
     } else if tools::terminal(&job["state"]) {
         task["status"] = json!("completed");
         task["statusMessage"] = json!(format!("job {id} ended {state}"));
-        task["result"] = final_result(server, job, ctx)?;
-    } else if let Some(observed) = job["observed_state"].as_str() {
-        // Nothing will finish this attempt: say so instead of letting a
-        // client poll forever.
-        let message = format!(
-            "job {id} was observed {observed}; repair_job with job_id {id} finalizes it, then get_result returns its committed tasks"
-        );
-        task["status"] = json!("completed");
-        task["statusMessage"] = json!(message);
-        task["result"] = tools::tool_result(
-            json!({"job":job,"error":{"code":"attempt_interrupted","message":message,"retryable":false}}),
-            true,
-        );
+        task["result"] = final_result(job);
+    } else if let Some(note) = note {
+        task["status"] = json!("working");
+        task["statusMessage"] = json!(format!("job {id} is {state}, {note}"));
     } else {
         task["status"] = json!("working");
         let mut message = format!("job {id} is {state}");
@@ -151,23 +172,20 @@ fn describe(
         }
         task["statusMessage"] = json!(message);
     }
-    Ok(task)
+    task
 }
 
 /// What submit_job returns once the job has ended: its state and the result
-/// summary of get_result. A failed or interrupted job is a tool error.
-fn final_result(server: &Server, job: &Value, ctx: &Ctx) -> Result<Value, Fail> {
+/// summary of get_result. A failed or interrupted job is a tool error, and so
+/// is a manifest that cannot be read (the job's state stays in the result).
+fn final_result(job: &Value) -> Value {
     let failed = matches!(job["state"].as_str(), Some("failed" | "interrupted"));
-    match tools::manifest(server, job, ctx) {
-        Ok(manifest) => Ok(tools::tool_result(
+    match tools::manifest(job) {
+        Ok(manifest) => tools::tool_result(
             json!({"job":job,"result":tools::summary(job, &manifest)}),
             failed,
-        )),
-        Err(Fail::Tool(error)) => Ok(tools::tool_result(
-            json!({"job":job,"error":error.value()["error"]}),
-            true,
-        )),
-        Err(Fail::Cancelled) => Err(Fail::Cancelled),
+        ),
+        Err(error) => tools::tool_result(json!({"job":job,"error":error.value()["error"]}), true),
     }
 }
 

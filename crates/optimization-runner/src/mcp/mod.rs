@@ -200,17 +200,18 @@ impl Server {
         }
     }
 
-    fn finish(&self, id: &Value, cancel: &AtomicBool, reply: Reply, modern: bool) {
+    /// The response to a request, if it gets one.
+    fn finish(&self, id: &Value, cancel: &AtomicBool, reply: Reply, modern: bool) -> Option<Value> {
         self.inflight
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&id.to_string());
         // A cancelled request gets no response at all.
         if cancel.load(Ordering::Relaxed) {
-            return;
+            return None;
         }
-        let message = match reply {
-            Reply::Silent => return,
+        Some(match reply {
+            Reply::Silent => return None,
             Reply::Ok(mut result) => {
                 if modern {
                     let object = result.as_object_mut().expect("results are objects");
@@ -229,8 +230,7 @@ impl Server {
                 }
                 json!({"jsonrpc":"2.0","id":id,"error":error})
             }
-        };
-        self.send(&message);
+        })
     }
 
     /// Decides how a request is served: `(modern, tasks)`, or the error that
@@ -244,7 +244,11 @@ impl Server {
             {
                 return Err(Reply::Err(
                     UNSUPPORTED_VERSION,
-                    "Unsupported protocol version".into(),
+                    format!(
+                        "Unsupported protocol version: {} is served per request; {} only after initialize, without _meta",
+                        MODERN.join(", "),
+                        LEGACY.join(", ")
+                    ),
                     Some(json!({"supported":supported(),"requested":meta[PROTOCOL_VERSION]})),
                 ));
             }
@@ -272,13 +276,15 @@ impl Server {
         ))
     }
 
+    /// Serves one request and returns its response, if any. A panic is a
+    /// bug, but it still answers the request.
     fn request(
         self: &Arc<Self>,
         id: Value,
         method: String,
         params: Value,
         cancel: Arc<AtomicBool>,
-    ) {
+    ) -> Option<Value> {
         let (reply, modern) = match self.era(&method, &params) {
             Err(reply) => (reply, false),
             Ok((modern, tasks)) => {
@@ -289,10 +295,20 @@ impl Server {
                     cancel: cancel.clone(),
                     id: id.clone(),
                 };
-                (self.dispatch(&method, &params, &ctx), modern)
+                let reply = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.dispatch(&method, &params, &ctx)
+                }))
+                .unwrap_or_else(|_| {
+                    Reply::Err(
+                        INTERNAL_ERROR,
+                        "internal error of optimization-mcp; its stderr has the details".into(),
+                        None,
+                    )
+                });
+                (reply, modern)
             }
         };
-        self.finish(&id, &cancel, reply, modern);
+        self.finish(&id, &cancel, reply, modern)
     }
 
     fn dispatch(&self, method: &str, params: &Value, ctx: &Ctx) -> Reply {
@@ -391,7 +407,7 @@ impl Server {
             },
             // No task of this server asks for input; responses are ignored.
             "tasks/update" => Reply::Ok(json!({})),
-            _ => match tools::cancel(self, &job_id, false, ctx) {
+            _ => match tools::cancel(self, &job_id, false) {
                 Ok(_) => Reply::Ok(json!({})),
                 // A job that already ended has nothing to cancel; the
                 // acknowledgement promises no transition.
@@ -478,46 +494,104 @@ impl Server {
         // notifications/initialized and anything else need no action.
     }
 
-    fn reject(&self, id: Value, code: i64, message: &str) {
-        self.send(&json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}}));
+    fn error(id: Value, code: i64, message: &str) -> Value {
+        json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
+    }
+
+    /// Starts one message of the input: a request runs on a thread of its
+    /// own and yields its response through the handle; a notification or a
+    /// client's response yields nothing.
+    fn accept(self: &Arc<Self>, message: Value) -> Option<thread::JoinHandle<Option<Value>>> {
+        let method = message["method"].as_str().map(str::to_owned);
+        let params = message.get("params").cloned().unwrap_or(json!({}));
+        let immediate = |reply: Value| Some(thread::spawn(move || Some(reply)));
+        match (method, message.get("id")) {
+            // Responses from the client: this server sends no requests.
+            (None, _) if message.is_object() && message.get("id").is_some() => None,
+            (Some(method), None) if message.is_object() => {
+                self.notification(&method, &params);
+                None
+            }
+            (Some(method), Some(id)) if id.is_string() || id.is_number() => {
+                let cancel = Arc::new(AtomicBool::new(false));
+                {
+                    let mut inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+                    if inflight.contains_key(&id.to_string()) {
+                        // Answering under that ID would give it two responses.
+                        eprintln!("optimization-mcp: request id {id} is already in use");
+                        return immediate(Self::error(
+                            Value::Null,
+                            INVALID_REQUEST,
+                            &format!("request id {id} is already in use"),
+                        ));
+                    }
+                    inflight.insert(id.to_string(), cancel.clone());
+                }
+                let server = self.clone();
+                let id = id.clone();
+                Some(thread::spawn(move || {
+                    server.request(id, method, params, cancel)
+                }))
+            }
+            _ => immediate(Self::error(Value::Null, INVALID_REQUEST, "Invalid request")),
+        }
     }
 
     fn serve(self: Arc<Self>) {
-        let stdin = io::stdin();
-        for line in stdin.lock().lines() {
-            let Ok(line) = line else { break };
-            if line.trim().is_empty() {
+        let mut input = io::stdin().lock();
+        let mut line = Vec::new();
+        loop {
+            line.clear();
+            match input.read_until(b'\n', &mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            if line.iter().all(u8::is_ascii_whitespace) {
                 continue;
             }
-            let message: Value = match serde_json::from_str(&line) {
+            let message: Value = match serde_json::from_slice(&line) {
                 Ok(message) => message,
                 Err(e) => {
-                    self.reject(Value::Null, PARSE_ERROR, &format!("Parse error: {e}"));
+                    self.send(&Self::error(
+                        Value::Null,
+                        PARSE_ERROR,
+                        &format!("Parse error: {e}"),
+                    ));
                     continue;
                 }
             };
-            let method = message["method"].as_str().map(str::to_owned);
-            let params = message.get("params").cloned().unwrap_or(json!({}));
-            match (method, message.get("id")) {
-                // Responses from the client: this server sends no requests.
-                (None, _) if message.is_object() => {}
-                (Some(method), None) => self.notification(&method, &params),
-                (Some(method), Some(id)) if id.is_string() || id.is_number() => {
-                    let cancel = Arc::new(AtomicBool::new(false));
-                    {
-                        let mut inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
-                        if inflight.contains_key(&id.to_string()) {
-                            drop(inflight);
-                            self.reject(id.clone(), INVALID_REQUEST, "request id already in use");
-                            continue;
-                        }
-                        inflight.insert(id.to_string(), cancel.clone());
-                    }
+            match message {
+                // A JSON-RPC batch (protocol 2025-03-26): one array of the
+                // responses, sent when all of them are ready.
+                Value::Array(messages) if !messages.is_empty() => {
+                    let handles: Vec<_> = messages
+                        .into_iter()
+                        .filter_map(|m| self.accept(m))
+                        .collect();
                     let server = self.clone();
-                    let id = id.clone();
-                    thread::spawn(move || server.request(id, method, params, cancel));
+                    thread::spawn(move || {
+                        let responses: Vec<Value> = handles
+                            .into_iter()
+                            .filter_map(|h| h.join().ok().flatten())
+                            .collect();
+                        if !responses.is_empty() {
+                            server.send(&Value::Array(responses));
+                        }
+                    });
                 }
-                _ => self.reject(Value::Null, INVALID_REQUEST, "Invalid request"),
+                Value::Array(_) => {
+                    self.send(&Self::error(Value::Null, INVALID_REQUEST, "empty batch"))
+                }
+                message => {
+                    if let Some(handle) = self.accept(message) {
+                        let server = self.clone();
+                        thread::spawn(move || {
+                            if let Ok(Some(response)) = handle.join() {
+                                server.send(&response);
+                            }
+                        });
+                    }
+                }
             }
         }
         // End of input is the stdio shutdown signal. Jobs keep running.

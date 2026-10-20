@@ -35,8 +35,10 @@ elif mode == "garbage_journal":
 elif mode == "crash":
     signal.raise_signal(signal.SIGSEGV)
 elif mode == "complete":
-    # One 0.1 result record (no evidence), committed like the Rust SDK does,
-    # then the worker manifest the runner cross-checks against the journal.
+    # After an optional delay, one 0.1 result record (no evidence), committed
+    # like the Rust SDK does, then the worker manifest the runner
+    # cross-checks against the journal.
+    time.sleep(payload.get("seconds", 0))
     spec = json.loads((directory / "resolved.json").read_text())
     spec.pop("request_key")
     digest = hashlib.sha256(json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

@@ -490,7 +490,6 @@ one of the [runner's codes](#errors) or one of these:
 | `not_finished` | `get_result` before the job ended | `wait_job` |
 | `result_too_large` | The full manifest exceeds 1 MiB | `tasks`, or `run.json` in the job directory |
 | `mcp_timeout` | A runner call, or the confirmation that a submitted job exists, exceeded its deadline; retryable | `get_job` before submitting again |
-| `attempt_interrupted` | Only in a task's result: the launcher was lost or a reboot interrupted the job | `repair_job`, then `get_result` |
 
 ### Protocol versions
 
@@ -498,11 +497,15 @@ The server is dual-era. A request that carries
 `io.modelcontextprotocol/protocolVersion` in `_meta` is served statelessly
 under revision 2026-07-28 (`server/discover` answers without a handshake); an
 `initialize` request selects 2025-11-25, 2025-06-18, 2025-03-26 or 2024-11-05
-for the process. Another version gets `UnsupportedProtocolVersion` (`-32022`)
-listing the supported ones. The server offers tools only: no resources,
-prompts, sampling, elicitation or logging, and `subscriptions/listen` delivers
-task notifications only. `notifications/cancelled` stops a request, such as a
-long `wait_job`, without stopping its job.
+for the process, and JSON-RPC batches are answered as batches. Another version
+gets `UnsupportedProtocolVersion` (`-32022`) listing the supported ones. The
+server offers tools only: no resources, prompts, sampling, elicitation or
+logging, and `subscriptions/listen` delivers task notifications only.
+`notifications/cancelled` stops a request that only reads, such as a long
+`wait_job`, without stopping its job. A request that changes a job
+(`submit_job`, `cancel_job`, `kill_job`, `repair_job`) runs to its end
+regardless and only loses its response: stopping the runner halfway could
+leave a job half created.
 
 ### Tasks
 
@@ -515,7 +518,7 @@ one asynchronous tool call:
 | --- | --- | --- |
 | `submit` / `run` an envelope | `tools/call` returning a task | `submit_job`; a submission that fails returns a tool error, not a task |
 | `request_key` | Task IDs are minted by the server | Random 128-bit task IDs, stored in `NODE/mcp/tasks.json`; the same job resubmitted returns its task |
-| Job states | `working`, `completed`, `failed`, `cancelled` | `submitted` to `running` → `working`; `completed`, `timed_out`, `failed` and `interrupted` → `completed`, with the summary of `get_result` (`isError` for `failed` and `interrupted`); `cancelled` → `cancelled`, and `get_result` returns its completed tasks; a lost launcher or a reboot → `completed` with `attempt_interrupted` |
+| Job states | `working`, `completed`, `failed`, `cancelled` | `submitted` to `running` → `working`; `completed`, `timed_out`, `failed` and `interrupted` → `completed`, with the summary of `get_result` (`isError` for `failed` and `interrupted`); `cancelled` → `cancelled`, and `get_result` returns its completed tasks. A job observed with a lost launcher or after a reboot stays `working`, with the reason in `statusMessage`, until the server can finalize it as `repair_job` would, once no process may own it; a worker that outlived its launcher keeps its exact result |
 | Graceful cancel | `tasks/cancel` (cooperative) | `cancel_job`; acknowledged also when the job has already ended |
 | `--now` | Not defined | `kill_job` |
 | Journals | Results may be deleted after the task's TTL | `ttlMs` is null: tasks do not expire, and the journal stays the durable record |
@@ -538,8 +541,11 @@ attempt), nor a logout whose login manager kills the user's processes. With
 manager, with the caveats of [detached operation](#detached-operation-and-current-limits).
 A killed or restarted server loses only the requests in flight: a new server
 on the same root resolves the same jobs and task IDs. The server keeps its own
-files in `NODE/mcp/`: the task store, staging copies of inline jobs (removed
-once the job exists) and the logs of launchers that failed.
+files in `NODE/mcp/`: the task store; staging copies of inline jobs, removed
+once the runner has registered the job; and each launcher's stderr log,
+removed when the launcher succeeds while the server runs. A server that
+starts removes staging copies and empty logs older than a day. A job file
+passed as `spec_path` must be a regular file of at most 64 MiB.
 
 The server cannot register or change workers, initialize the node or change
 its capacity, and jobs reach only registered workers, admitted against the
