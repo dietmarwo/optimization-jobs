@@ -29,7 +29,7 @@ model ([where to read next](#where-to-read-next)).
 | [fast-cma-es](https://github.com/dietmarwo/fast-cma-es) | Black-box, nonsmooth, multimodal, multi-objective and quality-diversity problems, with the objective in Python | `fcmaes` (Python, C++ backend) | none | PyPI `fcmaes` |
 | [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | The same algorithms in pure Rust, plus experimental exact-GP Bayesian optimization of expensive simulations | `fcmaes-core` (Rust), `fcmaes_rust` (Python binding) | `fcmaes-job-worker`: `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.surrogate/1` (experimental), `fcmaes.evaluate/1` | crates.io `fcmaes-core`, PyPI `fcmaes-rust`; worker and surrogate from source |
 | [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | LP and MIP (linear objective, linear rows, continuous and integer variables) | `lp-ip-craft`, `lp-ip-craft-native` (Rust), `lp_ip_craft` (Python) | `lp-ip-job-worker`: `lp-ip.solve/1`, `lp-ip.evaluate/1` | none yet: from source |
-| [SQP-craft](https://github.com/dietmarwo/SQP-craft) | Smooth constrained NLP, at most 256 variables, analytic derivatives | `sqp-craft-solver` with the Clarabel and active-set backends (Rust), `sqp_craft` (Python) | `sqp-job-worker`: `sqp.solve/1`, `sqp.evaluate/1` | none yet: from source |
+| [SQP-craft](https://github.com/dietmarwo/SQP-craft) | Smooth constrained NLP, at most 256 variables, analytic derivatives | `sqp-craft` (core), `sqp-craft-solver`, the backends `sqp-craft-clarabel` and `sqp-craft-activeset` (Rust), `sqp_craft` (Python) | `sqp-job-worker`: `sqp.solve/1`, `sqp.evaluate/1` | none yet: from source |
 | optimization-jobs (this one) | No solver of its own: the job envelope, result contract, worker SDK, runner and MCP server | `optimization-job-api` (worker SDK) | runner `optimization-run`, MCP server `optimization-mcp` | none yet: from source |
 
 The two fcmaes projects are independent implementations of the same algorithm
@@ -64,11 +64,11 @@ Take the first row that matches.
 
 | Problem | Solver | Limits to check |
 | --- | --- | --- |
-| Linear objective and constraints, continuous and/or integer variables | LP-IP-craft | A MIP needs finite bounds on every variable (or bounds presolve can infer); no QP/MIQP; no relative-gap stop; numerical statuses, no exact certificates |
+| Linear objective and constraints, continuous and/or integer variables | LP-IP-craft | A MIP needs finite bounds on every variable (or bounds presolve can infer); no QP/MIQP; no relative-gap stop; numerical statuses, no exact certificates. When peak speed decides, or for a large, hard industrial MIP, compare with a mature solver such as HiGHS under the same independent check |
 | Smooth nonlinear objective and constraints, continuous variables, at most 256, gradient and Jacobian available; a local optimum suffices or good starts exist | SQP-craft | Local method with dense BFGS; use multistart for multimodal models. More than 256 variables or exact Hessians: an IPOPT-family solver fits better |
 | Several objectives, a Pareto front wanted | fcmaes MODE | Constraints come after the objectives and are feasible at `g(x) <= 0` |
 | Many diverse good solutions over behavior descriptors | fcmaes MAP-Elites (grid or CVT archives) | Descriptors must be computed with the objective |
-| Expensive deterministic scalar simulation (seconds to a minute per call), continuous box, 1–32 variables, at most 256 calls | `fcmaes.surrogate/1` (fcmaes-rust job worker, experimental), compared with BiteOpt | No constraints, noise or mixed variables; prefer BiteOpt for separable, many-modal problems with ten or more variables |
+| Expensive deterministic scalar simulation (seconds to a minute per call), continuous box, 1–32 variables, at most 256 calls, few evaluations at a time | `fcmaes.surrogate/1` (fcmaes-rust job worker, experimental), compared with BiteOpt | Job-only: the simulation must be a Rust model in an fcmaes application worker; there is no Python surrogate. No constraints, noise or mixed variables. Prefer retry (BiteOpt first) for separable or many-modal problems with ten or more variables, and when many cores can evaluate in parallel. In Python, use fcmaes with a parallel population (fast-cma-es "Expensive objective") |
 | Black-box, nonsmooth, noisy or multimodal scalar objective with box bounds; integers or categories decoded from continuous variables | fcmaes retry: BiteOpt first; DE for robust exploration and integer decoding; CMA-ES with a good start; CR-FM-NES for higher dimensions; PGPE for noise and very high dimensions | Benchmark at least two choices on equal budgets and seeds |
 
 Rules that hold across the table:
@@ -82,16 +82,18 @@ Rules that hold across the table:
   points between two jobs, and both workers must register the same model.
 - No solver here certifies a global optimum, proves MINLP optimality or emits
   exact certificates. fcmaes on a decoded integer model is a heuristic.
-- Recheck any claim, including another tool's, with the matching `evaluate`
-  profile or the library's independent checks (`lp_ip_craft.evaluate`,
-  `sqp_craft.kkt_residuals`).
+- Recheck any point, including another tool's, independently. The
+  `evaluate` profiles recompute objective and feasibility (`sqp.evaluate/1`
+  only function values). The libraries also check optimality conditions:
+  `lp_ip_craft.lp_residuals` and `safe_dual_bound` for LPs,
+  `sqp_craft.kkt_residuals` for KKT points.
 
 ## 3. Choose the interface: library or job
 
 | Situation | Use |
 | --- | --- |
 | The objective is a Python function | A library in process: `fcmaes` (black box, MODE, MAP-Elites), `sqp_craft.solve(spec, model, x0, method="sqp")`, `lp_ip_craft.solve(model, backend="native")`, or `fcmaes_rust` for the Rust implementations |
-| The objective is Rust code | The crates (`fcmaes-core`, `sqp-craft-solver`, `lp-ip-craft-native`), or a model registered in a job worker |
+| The objective is Rust code | The crates ([below](#rust-crates)), or a model registered in a job worker |
 | An LP or MIP given as data | A job with an `lp-ip.model/1` artifact (no code needed), or `lp_ip_craft` in Python |
 | Durable, CPU-budgeted, cancellable runs with independently checked results; several solvers on one CPU budget; an agent that must not block on a long run | The job API, through the shell or MCP |
 
@@ -109,7 +111,8 @@ A user's own nonlinear model becomes a job model as Rust code in a worker:
 - **fcmaes:** an application worker, i.e. a closure with parameters and
   SHA-256-checked data inputs (see fcmaes-rust's
   [application models](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/job-api/models.md)).
-  `Scalar::simulation` covers cancellable simulations.
+  `Scalar::simulation` models are cancellable simulations; only
+  `fcmaes.surrogate/1` accepts them.
 - **SQP:** the worker's extension seam (see SQP-craft's
   [ai-context](https://github.com/dietmarwo/SQP-craft/blob/main/ai-context.md#registered-models-only)).
 
@@ -125,15 +128,21 @@ threads still needs the GIL, so it rarely scales across threads. Instead:
 ## 4. Install
 
 The packages on PyPI and crates.io install with the usual commands; the rest
-build from source. Each README has a section "Install from source", which
-lists the requirements and our own dependencies.
+build from source. Each README describes installation from source, with the
+requirements and, where there are any, our own dependencies.
 
 ### Python
 
 ```sh
-python -m pip install fcmaes        # fast-cma-es; CPython 3.10+; wheels for Linux, macOS, Windows
+python -m pip install fcmaes        # fast-cma-es; CPython 3.10+
 python -m pip install fcmaes-rust   # import fcmaes_rust; CPython 3.11-3.13
 ```
+
+fcmaes has wheels for CPython 3.10–3.13 on x86-64 Linux and Windows and on
+macOS (Intel and Apple Silicon). Elsewhere, for example Python 3.14 or Linux
+aarch64, pip builds the sdist. That build needs a C++17 compiler and either
+a system Eigen 3.4 or
+`--config-settings=cmake.define.FCMAES_FETCH_EIGEN=ON`.
 
 From source, each in its own checkout. The Rust toolchain comes from
 https://rustup.rs, and pip fetches the build backends itself.
@@ -142,7 +151,8 @@ https://rustup.rs, and pip fetches the build backends itself.
 # fast-cma-es: C++17 compiler; Eigen 3.4 from the system or fetched as here
 git clone https://github.com/dietmarwo/fast-cma-es
 (cd fast-cma-es && python -m pip install . --config-settings=cmake.define.FCMAES_FETCH_EIGEN=ON)
-# LP-IP-craft (Rust 1.85+), SQP-craft (Rust 1.85+ and a C linker), fcmaes-rust (Rust 1.88+)
+# CPython 3.10+; LP-IP-craft (Rust 1.85+), SQP-craft (Rust 1.85+ and a C linker),
+# fcmaes-rust (Rust 1.88+, CPython 3.11-3.13)
 git clone https://github.com/dietmarwo/LP-IP-craft
 (cd LP-IP-craft && python -m pip install .)
 git clone https://github.com/dietmarwo/SQP-craft
@@ -158,15 +168,21 @@ predate the October 2026 MODE fixes (correct SBX and polynomial mutation,
 non-dominated sorting, feasibility first; fast-cma-es #31, fcmaes-rust #1)
 and the exact two-objective archives (`fcmaes.pareto`, `ParetoArchive2D`).
 Until the next release, build from source for MODE work, for example
-`python -m pip install "git+https://github.com/dietmarwo/fast-cma-es" --config-settings=cmake.define.FCMAES_FETCH_EIGEN=ON`.
+`python -m pip install "git+https://github.com/dietmarwo/fast-cma-es" --config-settings=cmake.define.FCMAES_FETCH_EIGEN=ON`,
+and in Rust use `fcmaes-core` from git ([below](#rust-crates)).
 
 ### Rust crates
 
 ```toml
 [dependencies]
-fcmaes-core = "0.1"                                                    # crates.io
+fcmaes-core = "0.1"   # crates.io; for the MODE fixes: { git = "https://github.com/dietmarwo/fcmaes-rust" }
+# LP/MIP: the model, options and checks, and the solver
+lp-ip-craft = { git = "https://github.com/dietmarwo/LP-IP-craft" }
 lp-ip-craft-native = { git = "https://github.com/dietmarwo/LP-IP-craft" }
+# Smooth NLP: the core (ProblemSpec, NlpProblem), the solver and a QP backend
+sqp-craft = { git = "https://github.com/dietmarwo/SQP-craft" }
 sqp-craft-solver = { git = "https://github.com/dietmarwo/SQP-craft" }
+sqp-craft-clarabel = { git = "https://github.com/dietmarwo/SQP-craft" }    # or sqp-craft-activeset
 ```
 
 LP-IP-craft and SQP-craft have release workflows for crates.io and PyPI. Until
@@ -224,9 +240,10 @@ A job is a JSON envelope. Its life runs like this:
    stopped, what the worker claims and what was rechecked.
 5. The job directory stays the durable record.
 
-The guide [docs/job-api.md](docs/job-api.md) is the reference, and
-[the JSON Schemas](docs/job-api/schemas/optimization.job-0.1.schema.json)
-describe the job and the result.
+The guide [docs/job-api.md](docs/job-api.md) is the reference, and the JSON
+Schemas describe
+[the job](docs/job-api/schemas/optimization.job-0.1.schema.json) and
+[the result](docs/job-api/schemas/optimization.result-0.2.schema.json).
 
 ### Envelope
 
@@ -252,7 +269,7 @@ which lies next to the job file.
 
 | Field | Rule |
 | --- | --- |
-| `request_key` | 1–200 bytes, chosen by the caller. The same key with the same content returns the existing job and never starts a second one. The same key with different content is `request_key_conflict`. Use a new key per experiment |
+| `request_key` | 1–200 bytes, chosen by the caller. The same key with the same content and the same worker binary returns the existing job and never starts a second one. A different content, or a rebuilt and re-registered worker, gives `request_key_conflict`. Use a new key per experiment |
 | `worker`, `payload_schema` | A registered worker ID and one of its profiles |
 | `payload` | Strict and profile-specific: unknown fields are errors. Copy field names from `describe_worker` / `problems describe` and the tutorial jobs |
 | `resources` | `outer_workers * inner_threads <= cpu_slots <= node capacity`. Outer workers run independent tasks; inner threads parallelize inside one task where the profile allows (`8/8/1` for eight runs, `8/1/8` for one large LP or SQP solve) |
@@ -262,7 +279,9 @@ which lies next to the job file.
 The worker repositories' tutorials have complete jobs for every profile
 ([fcmaes](https://github.com/dietmarwo/fcmaes-rust/tree/main/tutorials/job-api),
 [LP-IP](https://github.com/dietmarwo/LP-IP-craft/tree/main/tutorials/job-api),
-[SQP](https://github.com/dietmarwo/SQP-craft/tree/main/tutorials/job-api)).
+[SQP](https://github.com/dietmarwo/SQP-craft/tree/main/tutorials/job-api);
+the surrogate jobs are in fcmaes-rust's
+[tutorials/surrogate](https://github.com/dietmarwo/fcmaes-rust/tree/main/tutorials/surrogate)).
 The LP model format (`lp-ip.model/1`: sparse CSR, `null` for infinite bounds)
 is described in LP-IP-craft's
 [ai-context](https://github.com/dietmarwo/LP-IP-craft/blob/main/ai-context.md#job-specification).
@@ -329,9 +348,11 @@ Besides the `results` journal, a worker can declare artifacts such as an
 evaluation log or a warm-start snapshot. They are listed in `artifact_index`
 (`jobs get`, `jobs list`, the result) and can be read while the job runs.
 `records` artifacts are read in pages; continue at `next_offset` while it is
-below `available`. A later job takes an artifact as an input (its `file` and
-the SHA-256 from `artifact_index`, with the earlier job's directory as input
-directory). Jobs are never resumed in place.
+below `available`. A later job takes an artifact as an input: its `file`,
+with the SHA-256 from `runner.artifact_index` of the sealed result (`jobs
+get` lists no hashes). Over MCP, pass the earlier job's `directory` as
+`input_dir`; with the CLI, copy the file next to the new job file. Jobs are
+never resumed in place.
 
 ## 6. The MCP server
 
@@ -373,9 +394,10 @@ A job tool takes the envelope inline (`job`, with relative inputs read from
 
 The server's limits:
 
-- An answer is at most 1 MiB: page large `records` artifacts, and read other
-  large files in the job directory. `result_too_large` and
-  `artifact_too_large` say when.
+- `get_result` with `full` and a whole `get_artifact` read return at most
+  1 MiB (`result_too_large`, `artifact_too_large`). For more, use
+  `get_result` with `tasks`, page `records` artifacts, or read the files in
+  the job directory. A page holds at most 1 MiB of records.
 - A message is at most 64 MiB.
 - At most 64 requests run at a time, of which at most 32 may wait.
 
