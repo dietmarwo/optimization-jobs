@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Protocol fixture for scripts/job-api/test_review.py: a worker whose
 behaviour is chosen by payload["mode"]. It is not a solver. It speaks worker
-protocol 0.1, so it also checks that the runner still accepts 0.1 workers."""
+protocol 0.1, so it also checks that the runner still accepts 0.1 workers.
+Its describe output follows the discovery convention (payload_schemas,
+input_schemas and runnable examples), so the harness's discovery checks run
+without real workers."""
 import fcntl
 import hashlib
 import json
@@ -10,13 +13,52 @@ import sys
 import time
 from pathlib import Path
 
+DIALECT = "https://json-schema.org/draft/2020-12/schema"
+ONE_SLOT = {"cpu_slots": 1, "outer_workers": 1, "inner_threads": 1}
+LIMITS = {"wall_time_seconds": 30.0, "grace_seconds": 1.0}
+DESCRIPTION = {
+    "protocol": "optimization.worker/0.1",
+    "profiles": ["test.fake/1"],
+    "payload_schemas": {"test.fake/1": {
+        "$schema": DIALECT, "$id": "urn:optimization-jobs:payload:test.fake/1",
+        "$comment": "A protocol fixture, not a solver: unlike real workers it accepts unknown fields.",
+        "type": "object",
+        "properties": {
+            "mode": {"enum": ["sleep", "complete", "garbage_journal", "crash", "artifacts"]},
+            "seconds": {"type": "number", "minimum": 0},
+            "validate_sleep": {"type": "number", "minimum": 0},
+            "outcome": {"type": "object", "description": "The record of mode complete"},
+            "declarations": {"type": "array", "items": {"type": "object"}},
+        },
+    }},
+    "input_schemas": {"test.values/1": {
+        "$schema": DIALECT, "$id": "urn:optimization-jobs:input:test.values/1",
+        "type": "object", "required": ["values"], "additionalProperties": False,
+        "properties": {"values": {"type": "array", "items": {"type": "number"}, "minItems": 1}},
+    }},
+    "examples": [
+        {"profile": "test.fake/1", "description": "One task that completes at once",
+         "resources": ONE_SLOT, "limits": LIMITS, "payload": {"mode": "complete"}, "inputs": []},
+        {"profile": "test.fake/1", "description": "The same with a JSON input and a text input",
+         "resources": ONE_SLOT, "limits": LIMITS, "payload": {"mode": "complete"},
+         "inputs": [{"name": "values", "file": "values.json", "format": "test.values/1",
+                     "content": {"values": [1.0, 2.5]}},
+                    {"name": "notes", "file": "notes.csv", "content_text": "x,y\n1,2\n"}]},
+    ],
+}
+
 command = sys.argv[1]
 if command == "describe":
-    print(json.dumps({"protocol": "optimization.worker/0.1", "profiles": ["test.fake/1"]}))
+    print(json.dumps(DESCRIPTION))
     sys.exit(0)
 if command == "validate":
-    spec = json.loads(Path(sys.argv[2]).read_text())
+    request = Path(sys.argv[2])
+    spec = json.loads(request.read_text())
     time.sleep(spec["payload"].get("validate_sleep", 0))
+    # Like a real worker, validation needs the staged input files.
+    for declared in spec["inputs"]:
+        if not (request.parent / declared["file"]).is_file():
+            sys.exit(f"input {declared['name']} was not staged")
     spec["task_count"] = 1
     print(json.dumps({"resolved": spec}))
     sys.exit(0)

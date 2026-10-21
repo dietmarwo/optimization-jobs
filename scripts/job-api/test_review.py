@@ -24,10 +24,14 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import discovery  # noqa: E402
 
 try:
     import jsonschema
@@ -583,6 +587,99 @@ class Artifacts(Node):
         self.assertEqual(ids, [0, 1, 2, *range(10, 16)])
         (directory / "release").touch()
         process.communicate(timeout=30)
+
+
+class Discovery(Node):
+    """The discovery checks of the shared harness (test_integration.py), on
+    the protocol fixture, whose describe lists payload schemas and runnable
+    examples like a real worker's (docs/job-api.md#discovery-for-agents)."""
+
+    def schema_checks(self):
+        if discovery.jsonschema is None:
+            if discovery.schema_checks_required():
+                self.fail("the jsonschema package is required (JOB_API_REQUIRE_SCHEMA=1)")
+            return False
+        return True
+
+    def test_the_fixture_is_complete_and_its_examples_run(self):
+        description = self.call("problems", "describe", "fake")
+        self.assertEqual(discovery.completeness(description), [])
+        if self.schema_checks():
+            # The fixture accepts unknown fields; real workers reject them.
+            self.assertEqual(discovery.schema_problems(description, unknown_fields_rejected=False), [])
+        examples = description["examples"]
+        self.assertTrue(any(example["inputs"] for example in examples))
+        for k, example in enumerate(examples):
+            directory = self.base / f"example-{k}"
+            directory.mkdir()
+            job = discovery.write_example(example, "fake", f"example-{k}", directory)
+            spec = directory / "job.json"
+            spec.write_text(json.dumps(job))
+            self.assertEqual(self.call("validate", "--spec", spec)["resolved"]["task_count"], 1)
+            result = self.call("run", "--spec", spec)
+            self.assertEqual(result["state"], "completed")
+            self.assertEqual(self.call("result", result["directory"])["completed_tasks"], 1)
+            for declared in example["inputs"]:
+                staged = Path(result["directory"]) / "inputs" / declared["name"]
+                self.assertEqual(staged.read_bytes(), discovery.input_bytes(declared))
+
+    def test_the_checks_report_what_is_missing_or_invalid(self):
+        description = self.call("problems", "describe", "fake")
+
+        def broken(change):
+            copied = copy.deepcopy(description)
+            change(copied)
+            return copied
+
+        missing = {
+            "test.fake/1: no payload schema": lambda d: d["payload_schemas"].clear(),
+            "test.fake/1: no example": lambda d: d["examples"].clear(),
+            "describe lists no examples": lambda d: d.pop("examples"),
+            "describe lists no payload_schemas object": lambda d: d.pop("payload_schemas"),
+            "example 0 (test.fake/1): no limits": lambda d: d["examples"][0].pop("limits"),
+            "example 1 (test.fake/1): input values: format test.values/1 is not in input_schemas":
+                lambda d: d.pop("input_schemas"),
+            "example 1 (test.fake/1): input notes needs exactly one of content and content_text":
+                lambda d: d["examples"][1]["inputs"][1].update(content={}),
+            "example 0 (other/1): not a profile of the worker":
+                lambda d: d["examples"][0].update(profile="other/1"),
+        }
+        for problem, change in missing.items():
+            with self.subTest(problem=problem):
+                self.assertIn(problem, discovery.completeness(broken(change)))
+        if not self.schema_checks():
+            return
+        invalid = {
+            "example 0 (test.fake/1): payload": lambda d: d["examples"][0]["payload"].update(mode="nonsense"),
+            "example 1 (test.fake/1): input values": lambda d: d["examples"][1]["inputs"][0].update(content={}),
+            "payload schema test.fake/1: no $id": lambda d: d["payload_schemas"]["test.fake/1"].pop("$id"),
+            "payload schema test.fake/1: $schema": lambda d: d["payload_schemas"]["test.fake/1"].pop("$schema"),
+            "payload schema test.fake/1: not a valid JSON Schema":
+                lambda d: d["payload_schemas"]["test.fake/1"].update(type=3),
+        }
+        for problem, change in invalid.items():
+            with self.subTest(problem=problem):
+                found = discovery.schema_problems(broken(change), unknown_fields_rejected=False)
+                self.assertTrue(any(p.startswith(problem) for p in found), found)
+        self.assertTrue(any("accepts an unknown field" in p for p in discovery.schema_problems(description)))
+        self.assertEqual(discovery.payload_problems(description, "test.fake/1", {"mode": "complete"}), [])
+        self.assertTrue(discovery.payload_problems(description, "test.fake/1", {"seconds": -1}))
+        self.assertEqual(discovery.payload_problems(description, "other/1", {"mode": 3}), [])
+
+    def test_a_large_description_registers(self):
+        # Schemas and examples make describe outputs long: up to 1 MiB.
+        for size, accepted in [(300_000, True), (1_100_000, False)]:
+            worker = self.base / f"large-{size}.py"
+            worker.write_text("#!/usr/bin/env python3\nimport json\nprint(json.dumps({'protocol':"
+                              "'optimization.worker/0.2','profiles':['test.large/1'],"
+                              f"'padding':'x'*{size}}}))\n")
+            worker.chmod(0o755)
+            if accepted:
+                registered = self.call("workers", "add", "--id", "large", "--executable", worker)
+                self.assertEqual(len(registered["large"]["description"]["padding"]), size)
+            else:
+                error = self.error("workers", "add", "--id", "larger", "--executable", worker)
+                self.assertIn("exceeds 1048576 bytes", error["message"])
 
 
 class Schemas(Node):

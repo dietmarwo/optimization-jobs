@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Black-box lifecycle and numerical acceptance tests. Python stdlib only.
+"""Black-box lifecycle and numerical acceptance tests. Python stdlib only,
+except for the JSON Schema checks of the discovery convention, which need
+`jsonschema` (skipped without it, unless JOB_API_REQUIRE_SCHEMA=1).
 
 Run after cargo build --release, in this repository or in a worker
 repository. The runner and the workers are taken from JOB_API_TARGET (a
@@ -7,8 +9,12 @@ directory, by default this repository's target/release) unless given
 explicitly. Pass several workers to exercise mixed-solver admission on a
 single node.
 """
-import argparse, copy, hashlib, json, math, os, signal, subprocess, tempfile, time, unittest
+import argparse, copy, hashlib, json, math, os, signal, subprocess, sys, tempfile, time, unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import discovery  # noqa: E402
+from test_review import REAL  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 TARGET = Path(os.environ.get('JOB_API_TARGET', REPO/'target/release'))
@@ -63,6 +69,7 @@ class Jobs(unittest.TestCase):
         blob=json.dumps(data,sort_keys=True).encode();name='model-'+hashlib.sha256(blob).hexdigest()+'.json';(self.base/name).write_bytes(blob)
         s['inputs']=[{'name':'model','file':name,'sha256':hashlib.sha256(blob).hexdigest()}]
     def start(self,s):
+        self.check_payload(s)
         path,s=self.write(s);ident=hashlib.sha256(s['request_key'].encode()).hexdigest()[:32];d=self.root/'jobs'/ident
         p=subprocess.Popen([str(RUN),'--root',str(self.root),'run','--spec',str(path)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         self.processes.append((p,d));return p,ident,d
@@ -75,7 +82,25 @@ class Jobs(unittest.TestCase):
             time.sleep(.01)
         self.fail(f'No state {wanted} for {d}')
     def run_spec(self,s):
+        self.check_payload(s)
         path,s=self.write(s);job=self.call('run','--spec',path);d=Path(job['directory']);run=json.loads((d/'run.json').read_text());return path,s,job,d,run
+    def schema_checks(self):
+        """Whether the JSON Schema checks run: without jsonschema they are
+        skipped, or fail under JOB_API_REQUIRE_SCHEMA=1."""
+        if discovery.jsonschema is None:
+            if discovery.schema_checks_required():self.fail('the jsonschema package is required (JOB_API_REQUIRE_SCHEMA=1)')
+            return False
+        return True
+    def description(self,name):
+        if not hasattr(self,'descriptions'):self.descriptions={}
+        if name not in self.descriptions:self.descriptions[name]=self.call('problems','describe',name)
+        return self.descriptions[name]
+    def check_payload(self,s):
+        """Every payload this harness gives a real worker validates against the
+        worker's payload schema of that profile (a missing schema is the
+        discovery test's failure)."""
+        if s['worker'] in WORKERS and self.schema_checks():
+            self.assertEqual(discovery.payload_problems(self.description(s['worker']),s['payload_schema'],s['payload']),[],s['payload'])
     def fake(self):
         p=self.base/'fake-worker'
         p.write_text('''#!/usr/bin/python3
@@ -96,9 +121,33 @@ else:
         self.assertTrue(WORKERS,'build at least one real worker')
         for name in WORKERS:
             self.assertEqual(self.call('problems','describe',name)['protocol'],'optimization.worker/0.2')
-            s=self.fixture(name);p,_=self.write(s);self.assertTrue(self.call('validate','--spec',p)['valid'])
+            s=self.fixture(name);self.check_payload(s);p,_=self.write(s);self.assertTrue(self.call('validate','--spec',p)['valid'])
             for mutate in [lambda s:s.update(extra=1),lambda s:s['resources'].update(inner_threads=8),lambda s:s.update(payload_schema='unknown/9'),lambda s:s['payload'].update(ignored_option=True)]:
                 bad=copy.deepcopy(s);mutate(bad);p,_=self.write(bad);self.call('validate','--spec',p,ok=False)
+    def test_discovery_payload_schemas_and_runnable_examples(self):
+        # Review F01: describe alone lets a client build and run one job per
+        # profile (docs/job-api.md#discovery-for-agents). Strict: a missing
+        # schema or example fails.
+        self.assertTrue(WORKERS,'build at least one real worker')
+        for name in WORKERS:
+            with self.subTest(worker=name):
+                d=self.description(name)
+                self.assertEqual(discovery.completeness(d),[])
+                if self.schema_checks():
+                    self.assertEqual(discovery.schema_problems(d),[])
+                    # The shared scripts' own small jobs (test_review.py, test_mcp.py).
+                    _,profile,payload=REAL[name]
+                    self.assertEqual(discovery.payload_problems(d,profile,payload),[])
+                for k,example in enumerate(d['examples']):
+                    directory=self.base/f'example-{name}-{k}';directory.mkdir()
+                    job=discovery.write_example(example,name,f'example-{name}-{k}',directory)
+                    spec=directory/'job.json';spec.write_text(json.dumps(job))
+                    what=f"{name} example {k} ({example['profile']}): {example.get('description')}"
+                    self.assertTrue(self.call('validate','--spec',spec)['valid'],what)
+                    result=self.call('run','--spec',spec)
+                    self.assertEqual(result['state'],'completed',what)
+                    run=json.loads((Path(result['directory'])/'run.json').read_text())
+                    self.assertGreaterEqual(run['completed_tasks'],1,what)
     def test_actual_workers_numerics_journals_and_idempotency(self):
         for name in WORKERS:
             p,s,j,d,r=self.run_spec(self.fixture(name))

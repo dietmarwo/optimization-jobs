@@ -31,6 +31,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import discovery  # noqa: E402
 from test_review import LP_MODEL, REAL, proc_entry, processes  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
@@ -59,6 +60,20 @@ def fake(key, payload, slots=1, wall=60.0):
         "resources": {"cpu_slots": slots, "outer_workers": 1, "inner_threads": 1},
         "limits": {"wall_time_seconds": wall, "grace_seconds": 0.5}, "inputs": [],
     }
+
+
+def mcp_only(client, worker, example, key):
+    """The arguments of validate_job and submit_job for an example of
+    describe_worker, built as a client without files of its own builds them:
+    each input goes through put_input, which gives its file and SHA-256, and
+    the store is the job's input_dir."""
+    inputs, arguments = [], {}
+    for declared in example["inputs"]:
+        stored = client.ok("put_input", {"content": discovery.input_bytes(declared).decode()})
+        inputs.append({"name": declared["name"], "file": stored["file"], "sha256": stored["sha256"]})
+        arguments["input_dir"] = stored["input_dir"]
+    arguments["job"] = discovery.envelope(example, worker, key, inputs)
+    return arguments
 
 
 def guide_headings(text):
@@ -492,6 +507,36 @@ class Jobs(Server):
         ident = self.client.ok("submit_job", {"spec_path": str(data / "job.json")})["job_id"]
         self.assertEqual(ident, job_id("spec-path"))
         self.assertEqual(self.wait(ident)["state"], "completed")
+
+    def run_examples(self, worker):
+        """describe_worker, then each example through put_input, validate_job,
+        submit_job, wait_job and get_result: MCP alone (review F01, F02)."""
+        description = self.client.ok("describe_worker", {"worker": worker})
+        examples = description.get("examples") or []
+        self.assertEqual([p for p in description["profiles"] if not any(e.get("profile") == p for e in examples)],
+                         [], f"profiles of {worker} without an example")
+        for k, example in enumerate(examples):
+            with self.subTest(worker=worker, example=k, profile=example["profile"]):
+                arguments = mcp_only(self.client, worker, example, f"mcp-only-{worker}-{k}")
+                self.assertGreaterEqual(self.client.ok("validate_job", arguments)["resolved"]["task_count"], 1)
+                ident = self.client.ok("submit_job", arguments)["job_id"]
+                self.assertEqual(self.wait(ident, timeout=300)["state"], "completed", example.get("description"))
+                summary = self.client.ok("get_result", {"job_id": ident})
+                self.assertEqual(summary["status"], "completed")
+                self.assertGreaterEqual(summary["completed_tasks"], 1)
+                for declared in example["inputs"]:
+                    staged = self.root / "jobs" / ident / "inputs" / declared["name"]
+                    self.assertEqual(staged.read_bytes(), discovery.input_bytes(declared))
+
+    def test_an_mcp_only_client_runs_every_example(self):
+        self.run_examples("fake")
+
+    def test_a_real_worker_runs_its_examples_over_mcp_only(self):
+        if not WORKER:
+            if os.environ.get("JOB_API_REQUIRE_WORKER") == "1":
+                self.fail("no fcmaes, LP-IP or SQP worker in JOB_API_TARGET (JOB_API_REQUIRE_WORKER=1)")
+            self.skipTest("no fcmaes, LP-IP or SQP worker in JOB_API_TARGET")
+        self.run_examples(WORKER)
 
     def test_a_real_worker_reports_claims_and_evidence(self):
         if not WORKER:

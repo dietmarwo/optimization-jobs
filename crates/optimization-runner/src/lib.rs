@@ -149,6 +149,10 @@ fn install_stop_handlers() {
 }
 /// Kill delay after an immediate stop request.
 const IMMEDIATE_GRACE: Duration = Duration::from_secs(1);
+/// Largest `describe` output a worker may register: its profiles, models
+/// and options, and the JSON Schemas of its payloads and inputs with
+/// runnable examples (docs/job-api.md#discovery-for-agents).
+const MAX_DESCRIPTION: usize = 1 << 20;
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 enum Stop {
     None,
@@ -999,8 +1003,15 @@ fn main_result() -> Result<()> {
                 &[executable.to_string_lossy().into_owned(), "describe".into()],
                 vec![],
                 Duration::from_secs(10),
-                65536,
-            )?;
+                MAX_DESCRIPTION,
+            )
+            .map_err(|e| {
+                if e.to_string().contains("exceeds configured cap") {
+                    format!("the worker's describe output exceeds {MAX_DESCRIPTION} bytes").into()
+                } else {
+                    Error::from(e)
+                }
+            })?;
             let description: Value = serde_json::from_slice(&out)?;
             let generic = protocol_supported(&description["protocol"])
                 && description["profiles"]
