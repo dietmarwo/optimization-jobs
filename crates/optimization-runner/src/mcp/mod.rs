@@ -13,6 +13,7 @@
 //!
 //! See `docs/job-api.md#agents-and-mcp` for the tools and their mapping onto
 //! the runner.
+mod guide;
 mod inputs;
 mod tasks;
 mod tools;
@@ -66,9 +67,13 @@ const MAX_VALIDATIONS: usize = 4;
 const CACHE_MS: u64 = 3_600_000;
 
 const INSTRUCTIONS: &str = "Runs durable optimization jobs on this node with its registered native \
-workers (fcmaes, LP-IP, SQP and application workers). Start with describe_node, then \
-describe_worker for the profiles and options of a worker. Write an optimization.job/0.1 \
-envelope, check it with validate_job and start it with submit_job. The request_key makes \
+workers (fcmaes, LP-IP, SQP and application workers). If no solver or profile has been chosen \
+yet, call get_guide first: it says which solver and profile fit the problem (its section \
+argument returns one part). Then call describe_node, and describe_worker for a worker's profiles \
+and options, the JSON Schemas of its payloads and runnable examples. Write an \
+optimization.job/0.1 envelope, check it with validate_job and start it with submit_job. Input \
+files that are not on this machine yet, such as a new LP model, go through put_input, which \
+returns the file, sha256 and input_dir for the job. The request_key makes \
 submission idempotent: the same key with the same content returns the existing job, other \
 content under that key is rejected, so choose a new key for a new job. Jobs run detached from \
 this server and survive its restart. Follow a job with wait_job or get_job and read get_result \

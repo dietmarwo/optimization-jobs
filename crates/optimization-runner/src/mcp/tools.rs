@@ -1,6 +1,6 @@
 //! The tools of `optimization-mcp` and the `optimization-run` calls behind
 //! them.
-use super::{Ctx, Launch, Server, inputs, tasks};
+use super::{Ctx, Launch, Server, guide, inputs, tasks};
 use optimization_job_api::{
     Input, JobSpec, MAX_INPUT_BYTES, checked_input, process::bounded_command_until, storage::digest,
 };
@@ -157,6 +157,16 @@ pub fn definitions() -> Vec<Value> {
     let read = json!({"readOnlyHint":true,"openWorldHint":false});
     let job_id = job_id_property();
     let tools = [
+        (
+            "get_guide",
+            "Read the guide for agents",
+            read.clone(),
+            "The guide for agents (ai-context.md of optimization-jobs): which solver and profile fit a problem (LP or MIP, smooth NLP, black box, several objectives, diverse solutions, expensive simulations), library or job, installation, the job API and this server. Call it first when no solver or profile has been chosen yet. With section, only the first section whose heading contains that text (case-insensitive), with its subsections; an unknown section lists the headings.",
+            object(
+                json!({"section":{"type":"string","minLength":1,"description":"Text that a heading contains; without it, the whole guide."}}),
+                &[],
+            ),
+        ),
         (
             "describe_node",
             "Describe the node",
@@ -315,6 +325,7 @@ pub fn exists(name: &str) -> bool {
 
 pub fn call(server: &Server, name: &str, args: &Value, ctx: &Ctx) -> Outcome {
     let result = match name {
+        "get_guide" => guide::get(args),
         "describe_node" => describe_node(server, ctx),
         "describe_worker" => string(args, "worker")
             .and_then(|worker| server.cli(&["problems", "describe", "--", &worker], QUICK, ctx)),

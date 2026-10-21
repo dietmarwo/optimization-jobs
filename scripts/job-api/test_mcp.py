@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import signal
 import subprocess
 import sys
@@ -37,11 +38,12 @@ TARGET = Path(os.environ.get("JOB_API_TARGET", REPO / "target/release"))
 RUN = TARGET / "optimization-run"
 MCP = TARGET / "optimization-mcp"
 FAKE = Path(__file__).resolve().parent / "fake_worker.py"
+GUIDE = REPO / "crates/optimization-runner/guide/ai-context.md"
 TASKS = "io.modelcontextprotocol/tasks"
 VERSION = "2026-07-28"
 TERMINAL = {"completed", "failed", "cancelled", "timed_out", "interrupted"}
 WORKER = next((name for name, (binary, _, _) in REAL.items() if (TARGET / binary).exists()), None)
-TOOLS = ["describe_node", "describe_worker", "put_input", "validate_job", "submit_job", "get_job",
+TOOLS = ["get_guide", "describe_node", "describe_worker", "put_input", "validate_job", "submit_job", "get_job",
          "wait_job", "get_result", "get_events", "get_artifact", "list_jobs", "cancel_job", "kill_job",
          "repair_job"]
 
@@ -57,6 +59,30 @@ def fake(key, payload, slots=1, wall=60.0):
         "resources": {"cpu_slots": slots, "outer_workers": 1, "inner_threads": 1},
         "limits": {"wall_time_seconds": wall, "grace_seconds": 0.5}, "inputs": [],
     }
+
+
+def guide_headings(text):
+    """(line number, level, text) of the Markdown headings outside fenced
+    code blocks, whose shell comments start with # too."""
+    found, fenced = [], False
+    for number, line in enumerate(text.splitlines()):
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+        elif not fenced and (match := re.match(r"(#{1,6})[ \t]+(.+?)[ \t]*$", line)):
+            found.append((number, len(match.group(1)), match.group(2)))
+    return found
+
+
+def guide_section(text, query):
+    """The first section whose heading contains query, case-insensitively,
+    through to the next heading of the same or a higher level."""
+    lines = text.splitlines(keepends=True)
+    headings = guide_headings(text)
+    for k, (number, level, title) in enumerate(headings):
+        if query.lower() in title.lower():
+            end = next((n for n, other, _ in headings[k + 1:] if other <= level), len(lines))
+            return title, "".join(lines[number:end]).rstrip() + "\n"
+    return None
 
 
 def launcher(root):
@@ -246,6 +272,7 @@ class Protocol(Server):
         self.assertIn("tools", result["capabilities"])
         self.assertEqual(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "optimization-mcp")
         self.assertIn("submit_job", result["instructions"])
+        self.assertIn("call get_guide first", result["instructions"])
         # An unsupported version is a modern error naming the supported ones.
         ident = self.client.start("server/discover", modern=False, extra_meta={
             "io.modelcontextprotocol/protocolVersion": "1900-01-01",
@@ -489,6 +516,32 @@ class Jobs(Server):
         task = summary["tasks"][0]
         self.assertIn(task["evidence"], {"claimed", "rechecked", "certified"})
         self.assertNotEqual(task["claim"], "none")
+
+
+class Guide(Server):
+    def test_the_guide_whole_and_by_section(self):
+        text = GUIDE.read_text()
+        whole = self.client.ok("get_guide")
+        self.assertEqual((whole["guide"], whole["content"]), ("ai-context.md", text))
+        self.assertTrue(whole["base_url"].startswith("https://github.com/dietmarwo/optimization-jobs/"))
+        headings = guide_headings(text)
+        for level in (2, 3):
+            title = next(t for _, other, t in headings if other == level)
+            expected = guide_section(text, title)
+            part = self.client.ok("get_guide", {"section": title.upper()})
+            self.assertEqual((part["section"], part["content"]), expected)
+            self.assertTrue(part["content"].startswith("#" * level + " "))
+        # A heading of a later level-2 section, by a word of it in lower case.
+        title = [t for _, other, t in headings if other == 2][-1]
+        word = max(title.split(), key=len).lower()
+        part = self.client.ok("get_guide", {"section": word})
+        self.assertEqual((part["section"], part["content"]), guide_section(text, word))
+        error = self.client.error("get_guide", {"section": "no heading has this text"})
+        self.assertEqual(error["code"], "invalid_arguments")
+        for _, level, title in headings:
+            self.assertIn("#" * level + " " + title, error["message"])
+        self.assertEqual(self.client.error("get_guide", {"section": ""})["code"], "invalid_arguments")
+        self.assertEqual(self.client.error("get_guide", {"section": 2})["code"], "invalid_arguments")
 
 
 class Inputs(Server):
