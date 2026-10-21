@@ -161,7 +161,7 @@ pub fn definitions() -> Vec<Value> {
             "describe_node",
             "Describe the node",
             read.clone(),
-            "The node's CPU capacity (slots), how jobs are launched, and its registered workers with their profiles and builds. Start here.",
+            "The node's CPU capacity (slots), how jobs are launched, the CPUs and memory the host gives its jobs (host: affinity, cgroup quota and limit, physical cores, NUMA nodes) with warnings such as a capacity above the usable CPUs, and its registered workers with their profiles and builds. Start here once a solver is chosen.",
             object(json!({}), &[]),
         ),
         (
@@ -463,6 +463,8 @@ fn describe_node(server: &Server, ctx: &Ctx) -> Result<Value, Fail> {
         "capacity": doctor["capacity"],
         "launch": server.launch.name(),
         "systemd_user_manager": doctor["systemd_user_manager"],
+        "host": doctor["host"],
+        "warnings": doctor["warnings"],
         "workers": workers,
     });
     if doctor["capacity"].is_null() {

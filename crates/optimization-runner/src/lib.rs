@@ -1,4 +1,5 @@
 //! The `optimization-run` runner and the `optimization-mcp` server.
+mod host;
 pub mod mcp;
 
 use clap::{Parser, Subcommand};
@@ -972,13 +973,20 @@ fn main_result() -> Result<()> {
                 return Err("node already initialized; keep its capacity stable".into());
             }
             write_atomic_json(&root.join("node.json"), &json!({"capacity":c}))?;
-            output(json!({"capacity":c}))
+            // The owner may mean a capacity beyond what this process can use
+            // (another cgroup runs the jobs, say): a warning, not an error.
+            let warnings = host::warnings(Some(c as u64), &host::host());
+            output(json!({"capacity":c,"warnings":warnings}))
         }
         Cmd::Node {
             command: Node::Doctor,
-        } => output(
-            json!({"systemd_user_manager":check_systemd().is_ok(),"boot_id":boot()?,"capacity":capacity(&root).ok(),"logout_survival":"requires user manager lingering; verify on host"}),
-        ),
+        } => {
+            let host = host::host();
+            let capacity = capacity(&root).ok();
+            output(
+                json!({"systemd_user_manager":check_systemd().is_ok(),"boot_id":boot()?,"capacity":capacity,"logout_survival":"requires user manager lingering; verify on host","host":host,"warnings":host::warnings(capacity, &host)}),
+            )
+        }
         Cmd::Workers {
             command: Workers::Add { id, executable },
         } => {

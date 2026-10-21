@@ -452,6 +452,32 @@ class Review(Node):
         self.assertEqual(repaired["state"], "interrupted")
         self.assertEqual(json.loads((self.root / "slots.json").read_text()), {})
 
+    def test_doctor_reports_the_host_and_init_warns_about_capacity(self):
+        doctor = self.call("node", "doctor")
+        host = doctor["host"]
+        self.assertEqual(set(host), {
+            "logical_cpus", "affinity_cpus", "cgroup_cpu_limit", "usable_cpus", "physical_cores",
+            "numa_nodes", "memory_total_bytes", "memory_available_bytes",
+            "cgroup_memory_limit_bytes", "usable_memory_bytes"})
+        usable = host["usable_cpus"]
+        self.assertGreaterEqual(usable, 1)
+        self.assertLessEqual(usable, host["affinity_cpus"] or usable)
+        self.assertEqual(usable, len(os.sched_getaffinity(0)) if host["cgroup_cpu_limit"] is None
+                         else max(1, int(min(host["affinity_cpus"], host["cgroup_cpu_limit"]))))
+        if host["usable_memory_bytes"] is not None and host["memory_available_bytes"] is not None:
+            self.assertLessEqual(host["usable_memory_bytes"], host["memory_available_bytes"])
+        # The node has capacity 8: a warning exactly when fewer CPUs are usable.
+        self.assertEqual(bool(doctor["warnings"]), usable < 8, doctor["warnings"])
+        # A capacity beyond the usable CPUs is a warning, not an error.
+        root = self.base / "wide"
+        result = subprocess.run([str(RUN), "--root", str(root), "node", "init", "--capacity", "100000"],
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        init = json.loads(result.stdout)
+        self.assertEqual(init["capacity"], 100000)
+        self.assertEqual(init["warnings"], [
+            f"capacity 100000 exceeds the {usable} CPUs usable by this process (affinity or cgroup quota)"])
+
     def test_a_protocol_0_1_worker_still_runs(self):
         self.assertEqual(self.call("workers", "list")["fake"]["description"]["protocol"],
                          "optimization.worker/0.1")

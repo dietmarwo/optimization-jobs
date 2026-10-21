@@ -289,6 +289,13 @@ class Protocol(Server):
         self.assertNotIn("resultType", tools)
         node = self.client.ok("describe_node", modern=False)
         self.assertEqual(node["capacity"], 8)
+        # The host as node doctor reports it, with its warnings.
+        doctor = self.call("node", "doctor")
+        self.assertEqual((node["host"], node["warnings"]), (doctor["host"] | {
+            "memory_available_bytes": node["host"]["memory_available_bytes"],
+            "usable_memory_bytes": node["host"]["usable_memory_bytes"]}, doctor["warnings"]))
+        self.assertGreaterEqual(node["host"]["usable_cpus"], 1)
+        self.assertEqual(bool(node["warnings"]), node["host"]["usable_cpus"] < 8)
         # Legacy clients have no tasks: submit_job returns the handle.
         handle = self.client.ok("submit_job", {"job": fake("legacy", {"mode": "complete"})}, modern=False)
         self.assertEqual(handle["job_id"], job_id("legacy"))
