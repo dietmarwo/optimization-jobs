@@ -10,6 +10,18 @@ revision. No version has been published to crates.io yet.
 
 ### Added
 
+Findings of the rereview of agent workflows (October 2026):
+
+- `ai-context.md` (and the copy `get_guide` serves): the Pareto rows call
+  scalarization results candidates (R5). They cover ε-constraint ties (with
+  a counterexample), supported versus unsupported points of weighted sums,
+  degenerate faces, first-order points of a scalarized NLP versus Pareto
+  optimality, and the dominance filtering and per-point evidence to report.
+- The shared harness checks that each worker's schema and the worker agree
+  when an optional top-level payload field is `null`. SQP-craft's schemas
+  rejected a `null` the worker accepts (R4). The guide states the
+  convention.
+
 Findings of the October 2026 review of agent discovery:
 
 - `ai-context.md`, the entry point for AI agents, reworked:
