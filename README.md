@@ -87,13 +87,16 @@ initialized node with registered workers, for example Claude Code:
 claude mcp add optimization-jobs -- "$PWD/target/release/optimization-mcp" --root /tmp/node
 ```
 
-Its tools describe the node and its workers, validate, submit, follow, cancel
-and repair jobs, and read results and artifacts, such as a running surrogate
-job's evaluation log in pages; with the MCP Tasks extension, a submitted
-job is a task that completes with the job's result. Jobs outlive the server.
-The server cannot register workers or change the node. See
-[Agents and MCP](docs/job-api.md#agents-and-mcp) and, for agents,
-[`ai-context.md`](ai-context.md).
+Its fifteen tools serve the guide for agents (`get_guide`, this repository's
+[`ai-context.md`](ai-context.md)), describe the node (with the CPUs and
+memory the host gives it) and its workers (with JSON Schemas of their
+payloads and runnable examples), store input files such as a new LP model
+(`put_input`), validate, submit, follow, cancel and repair jobs, and read
+results and artifacts, such as a running surrogate job's evaluation log in
+pages; with the MCP Tasks extension, a submitted job is a task that
+completes with the job's result. Jobs outlive the server. The server cannot
+register workers or change the node. See
+[Agents and MCP](docs/job-api.md#agents-and-mcp).
 
 ## Depending on this repository
 

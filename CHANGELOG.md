@@ -10,6 +10,44 @@ revision. No version has been published to crates.io yet.
 
 ### Added
 
+Findings of the October 2026 review of agent discovery:
+
+- MCP `put_input` (F02): an MCP-only client stores the input files of a job,
+  such as a new LP model, as `content` (UTF-8 text), `content_base64` or
+  `from_artifact` (a file of an existing job), in the node's
+  content-addressed store `NODE/mcp/inputs/<sha256>`, and gets `file`,
+  `sha256`, `bytes` and `input_dir` for the job. Stored inputs share the
+  directory, so one job can use several. At most 64 MiB per input; the new
+  option `--input-store-bytes` (1 GiB) bounds the store, with the new tool
+  error `input_store_full`; a starting server removes files unused for 7
+  days.
+- MCP `get_guide`: `ai-context.md`, whole or one section by heading, for
+  clients that cannot read the repository. The crate carries a copy
+  (`crates/optimization-runner/guide/ai-context.md`, kept identical by a
+  test). The server instructions send agents without a chosen solver or
+  profile there first.
+- `node doctor` reports the host (F04): online, affinity and usable CPUs,
+  the cgroup CPU quota and memory limit (v1 or v2), physical cores, NUMA
+  nodes, total, available and usable memory, with `null` for what is
+  unavailable, and `warnings`, such as a capacity above the usable CPUs.
+  `node init --capacity N` prints the same warning. MCP `describe_node`
+  includes both.
+- The discovery convention (F01): a worker's `describe` lists
+  `payload_schemas` (a strict JSON Schema per profile), `input_schemas` and
+  runnable `examples`, documented in the guide's "Discovery for agents".
+  The shared harness checks it strictly for every real worker (F16):
+  schemas and examples for every profile, examples and their inputs valid
+  against them, every example a job that validates, runs and completes, and
+  every payload of the shared scripts valid against its schema
+  (`scripts/job-api/discovery.py`). `fake_worker.py` lists schemas and
+  examples, so these checks and the MCP-only flow (`describe_worker`,
+  `put_input`, `validate_job`, `submit_job`, `wait_job`, `get_result`) run
+  without real workers; CI runs that flow for every profile of each real
+  worker. The mixed-node CI job fails until the three workers list these
+  keys on their `main`.
+
+Earlier additions:
+
 - Worker-declared artifacts (prerequisites of `fcmaes.surrogate/1`, #5):
   - `artifact::declare` lets a task declare extra files of its attempt, such
     as an evaluation log (`records`: checked records) or a warm-start
@@ -32,9 +70,10 @@ revision. No version has been published to crates.io yet.
     artifact as input (`input_dir` set to the earlier job's directory).
 - `optimization-mcp`, an MCP server over stdio for one node, as a second
   binary of `optimization-runner`, so `cargo build -p optimization-runner`
-  builds it in every worker repository (#2). Thirteen tools describe the node
-  and its workers, validate, submit, wait for, cancel, kill and repair jobs,
-  and read their events, artifacts and results (a summary by default). Each
+  builds it in every worker repository (#2). Fifteen tools serve the guide,
+  describe the node and its workers, store input files, validate, submit,
+  wait for, cancel, kill and repair jobs, and read their events, artifacts
+  and results (a summary by default). Each
   tool drives the `optimization-run` command line. The server is dual-era:
   MCP 2026-07-28 statelessly, with `server/discover` and the Tasks extension
   (`submit_job` returns a task that completes with the job's result, task
@@ -65,6 +104,8 @@ revision. No version has been published to crates.io yet.
 
 ### Changed
 
+- `workers add` accepts a `describe` output of up to 1 MiB (was 64 KiB): payload
+  schemas and examples make it long.
 - The shared job API moved here from fcmaes-rust, LP-IP-craft and SQP-craft,
   which carried identical copies (#1): `optimization-job-api` and
   `optimization-runner` 0.2.0 with their tests, the guide, the plan, the
