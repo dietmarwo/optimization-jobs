@@ -132,5 +132,6 @@ jobs:
             ln -sf "$PWD/target/release/optimization-run" "$PWD/target/release/optimization-mcp" \
               "$RUNNER_TEMP/$worker" "$target/"
             JOB_API_TARGET="$target" python3 scripts/job-api/test_mcp.py \
-              Jobs.test_a_real_worker_reports_claims_and_evidence
+              Jobs.test_a_real_worker_reports_claims_and_evidence \
+              Jobs.test_a_real_worker_runs_its_examples_over_mcp_only
           done

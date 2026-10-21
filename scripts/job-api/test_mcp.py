@@ -15,10 +15,12 @@ Both protocol eras are covered: 2026-07-28, stateless with per-request
 `initialize` handshake. JOB_API_REQUIRE_WORKER=1 makes the real-worker test
 fail instead of skipping when no real worker is found.
 """
+import base64
 import hashlib
 import json
 import os
 import queue
+import re
 import signal
 import subprocess
 import sys
@@ -29,6 +31,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import discovery  # noqa: E402
 from test_review import LP_MODEL, REAL, proc_entry, processes  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
@@ -36,12 +39,13 @@ TARGET = Path(os.environ.get("JOB_API_TARGET", REPO / "target/release"))
 RUN = TARGET / "optimization-run"
 MCP = TARGET / "optimization-mcp"
 FAKE = Path(__file__).resolve().parent / "fake_worker.py"
+GUIDE = REPO / "crates/optimization-runner/guide/ai-context.md"
 TASKS = "io.modelcontextprotocol/tasks"
 VERSION = "2026-07-28"
 TERMINAL = {"completed", "failed", "cancelled", "timed_out", "interrupted"}
 WORKER = next((name for name, (binary, _, _) in REAL.items() if (TARGET / binary).exists()), None)
-TOOLS = ["describe_node", "describe_worker", "validate_job", "submit_job", "get_job", "wait_job",
-         "get_result", "get_events", "get_artifact", "list_jobs", "cancel_job", "kill_job",
+TOOLS = ["get_guide", "describe_node", "describe_worker", "put_input", "validate_job", "submit_job", "get_job",
+         "wait_job", "get_result", "get_events", "get_artifact", "list_jobs", "cancel_job", "kill_job",
          "repair_job"]
 
 
@@ -56,6 +60,44 @@ def fake(key, payload, slots=1, wall=60.0):
         "resources": {"cpu_slots": slots, "outer_workers": 1, "inner_threads": 1},
         "limits": {"wall_time_seconds": wall, "grace_seconds": 0.5}, "inputs": [],
     }
+
+
+def mcp_only(client, worker, example, key):
+    """The arguments of validate_job and submit_job for an example of
+    describe_worker, built as a client without files of its own builds them:
+    each input goes through put_input, which gives its file and SHA-256, and
+    the store is the job's input_dir."""
+    inputs, arguments = [], {}
+    for declared in example["inputs"]:
+        stored = client.ok("put_input", {"content": discovery.input_bytes(declared).decode()})
+        inputs.append({"name": declared["name"], "file": stored["file"], "sha256": stored["sha256"]})
+        arguments["input_dir"] = stored["input_dir"]
+    arguments["job"] = discovery.envelope(example, worker, key, inputs)
+    return arguments
+
+
+def guide_headings(text):
+    """(line number, level, text) of the Markdown headings outside fenced
+    code blocks, whose shell comments start with # too."""
+    found, fenced = [], False
+    for number, line in enumerate(text.splitlines()):
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+        elif not fenced and (match := re.match(r"(#{1,6})[ \t]+(.+?)[ \t]*$", line)):
+            found.append((number, len(match.group(1)), match.group(2)))
+    return found
+
+
+def guide_section(text, query):
+    """The first section whose heading contains query, case-insensitively,
+    through to the next heading of the same or a higher level."""
+    lines = text.splitlines(keepends=True)
+    headings = guide_headings(text)
+    for k, (number, level, title) in enumerate(headings):
+        if query.lower() in title.lower():
+            end = next((n for n, other, _ in headings[k + 1:] if other <= level), len(lines))
+            return title, "".join(lines[number:end]).rstrip() + "\n"
+    return None
 
 
 def launcher(root):
@@ -245,6 +287,7 @@ class Protocol(Server):
         self.assertIn("tools", result["capabilities"])
         self.assertEqual(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "optimization-mcp")
         self.assertIn("submit_job", result["instructions"])
+        self.assertIn("call get_guide first", result["instructions"])
         # An unsupported version is a modern error naming the supported ones.
         ident = self.client.start("server/discover", modern=False, extra_meta={
             "io.modelcontextprotocol/protocolVersion": "1900-01-01",
@@ -289,6 +332,13 @@ class Protocol(Server):
         self.assertNotIn("resultType", tools)
         node = self.client.ok("describe_node", modern=False)
         self.assertEqual(node["capacity"], 8)
+        # The host as node doctor reports it, with its warnings.
+        doctor = self.call("node", "doctor")
+        self.assertEqual((node["host"], node["warnings"]), (doctor["host"] | {
+            "memory_available_bytes": node["host"]["memory_available_bytes"],
+            "usable_memory_bytes": node["host"]["usable_memory_bytes"]}, doctor["warnings"]))
+        self.assertGreaterEqual(node["host"]["usable_cpus"], 1)
+        self.assertEqual(bool(node["warnings"]), node["host"]["usable_cpus"] < 8)
         # Legacy clients have no tasks: submit_job returns the handle.
         handle = self.client.ok("submit_job", {"job": fake("legacy", {"mode": "complete"})}, modern=False)
         self.assertEqual(handle["job_id"], job_id("legacy"))
@@ -458,6 +508,36 @@ class Jobs(Server):
         self.assertEqual(ident, job_id("spec-path"))
         self.assertEqual(self.wait(ident)["state"], "completed")
 
+    def run_examples(self, worker):
+        """describe_worker, then each example through put_input, validate_job,
+        submit_job, wait_job and get_result: MCP alone (review F01, F02)."""
+        description = self.client.ok("describe_worker", {"worker": worker})
+        examples = description.get("examples") or []
+        self.assertEqual([p for p in description["profiles"] if not any(e.get("profile") == p for e in examples)],
+                         [], f"profiles of {worker} without an example")
+        for k, example in enumerate(examples):
+            with self.subTest(worker=worker, example=k, profile=example["profile"]):
+                arguments = mcp_only(self.client, worker, example, f"mcp-only-{worker}-{k}")
+                self.assertGreaterEqual(self.client.ok("validate_job", arguments)["resolved"]["task_count"], 1)
+                ident = self.client.ok("submit_job", arguments)["job_id"]
+                self.assertEqual(self.wait(ident, timeout=300)["state"], "completed", example.get("description"))
+                summary = self.client.ok("get_result", {"job_id": ident})
+                self.assertEqual(summary["status"], "completed")
+                self.assertGreaterEqual(summary["completed_tasks"], 1)
+                for declared in example["inputs"]:
+                    staged = self.root / "jobs" / ident / "inputs" / declared["name"]
+                    self.assertEqual(staged.read_bytes(), discovery.input_bytes(declared))
+
+    def test_an_mcp_only_client_runs_every_example(self):
+        self.run_examples("fake")
+
+    def test_a_real_worker_runs_its_examples_over_mcp_only(self):
+        if not WORKER:
+            if os.environ.get("JOB_API_REQUIRE_WORKER") == "1":
+                self.fail("no fcmaes, LP-IP or SQP worker in JOB_API_TARGET (JOB_API_REQUIRE_WORKER=1)")
+            self.skipTest("no fcmaes, LP-IP or SQP worker in JOB_API_TARGET")
+        self.run_examples(WORKER)
+
     def test_a_real_worker_reports_claims_and_evidence(self):
         if not WORKER:
             if os.environ.get("JOB_API_REQUIRE_WORKER") == "1":
@@ -481,6 +561,156 @@ class Jobs(Server):
         task = summary["tasks"][0]
         self.assertIn(task["evidence"], {"claimed", "rechecked", "certified"})
         self.assertNotEqual(task["claim"], "none")
+
+
+class Guide(Server):
+    def test_the_guide_whole_and_by_section(self):
+        text = GUIDE.read_text()
+        whole = self.client.ok("get_guide")
+        self.assertEqual((whole["guide"], whole["content"]), ("ai-context.md", text))
+        self.assertTrue(whole["base_url"].startswith("https://github.com/dietmarwo/optimization-jobs/"))
+        headings = guide_headings(text)
+        for level in (2, 3):
+            title = next(t for _, other, t in headings if other == level)
+            expected = guide_section(text, title)
+            part = self.client.ok("get_guide", {"section": title.upper()})
+            self.assertEqual((part["section"], part["content"]), expected)
+            self.assertTrue(part["content"].startswith("#" * level + " "))
+        # A heading of a later level-2 section, by a word of it in lower case.
+        title = [t for _, other, t in headings if other == 2][-1]
+        word = max(title.split(), key=len).lower()
+        part = self.client.ok("get_guide", {"section": word})
+        self.assertEqual((part["section"], part["content"]), guide_section(text, word))
+        error = self.client.error("get_guide", {"section": "no heading has this text"})
+        self.assertEqual(error["code"], "invalid_arguments")
+        for _, level, title in headings:
+            self.assertIn("#" * level + " " + title, error["message"])
+        self.assertEqual(self.client.error("get_guide", {"section": ""})["code"], "invalid_arguments")
+        self.assertEqual(self.client.error("get_guide", {"section": 2})["code"], "invalid_arguments")
+
+
+class Inputs(Server):
+    """put_input: the node's content-addressed input store (review F02)."""
+
+    def store(self):
+        return self.root / "mcp" / "inputs"
+
+    def test_stored_inputs_are_named_by_their_sha256_and_used_by_jobs(self):
+        text = json.dumps({"values": [1.0, 2.0]})
+        digest = hashlib.sha256(text.encode()).hexdigest()
+        stored = self.client.ok("put_input", {"content": text})
+        self.assertEqual(stored, {"file": digest, "sha256": digest, "bytes": len(text),
+                                  "input_dir": str(self.store())})
+        self.assertEqual((self.store() / digest).read_text(), text)
+        # Bytes, here not UTF-8, and text that is not ASCII.
+        blob = bytes(range(256))
+        other = self.client.ok("put_input", {"content_base64": base64.b64encode(blob).decode()})
+        self.assertEqual((other["sha256"], other["bytes"], other["input_dir"]),
+                         (hashlib.sha256(blob).hexdigest(), 256, stored["input_dir"]))
+        accents = self.client.ok("put_input", {"content": "Größe\n"})
+        self.assertEqual((self.store() / accents["file"]).read_bytes(), "Größe\n".encode())
+        self.assertEqual(accents["bytes"], 8)
+        # Storing again is the same answer and makes the file fresh again.
+        old = time.time() - 3 * 86400
+        os.utime(self.store() / digest, (old, old))
+        self.assertEqual(self.client.ok("put_input", {"content": text}), stored)
+        self.assertGreater((self.store() / digest).stat().st_mtime, time.time() - 60)
+        # A damaged file is replaced.
+        (self.store() / digest).write_text("damaged")
+        self.assertEqual(self.client.ok("put_input", {"content": text}), stored)
+        self.assertEqual((self.store() / digest).read_text(), text)
+        self.assertEqual(sorted(p.name for p in self.store().iterdir()),
+                         sorted([digest, other["file"], accents["file"]]))
+        # One job reads several stored inputs: they share the input_dir.
+        job = fake("stored", {"mode": "complete"})
+        job["inputs"] = [{"name": "data", "file": stored["file"], "sha256": stored["sha256"]},
+                         {"name": "blob", "file": other["file"], "sha256": other["sha256"]}]
+        arguments = {"job": job, "input_dir": stored["input_dir"]}
+        self.assertTrue(self.client.ok("validate_job", arguments)["valid"])
+        ident = self.client.ok("submit_job", arguments)["job_id"]
+        self.assertEqual(self.wait(ident)["state"], "completed")
+        staged = self.root / "jobs" / ident / "inputs"
+        self.assertEqual(((staged / "data").read_text(), (staged / "blob").read_bytes()), (text, blob))
+
+    def test_arguments_limits_and_errors(self):
+        unknown = {"job_id": "0" * 32, "name": "results"}
+        for arguments in [{}, {"content": "a", "content_base64": "YQ=="}, {"content": 1},
+                          {"content_base64": "YQ="}, {"content_base64": "not base64!"},
+                          {"from_artifact": "results"}, {"from_artifact": {"job_id": "0" * 32}},
+                          {"from_artifact": {**unknown, "extra": 1}},
+                          {"from_artifact": {**unknown, "job_id": "nothex"}}]:
+            with self.subTest(arguments=arguments):
+                error = self.client.error("put_input", arguments)
+                self.assertEqual((error["code"], error["retryable"]), ("invalid_arguments", False))
+        self.assertEqual(self.client.error("put_input", {"from_artifact": unknown})["code"], "unknown_job")
+        self.assertFalse(any(self.store().iterdir()) if self.store().exists() else False)
+        # The store's total size limit; content already stored needs no room.
+        small = self.connect("--input-store-bytes", "100")
+        first = small.ok("put_input", {"content": "x" * 60})
+        error = small.error("put_input", {"content": "y" * 60})
+        self.assertEqual((error["code"], error["retryable"]), ("input_store_full", False))
+        self.assertIn("holds 60 bytes; 60 more would exceed its limit of 100 bytes", error["message"])
+        self.assertEqual(small.ok("put_input", {"content": "x" * 60}), first)
+        self.assertEqual([p.name for p in self.store().iterdir()], [first["file"]])
+
+    def test_artifacts_become_inputs_of_later_jobs(self):
+        ident = self.client.ok("submit_job", {"job": fake("artifacts", {"mode": "artifacts"})})["job_id"]
+        directory = self.root / "jobs" / ident
+        deadline = time.time() + 20
+        while not (directory / "snapshot.json").exists() and time.time() < deadline:
+            time.sleep(0.05)
+        # While the job runs, a records artifact is copied up to its last
+        # complete record, as a whole read of get_artifact returns it.
+        log_file = directory / "log.jsonl"
+        complete = log_file.read_bytes()
+        with open(log_file, "a") as f:
+            f.write('{"schema_version":1,"chec')
+        log = self.client.ok("put_input", {"from_artifact": {"job_id": ident, "name": "log"}})
+        whole = self.client.ok("get_artifact", {"job_id": ident, "name": "log"})
+        self.assertEqual((log["sha256"], log["bytes"]), (whole["sha256"], whole["bytes"]))
+        self.assertEqual((self.store() / log["file"]).read_bytes(), complete)
+        log_file.write_bytes(complete)
+        self.assertEqual(self.client.error("put_input", {"from_artifact": {"job_id": ident, "name": "none"}})["code"],
+                         "unknown_artifact")
+        # An artifact over the 64 MiB input limit (sparse: it takes no disk).
+        snapshot = directory / "snapshot.json"
+        content = snapshot.read_bytes()
+        os.truncate(snapshot, 64 * 1024 * 1024 + 1)
+        error = self.client.error("put_input", {"from_artifact": {"job_id": ident, "name": "snapshot"}})
+        self.assertEqual(error["code"], "invalid_arguments")
+        self.assertIn("64 MiB", error["message"])
+        snapshot.write_bytes(content)
+        (directory / "release").touch()
+        self.assertEqual(self.wait(ident)["state"], "completed")
+        # After the end: the file the manifest lists, checked against its SHA-256.
+        index = self.client.ok("get_result", {"job_id": ident})["artifact_index"]
+        copied = self.client.ok("put_input", {"from_artifact": {"job_id": ident, "name": "snapshot"}})
+        self.assertEqual((copied["sha256"], copied["bytes"]),
+                         (index["snapshot"]["sha256"], index["snapshot"]["bytes"]))
+        # The copy and a new input in one later job.
+        extra = self.client.ok("put_input", {"content": "settings"})
+        job = fake("continued", {"mode": "complete"})
+        job["inputs"] = [{"name": "previous", "file": copied["file"], "sha256": copied["sha256"]},
+                         {"name": "settings", "file": extra["file"], "sha256": extra["sha256"]}]
+        follow = self.client.ok("submit_job", {"job": job, "input_dir": copied["input_dir"]})["job_id"]
+        self.assertEqual(self.wait(follow)["state"], "completed")
+        self.assertEqual((self.root / "jobs" / follow / "inputs" / "previous").read_bytes(),
+                         snapshot.read_bytes())
+        snapshot.write_text("{}")
+        error = self.client.error("put_input", {"from_artifact": {"job_id": ident, "name": "snapshot"}})
+        self.assertIn("changed after the job ended", error["message"])
+
+    def test_a_starting_server_removes_inputs_unused_for_a_week(self):
+        kept = self.client.ok("put_input", {"content": "kept"})
+        old = self.client.ok("put_input", {"content": "old"})
+        week = time.time() - 7 * 86400 - 600
+        os.utime(self.store() / old["file"], (week, week))
+        leftover = self.store() / f".{old['file']}.1.tmp"
+        leftover.write_text("partial")
+        os.utime(leftover, (week, week))
+        fresh = self.connect()
+        self.assertEqual(fresh.request("tools/list")["result"]["resultType"], "complete")
+        self.assertEqual([p.name for p in self.store().iterdir()], [kept["file"]])
 
 
 class Tasks(Server):

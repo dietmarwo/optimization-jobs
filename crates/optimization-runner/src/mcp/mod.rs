@@ -13,6 +13,8 @@
 //!
 //! See `docs/job-api.md#agents-and-mcp` for the tools and their mapping onto
 //! the runner.
+mod guide;
+mod inputs;
 mod tasks;
 mod tools;
 
@@ -65,9 +67,13 @@ const MAX_VALIDATIONS: usize = 4;
 const CACHE_MS: u64 = 3_600_000;
 
 const INSTRUCTIONS: &str = "Runs durable optimization jobs on this node with its registered native \
-workers (fcmaes, LP-IP, SQP and application workers). Start with describe_node, then \
-describe_worker for the profiles and options of a worker. Write an optimization.job/0.1 \
-envelope, check it with validate_job and start it with submit_job. The request_key makes \
+workers (fcmaes, LP-IP, SQP and application workers). If no solver or profile has been chosen \
+yet, call get_guide first: it says which solver and profile fit the problem (its section \
+argument returns one part). Then call describe_node, and describe_worker for a worker's profiles \
+and options, the JSON Schemas of its payloads and runnable examples. Write an \
+optimization.job/0.1 envelope, check it with validate_job and start it with submit_job. Input \
+files that are not on this machine yet, such as a new LP model, go through put_input, which \
+returns the file, sha256 and input_dir for the job. The request_key makes \
 submission idempotent: the same key with the same content returns the existing job, other \
 content under that key is rejected, so choose a new key for a new job. Jobs run detached from \
 this server and survive its restart. Follow a job with wait_job or get_job and read get_result \
@@ -102,6 +108,10 @@ struct Args {
     /// default the working directory.
     #[arg(long)]
     input_dir: Option<PathBuf>,
+    /// Largest total size of the input store of put_input (NODE/mcp/inputs),
+    /// in bytes.
+    #[arg(long, default_value_t = inputs::DEFAULT_STORE_BYTES)]
+    input_store_bytes: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -124,6 +134,8 @@ pub struct Server {
     pub runner: PathBuf,
     pub launch: Launch,
     pub input_dir: PathBuf,
+    /// Limit of the input store's total size.
+    pub input_store_bytes: u64,
     out: Mutex<io::Stdout>,
     inflight: Mutex<HashMap<String, Arc<AtomicBool>>>,
     initialized: AtomicBool,
@@ -774,6 +786,7 @@ pub fn main() {
         .and_then(std::fs::canonicalize)
         .unwrap_or_else(|e| fail(format!("input directory: {e}")));
     tools::clean_staging(&root);
+    inputs::clean(&root);
     eprintln!(
         "optimization-mcp {}: node {}, runner {}, launch {}",
         env!("CARGO_PKG_VERSION"),
@@ -786,6 +799,7 @@ pub fn main() {
         runner,
         launch: args.launch,
         input_dir,
+        input_store_bytes: args.input_store_bytes,
         out: Mutex::new(io::stdout()),
         inflight: Mutex::new(HashMap::new()),
         initialized: AtomicBool::new(false),

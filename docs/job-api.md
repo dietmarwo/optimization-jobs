@@ -78,8 +78,9 @@ rules ([fcmaes](https://github.com/dietmarwo/fcmaes-rust/blob/main/ai-context.md
 | Check given points, recheck a claim | `fcmaes.evaluate/1`, `lp-ip.evaluate/1`, `sqp.evaluate/1` | As for the solve profiles |
 
 `describe_worker` (MCP) or `problems describe` (CLI) lists each worker's
-registered models, options and claims; a profile can only run what a worker
-registered. Combinations are separate jobs that pass points on explicitly.
+registered models, options and claims, the JSON Schemas of its payloads and
+runnable examples ([Discovery for agents](#discovery-for-agents)); a profile
+can only run what a worker registered. Combinations are separate jobs that pass points on explicitly.
 For example, the best points of an `fcmaes.retry/1` job can be the `starts`
 of an `sqp.solve/1` job when both workers register the same model, and a
 result's points can be rechecked with the matching `evaluate` profile.
@@ -103,10 +104,45 @@ cargo build --release --locked -p optimization-runner -p WORKER_PACKAGE
 
 The same build makes `optimization-mcp`, the MCP server of
 [Agents and MCP](#agents-and-mcp). `describe` on a worker prints its accepted profiles, registered models, engine
-version, resource limits, claims and recovery capabilities. Executables are
+version, resource limits, claims and recovery capabilities, and the schemas
+and examples of [Discovery for agents](#discovery-for-agents); registration
+reads at most 1 MiB of it. Executables are
 trusted local programs: registration is explicit, and jobs cannot supply
 executable paths or shell commands. This is a local single-user runner, not a
 multi-tenant sandbox or remote service.
+
+### Discovery for agents
+
+A client must be able to build and validate one job per profile from
+`describe` (`problems describe`, MCP `describe_worker`) alone, without a
+checkout of the worker's repository. Each worker lists three keys for that:
+
+| Key | Content |
+| --- | --- |
+| `payload_schemas` | For each profile in `profiles`, a strict JSON Schema (draft 2020-12, with `$schema` and an `$id` such as `urn:optimization-jobs:payload:lp-ip.solve/1`) of its payload: `additionalProperties: false` where the worker rejects unknown fields, `required` as the worker requires, types, enums and simple ranges. Rules a schema cannot express (cross-field rules, per-model dimensions, `inner_threads` limits) are in a `$comment` |
+| `input_schemas` | Only for profiles that read input files of a fixed format: for each format, such as `lp-ip.model/1`, its JSON Schema |
+| `examples` | At least one runnable example per profile, and one for each payload shape (a model with data inputs, say) |
+
+```json
+"examples": [{"profile": "lp-ip.solve/1", "description": "one short line",
+  "resources": {"cpu_slots": 1, "outer_workers": 1, "inner_threads": 1},
+  "limits": {"wall_time_seconds": 30.0, "grace_seconds": 1.0},
+  "payload": {"model_input": "model", "...": "..."},
+  "inputs": [{"name": "model", "file": "model.json", "format": "lp-ip.model/1", "content": {"...": "..."}}]}]
+```
+
+An example input holds a JSON value in `content` or a UTF-8 string
+(CSV and other text) in `content_text`; `format`, if present, names a key of
+`input_schemas`. A hash is never part of an example: the client writes each
+input with any JSON serializer, hashes the bytes it wrote, and turns the
+example into a job by adding `schema_version` (`optimization.job/0.1`), a
+fresh `request_key`, the registered worker ID and `payload_schema` (the
+example's `profile`). That job passes `validate` and `run` on a one-slot
+node, unless its profile needs more, and completes with at least one task
+in a few seconds. Over MCP, `put_input` stores each input and returns its
+file and SHA-256 ([Tools](#tools)). Every payload a worker accepts must
+validate against its schema; the worker's own tests and this repository's
+harness check it ([Extending and testing](#extending-and-testing)).
 
 ## Envelope
 
@@ -189,6 +225,28 @@ Supervisor, I/O and cancellation-monitor threads also exist. This is cooperative
 accounting for these adapters, not CPU affinity or a kernel cgroup quota.
 Small kernels may stay serial. No performance improvement is claimed from
 adding this API.
+
+`node doctor` reports in `host` what the host gives the runner's process,
+which its workers inherit, with null for anything it cannot read:
+
+| Field | Meaning and source |
+| --- | --- |
+| `logical_cpus` | Online CPUs (`/sys/devices/system/cpu/online`) |
+| `affinity_cpus` | CPUs of the affinity mask (`Cpus_allowed_list` in `/proc/self/status`) |
+| `cgroup_cpu_limit` | The cgroup CPU quota in CPUs (v2 `cpu.max`, v1 `cpu.cfs_quota_us` / `cpu.cfs_period_us`), the most restrictive from the process's cgroup to the root |
+| `usable_cpus` | `max(1, floor(min(affinity_cpus, cgroup_cpu_limit)))` |
+| `physical_cores` | Distinct (package, core) pairs among the allowed CPUs (sysfs `topology`) |
+| `numa_nodes` | `/sys/devices/system/node/node*` |
+| `memory_total_bytes`, `memory_available_bytes` | `MemTotal` and `MemAvailable` of `/proc/meminfo` |
+| `cgroup_memory_limit_bytes` | v2 `memory.max`, v1 `memory.limit_in_bytes`, the most restrictive on the path; null without a limit |
+| `usable_memory_bytes` | `min(memory_available_bytes, limit - usage)` over the cgroups with a limit |
+
+Its `warnings` include a capacity above `usable_cpus` ("capacity 64 exceeds
+the 8 CPUs usable by this process (affinity or cgroup quota)"). `node init
+--capacity N` prints the same warning in its `warnings` but initializes the
+node: its owner may mean it. LP and SQP inner threads beyond
+`physical_cores` share cores. MCP `describe_node` includes `host` and
+`warnings`.
 
 ## Run, inspect and stop
 
@@ -504,8 +562,10 @@ An artifact can be an input of a later job, which is how a run continues
 (the surrogate profile's warm start, for example): the input names the
 artifact's `file` with the SHA-256 from `runner.artifact_index`. Over MCP,
 pass the earlier job's `directory` (from `get_job` or `get_result`) as
-`input_dir`; with the CLI, copy the file next to the job file. An input file
-holds at most 64 MiB.
+`input_dir`, or, to combine it with other inputs, store it with `put_input`
+and `from_artifact` ([Input files and the guide](#input-files-and-the-guide));
+with the CLI, copy the file next to the job file. An input file holds at
+most 64 MiB.
 
 `compare` supports the legacy fcmaes behavior. Common results require identical
 resolved experiment digests and payload profiles and never select a winner
@@ -544,16 +604,22 @@ claude mcp add optimization-jobs -- /abs/target/release/optimization-mcp --root 
 The second form fits clients configured with an `mcpServers` file, such as
 Claude Desktop. The options are `--root` (or `OPTIMIZATION_RUN_ROOT`), the node;
 `--runner`, the `optimization-run` executable (by default the one next to the
-server); `--launch process|systemd` (see below); and `--input-dir`, the
+server); `--launch process|systemd` (see below); `--input-dir`, the
 directory that relative input files of inline jobs are read from (by default
-the working directory). The server logs one line to stderr when it starts.
+the working directory); and `--input-store-bytes`, the size limit of the
+[input store](#input-files-and-the-guide) (1 GiB by default). The server
+logs one line to stderr when it starts.
 
 ### Tools
 
+The server has fifteen tools:
+
 | Tool | Runner command | Answer |
 | --- | --- | --- |
-| `describe_node` | `node doctor`, `workers list` | Capacity, launch mode, the workers with their profiles and builds |
-| `describe_worker` | `problems describe` | The worker's full description: profiles, models, options, claims |
+| `get_guide` | none (a copy of `ai-context.md` in the server) | The guide that chooses a solver and profile, whole or one section; call it first when none is chosen |
+| `describe_node` | `node doctor`, `workers list` | Capacity, launch mode, the host's CPUs and memory with warnings, the workers with their profiles and builds |
+| `describe_worker` | `problems describe` | The worker's full description: profiles, models, options, claims, payload schemas and runnable examples |
+| `put_input` | none (the input store); `jobs get` for an artifact | `file`, `sha256`, `bytes` and `input_dir` of a stored input file |
 | `validate_job` | `validate` | The resolved job with its `task_count`, or `invalid_job` |
 | `submit_job` | `run` (process) or `submit` (systemd) | The job's handle once it exists; a task for clients with the Tasks extension |
 | `get_job` | `jobs get` | State, progress, directory, `artifact_index`, `observed_state` |
@@ -579,10 +645,44 @@ one of the [runner's codes](#errors) or one of these:
 
 | Code | Meaning | What helps |
 | --- | --- | --- |
-| `invalid_arguments` | The tool's arguments do not fit its input schema | Fix the call |
+| `invalid_arguments` | The tool's arguments do not fit its input schema; invalid base64 or an input over 64 MiB (`put_input`); a section no heading contains (`get_guide`) | Fix the call |
+| `input_store_full` | `put_input` would make the input store larger than `--input-store-bytes`; the message has the numbers | Content already stored needs no room; the node's owner raises the limit or removes files, or a restart removes those unused for 7 days |
 | `not_finished` | `get_result` before the job ended | `wait_job` |
 | `result_too_large` | `full` on a manifest over 1 MiB, or any read of a manifest over 256 MiB | `tasks`, or `run.json` in the job directory |
 | `mcp_timeout` | A runner call, or the confirmation that a submitted job exists, exceeded its deadline; retryable | `get_job` before submitting again |
+
+### Input files and the guide
+
+A client that shares no files with the server stores input files with
+`put_input`. It takes exactly one of `content` (text, stored as its UTF-8
+bytes; a JSON input as the text its serializer wrote), `content_base64`
+(bytes) or `from_artifact` (`{"job_id": ..., "name": ...}`: an
+[artifact](#artifacts) of an existing job as a whole `get_artifact` read
+returns it, checked against the SHA-256 of the sealed manifest). It writes
+the bytes atomically to `NODE/mcp/inputs/SHA256` and returns `file` and
+`sha256` (both that lowercase hex digest), `bytes` and `input_dir`, the
+store's absolute path. The job lists `{"name": ..., "file": FILE,
+"sha256": SHA256}` in `inputs` and is validated and submitted with that
+`input_dir`. All stored inputs share it, so one job can combine a new model
+with an earlier job's artifact. Storing the same content again returns the
+same answer and refreshes the file's modification time.
+
+An input holds at most 64 MiB (invalid base64 or a larger input is
+`invalid_arguments`); a message holds at most 64 MiB too, so
+`content_base64` carries a little under 48 MiB. The store holds at most
+`--input-store-bytes`; storing more fails with `input_store_full`. A server
+that starts removes stored files not stored again for 7 days; jobs copy
+their inputs when they are created, so this never affects a job. The store
+holds data, never code, and a name that is a SHA-256 cannot traverse paths.
+
+`get_guide` returns [`ai-context.md`](../ai-context.md), the entry point
+that chooses among the solvers, to clients that cannot read this
+repository; the server carries a copy. With `section`, it returns the first
+section whose heading contains that text, case-insensitively, through to
+the next heading of the same or a higher level; a text that no heading
+contains is `invalid_arguments`, with the list of headings. The server's
+instructions tell an agent that has not chosen a solver or profile to call
+it first.
 
 ### Protocol versions
 
@@ -618,7 +718,7 @@ one asynchronous tool call:
 | Journals | Results may be deleted after the task's TTL | `ttlMs` is null: tasks do not expire, and the journal stays the durable record |
 | `jobs list` | Removed from the extension | `list_jobs`, scoped to the node |
 | `capacity_exceeded` | Servers should enforce per-requestor limits | A tool error with the slot arithmetic |
-| `describe` | Tool input schemas | The envelope schema in the job tools; `describe_worker` for the profiles |
+| `describe` | Tool input schemas | The envelope schema in the job tools; `describe_worker` for the profiles, their payload schemas and examples |
 | Task notifications | `subscriptions/listen` with `taskIds` | One `notifications/tasks` per status change, checked every 2 s |
 
 A client without the extension uses the handle pattern: `submit_job` returns
@@ -636,10 +736,11 @@ manager, with the caveats of [detached operation](#detached-operation-and-curren
 A killed or restarted server loses only the requests in flight: a new server
 on the same root resolves the same jobs and task IDs. The server keeps its own
 files in `NODE/mcp/`: the task store; staging copies of inline jobs, removed
-once the runner has registered the job; and each launcher's stderr log,
-removed when the launcher succeeds while the server runs. A server that
-starts removes staging copies and empty logs older than a day. A job file
-passed as `spec_path` must be a regular file of at most 64 MiB.
+once the runner has registered the job; each launcher's stderr log,
+removed when the launcher succeeds while the server runs; and the input
+store `inputs/` of `put_input`. A server that starts removes staging copies
+and empty logs older than a day and stored inputs unused for 7 days. A job
+file passed as `spec_path` must be a regular file of at most 64 MiB.
 
 The server bounds what clients make it hold. A message is at most 64 MiB (a
 job's input files are files, not part of the message); a longer line is
@@ -688,7 +789,9 @@ cooperative cancellation and a task-local solve operation. A task must return
 its numerical outcome, with evidence, and work counters; `Outcome::check`
 states the rules. Record a claim that fails your independent check as a
 refutation (`Evidence::refuting`), not as an error. Declare files that agents
-should read, such as logs and snapshots, as [artifacts](#artifacts). The SDK
+should read, such as logs and snapshots, as [artifacts](#artifacts). List a
+payload schema and runnable examples of every profile in `describe`
+([Discovery for agents](#discovery-for-agents)). The SDK
 handles concurrency, journal commits and final manifests. Do not put solver-specific
 assumptions in the runner. Bump a profile version when changing mathematical
 input/result meaning.
@@ -719,12 +822,24 @@ JOB_API_TARGET=$PWD/target/release python3 "$SHARED/scripts/job-api/test_mcp.py"
 ```
 
 The harness auto-detects the workers in `JOB_API_TARGET` and skips
-unavailable solver-specific cases. `test_review.py` holds the runner
+unavailable solver-specific cases. For every real worker, it checks the
+[discovery keys](#discovery-for-agents) strictly (`discovery.py`): a profile
+without a payload schema or an example fails; every schema must be a valid
+draft 2020-12 schema, every example payload and every example input with a
+format must validate, and a payload with an unknown field must not. Every
+example becomes a job (inputs written and hashed, a fresh `request_key`) that
+must validate, run and complete with at least one task, and every payload
+the shared scripts give a real worker must validate against its schema.
+`test_review.py` holds the runner
 regression tests of the 0.1.1 review, the error codes and the schema checks;
-it drives a protocol fixture (`fake_worker.py`, which speaks protocol 0.1) and
-a real worker when one is built. `test_mcp.py` tests the MCP server in both
-protocol eras, with tasks, cancellation, restarts and launch modes, against
-the same fixture and a real worker. Its schema checks need the Python
+it drives a protocol fixture (`fake_worker.py`, which speaks protocol 0.1 and
+lists payload schemas and examples, so the discovery checks run without real
+workers) and a real worker when one is built. `test_mcp.py` tests the MCP
+server in both protocol eras, with tasks, cancellation, restarts, launch
+modes, the input store and the guide, against the same fixture and a real
+worker, and runs every example MCP-only: `describe_worker`, `put_input` for
+its inputs, `validate_job` with the store as `input_dir`, `submit_job`,
+`wait_job` and `get_result`. The schema checks need the Python
 `jsonschema` package; without it they are skipped, unless
 `JOB_API_REQUIRE_SCHEMA=1`, as in CI. This repository's CI runs them with the
 fake worker, again in a nested PID namespace whose /proc belongs to the

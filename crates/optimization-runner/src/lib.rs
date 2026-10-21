@@ -1,4 +1,5 @@
 //! The `optimization-run` runner and the `optimization-mcp` server.
+mod host;
 pub mod mcp;
 
 use clap::{Parser, Subcommand};
@@ -148,6 +149,10 @@ fn install_stop_handlers() {
 }
 /// Kill delay after an immediate stop request.
 const IMMEDIATE_GRACE: Duration = Duration::from_secs(1);
+/// Largest `describe` output a worker may register: its profiles, models
+/// and options, and the JSON Schemas of its payloads and inputs with
+/// runnable examples (docs/job-api.md#discovery-for-agents).
+const MAX_DESCRIPTION: usize = 1 << 20;
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 enum Stop {
     None,
@@ -972,13 +977,20 @@ fn main_result() -> Result<()> {
                 return Err("node already initialized; keep its capacity stable".into());
             }
             write_atomic_json(&root.join("node.json"), &json!({"capacity":c}))?;
-            output(json!({"capacity":c}))
+            // The owner may mean a capacity beyond what this process can use
+            // (another cgroup runs the jobs, say): a warning, not an error.
+            let warnings = host::warnings(Some(c as u64), &host::host());
+            output(json!({"capacity":c,"warnings":warnings}))
         }
         Cmd::Node {
             command: Node::Doctor,
-        } => output(
-            json!({"systemd_user_manager":check_systemd().is_ok(),"boot_id":boot()?,"capacity":capacity(&root).ok(),"logout_survival":"requires user manager lingering; verify on host"}),
-        ),
+        } => {
+            let host = host::host();
+            let capacity = capacity(&root).ok();
+            output(
+                json!({"systemd_user_manager":check_systemd().is_ok(),"boot_id":boot()?,"capacity":capacity,"logout_survival":"requires user manager lingering; verify on host","host":host,"warnings":host::warnings(capacity, &host)}),
+            )
+        }
         Cmd::Workers {
             command: Workers::Add { id, executable },
         } => {
@@ -991,8 +1003,15 @@ fn main_result() -> Result<()> {
                 &[executable.to_string_lossy().into_owned(), "describe".into()],
                 vec![],
                 Duration::from_secs(10),
-                65536,
-            )?;
+                MAX_DESCRIPTION,
+            )
+            .map_err(|e| {
+                if e.to_string().contains("exceeds configured cap") {
+                    format!("the worker's describe output exceeds {MAX_DESCRIPTION} bytes").into()
+                } else {
+                    Error::from(e)
+                }
+            })?;
             let description: Value = serde_json::from_slice(&out)?;
             let generic = protocol_supported(&description["protocol"])
                 && description["profiles"]

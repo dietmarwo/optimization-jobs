@@ -230,3 +230,29 @@ requests, non-UTF-8 input, progress, concurrent requests, end of input, and
 a real worker's claims and evidence for each of the three workers. The
 systemd launch runs where a systemd user manager is available; elsewhere,
 as on the CI runners, the test checks its refusal (`systemd_unavailable`).
+
+## 10. Agent discovery (October 2026)
+
+Plan: an external review asked how far an AI agent can discover and run
+the workflows through MCP alone. The owner accepted four findings: a client
+could not build a valid payload from `describe` (F01), could not create the
+first input file of a job or compute its hash (F02), could not tell how
+many CPUs the node really offers (F04), and the shared harness did not hold
+the workers to a discovery standard (F16). An MCP-only client also could not
+read `ai-context.md`.
+
+Implemented: the discovery convention (`payload_schemas`, `input_schemas`
+and runnable `examples` in `describe`, which the three worker repositories
+add); `put_input`, a content-addressed input store of the node; `get_guide`,
+which serves a copy of `ai-context.md` built into the server; and the
+`host` report and `warnings` of `node doctor`, also in `describe_node`. The
+server has fifteen tools.
+
+Gate: `scripts/job-api/test_integration.py` checks every real worker's
+discovery keys strictly and runs every example as a job;
+`scripts/job-api/test_review.py` runs the same checks and their negative
+cases on the protocol fixture, which lists schemas and examples, and the
+doctor's report; `scripts/job-api/test_mcp.py` tests `put_input` (content,
+bytes, artifacts, limits, idempotence, cleanup) and `get_guide`, and runs
+every example of the fixture and, in CI, of each real worker MCP-only. The
+parsers of the host report have fixture tests.
