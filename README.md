@@ -9,7 +9,8 @@ jobs as tools and tasks.
 An AI that wants to optimize anything, over MCP or a shell, starts with
 [`ai-context.md`](ai-context.md): which of our solvers fits the problem,
 library or job, installation, the job API and the MCP server, and where the
-detailed documentation is.
+detailed documentation is. Over MCP, the tool `get_guide` returns it.
+Coding agents working on this repository start with [`AGENTS.md`](AGENTS.md).
 
 | Part | What it is |
 | --- | --- |

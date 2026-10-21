@@ -1,12 +1,14 @@
 # AI entry point: optimization with fcmaes, LP-IP-craft, SQP-craft and optimization-jobs
 
-Last reviewed 2026-10-20 against `main` at `423cd87` plus the release
-preparation (#7). That state has the crates `optimization-job-api` and
-`optimization-runner` 0.2.0, the envelope `optimization.job/0.1` and the
-result contract `optimization.result/0.2`, and the three workers pin
-`423cd87`. In another checkout, check `Cargo.toml`, the
-`describe_node`/`describe_worker` output and the linked guides before you rely
-on a command, option or claim.
+Last reviewed 2026-10-21 against `main` with the changes of an external
+review of agent workflows: workers publish payload schemas and runnable
+examples in `describe`, the MCP server has `get_guide` and `put_input`, and
+`node doctor` reports the host's usable CPUs and memory. The crates are
+`optimization-job-api` and `optimization-runner` 0.2.0, the envelope is
+`optimization.job/0.1` and the result contract `optimization.result/0.2`.
+In another checkout, check `Cargo.toml`, the `describe_node`/`describe_worker`
+output and the linked guides before you rely on a command, option or claim.
+Over MCP, `get_guide` returns this file.
 
 Start here when a user wants something optimized and no solver has been
 chosen yet, whether you will work through MCP, a shell or the user's own code.
@@ -60,18 +62,56 @@ for what you cannot infer and what would change the choice.
 
 ## 2. Choose the solver
 
-Take the first row that matches.
+Decide in this order, so that structure never overrides the requested output:
 
-| Problem | Solver | Limits to check |
+1. **What the user needs**: one solution, a Pareto front, or many diverse
+   solutions; and which guarantee (a good point, a local optimum with KKT
+   evidence, an LP/MIP bound and gap). Keep both through the next steps.
+2. **Structure the model has**: linear, smooth with derivatives, or a black
+   box; its size, integer variables and evaluation cost.
+3. **A method that keeps both**, from the tables below.
+4. **An interface that has it** ([step 3](#3-choose-the-interface-library-or-job)):
+   check that the model, profile and options exist where you will run it.
+
+### One objective
+
+| Structure | Solver | Limits to check |
 | --- | --- | --- |
 | Linear objective and constraints, continuous and/or integer variables | LP-IP-craft | A MIP needs finite bounds on every variable (or bounds presolve can infer); no QP/MIQP; no relative-gap stop; numerical statuses, no exact certificates. When peak speed decides, or for a large, hard industrial MIP, compare with a mature solver such as HiGHS under the same independent check |
 | Smooth nonlinear objective and constraints, continuous variables, at most 256, gradient and Jacobian available; a local optimum suffices or good starts exist | SQP-craft | Local method with dense BFGS; use multistart for multimodal models. More than 256 variables or exact Hessians: an IPOPT-family solver fits better |
-| Several objectives, a Pareto front wanted | fcmaes MODE | Constraints come after the objectives and are feasible at `g(x) <= 0` |
-| Many diverse good solutions over behavior descriptors | fcmaes MAP-Elites (grid or CVT archives) | Descriptors must be computed with the objective |
-| Expensive deterministic scalar simulation (seconds to a minute per call), continuous box, 1–32 variables, at most 256 calls, few evaluations at a time | `fcmaes.surrogate/1` (fcmaes-rust job worker, experimental), compared with BiteOpt | Job-only: the simulation must be a Rust model in an fcmaes application worker; there is no Python surrogate. No constraints, noise or mixed variables. Prefer retry (BiteOpt first) for separable or many-modal problems with ten or more variables, and when many cores can evaluate in parallel. In Python, use fcmaes with a parallel population (fast-cma-es "Expensive objective") |
-| Black-box, nonsmooth, noisy or multimodal scalar objective with box bounds; integers or categories decoded from continuous variables | fcmaes retry: BiteOpt first; DE for robust exploration and integer decoding; CMA-ES with a good start; CR-FM-NES for higher dimensions; PGPE for noise and very high dimensions | Benchmark at least two choices on equal budgets and seeds |
+| Expensive deterministic simulation (seconds to a minute per call), continuous box, 1–32 variables, at most 256 calls, few evaluations at a time | `fcmaes.surrogate/1` (fcmaes-rust job worker, experimental), compared with BiteOpt | Job-only: the simulation must be a Rust model in an fcmaes application worker; there is no Python surrogate. No constraints, noise or mixed variables. Prefer retry (BiteOpt first) for separable or many-modal problems with ten or more variables, and when many cores can evaluate in parallel. In Python, use fcmaes with a parallel population (fast-cma-es "Expensive objective") |
+| Black box: nonsmooth, noisy or multimodal, box bounds; integers or categories decoded from continuous variables | fcmaes retry: BiteOpt first; DE for robust exploration and integer decoding; CMA-ES with a good start; CR-FM-NES for higher dimensions; PGPE for noise and very high dimensions | Benchmark at least two choices on equal budgets and seeds. Constraints become penalties or repairs: check the raw constraints separately ([Results](#results-claims-and-evidence)) |
 
-Rules that hold across the table:
+### Several objectives (a Pareto front)
+
+| Structure | Method | Notes |
+| --- | --- | --- |
+| Linear | A series of LPs/MIPs in LP-IP-craft: weighted sums, or ε-constraints (minimize one objective, bound the others as extra rows), one model per front point | Exact points of a linear front within numerical tolerances; weighted sums find only its vertices. MODE would discard the structure |
+| Smooth, at most 256 variables | ε-constraint SQP solves with multistart (one model per bound, or bounds as a model parameter), or fcmaes MODE | SQP gives local, first-order front points; MODE needs no derivatives but more evaluations |
+| Black box | fcmaes MODE (or weighted `moretry` in the libraries); with exactly two objectives keep every evaluation in the exact archive (`fcmaes.pareto`, `ParetoArchive2D`) | Constraints come after the objectives and are feasible at `g(x) <= 0`; MODE's final population is not the front of everything it evaluated |
+
+### Many diverse solutions
+
+fcmaes MAP-Elites (grid or CVT archives, CMA-ME/CMA-MAE emitters in the job
+worker; Diversifier in the libraries). The behavior descriptors must express
+the diversity the user wants; occupancy alone is not usefulness.
+
+### Requests outside the toolbox
+
+Say so, and name what would fit, instead of forcing the problem into one of the
+solvers:
+
+| Request | What to do |
+| --- | --- |
+| QP or MIQP, conic (SOCP, SDP) | No dedicated solver here. A small, smooth, continuous QP can be an SQP model; otherwise a QP/conic solver (OSQP, Clarabel directly, a MIQP-capable MIP solver) |
+| Large sparse NLP (more than 256 variables), exact Hessians | IPOPT-family solvers; SQP-craft is dense and limited to 256 variables |
+| MINLP with a proof of optimality, any global-optimality certificate | Outside the guarantees: fcmaes on a decoded model is a heuristic, LP-IP-craft's statuses are numerical. Use a global MINLP solver (SCIP, BARON, Couenne) |
+| Scheduling, routing, graphs and other combinatorial structure | Prefer an exact formulation (a MIP in LP-IP-craft, or a dedicated CP/routing solver) when the structure allows; decode-and-repair with fcmaes when it does not. Do not drop exploitable structure just because a black-box encoding is possible |
+| Remote, asynchronous or human-in-the-loop evaluation | The library ask/tell interfaces (fast-cma-es, `fcmaes-core`); the job protocol has no ask/tell session |
+| Stochastic simulation | Fixed seed sets for training and disjoint seeds for validation (see the fcmaes `ai-context.md` files); the job profiles recheck deterministic values only |
+| Several machines, pause and resume of an optimizer's state | Not provided: one node per runner; a surrogate warm start from a snapshot is a new job, not a resumed one |
+
+### Rules across the tables
 
 - Do not pick a gradient-free optimizer just because the model is a
   simulation. If the whole map from decisions to objective is differentiable
@@ -79,7 +119,10 @@ Rules that hold across the table:
   evaluations.
 - Global then local: points from an fcmaes run can be the starts of an SQP
   solve. In process this is ordinary code. As jobs, the agent passes the
-  points between two jobs, and both workers must register the same model.
+  points between two jobs. Before using them, check that both sides have the
+  same model ID and version, the same variable order, units and bounds, and
+  the same data (SHA-256); recheck the points with the target worker's
+  `evaluate` profile.
 - No solver here certifies a global optimum, proves MINLP optimality or emits
   exact certificates. fcmaes on a decoded integer model is a heuristic.
 - Recheck any point, including another tool's, independently. The
@@ -101,7 +144,10 @@ A job names a model that its worker has registered. It can carry hashed data
 files, but never Python callables, source code, executable paths or shell
 commands. Without writing Rust, a job can run:
 
-- any LP or MIP, as a hashed JSON model artifact (`lp-ip.solve/1`);
+- any LP or MIP, as a hashed JSON model artifact (`lp-ip.solve/1`). Its
+  schema is in the LP worker's `describe`; LP-IP-craft's
+  `scripts/mps_to_model.py` converts an MPS file. Over MCP, store the model
+  with `put_input`;
 - the registered benchmark models of the fcmaes and SQP workers, which are
   useful for testing a node but are not user problems;
 - checks of given points with the `evaluate` profiles.
@@ -113,8 +159,11 @@ A user's own nonlinear model becomes a job model as Rust code in a worker:
   [application models](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/job-api/models.md)).
   `Scalar::simulation` models are cancellable simulations; only
   `fcmaes.surrogate/1` accepts them.
-- **SQP:** the worker's extension seam (see SQP-craft's
-  [ai-context](https://github.com/dietmarwo/SQP-craft/blob/main/ai-context.md#registered-models-only)).
+- **SQP:** a model in SQP-craft's public `Registry`, with a `config`
+  schema, SHA-256-checked data inputs and a derivative check, built as an
+  application worker (see SQP-craft's
+  [application models](https://github.com/dietmarwo/SQP-craft/blob/main/docs/job-api/models.md)
+  and its `examples/custom_worker.rs`).
 
 Otherwise use the library.
 
@@ -340,6 +389,13 @@ them to the user separately
   `evidence.checks`). `evidence.refuted` means an independent check rejected
   the solver's claim; `claim` then holds only what survived. Tell the user.
 
+`feasible` means feasible for the constraints the model declares. A scalar
+fcmaes model declares only its bounds, so constraints written as penalties
+inside its objective are not checked: a low-penalty point can be reported
+`feasible` and still violate them. Keep the raw constraint values, and check
+them yourself, or evaluate the point with a model that declares them (a
+multi-objective fcmaes model with constraints, an LP, an SQP model).
+
 `objective_bounds` holds the primal objective and, where one exists, a dual
 bound. `work` counts evaluations, nodes, iterations or callbacks per profile.
 Never add work counters across profiles as if they measured the same thing.
@@ -382,8 +438,9 @@ The server's options:
 
 | Step | Tools |
 | --- | --- |
-| Discover | `describe_node` (capacity, workers, profiles), `describe_worker` (models, options with defaults, claims). If the needed worker is missing, tell the user instead of improvising with another profile |
-| Prepare | `validate_job` until it returns the resolved job with its `task_count` |
+| Orient | `get_guide`: this file, whole or one section (`section`, matched against the headings) |
+| Discover | `describe_node`: capacity, the host's usable CPUs and memory, the workers and their profiles. `describe_worker`: models, options with defaults, claims, and the discovery keys below |
+| Prepare | `put_input` stores an input file (text, base64, or an earlier job's artifact) and returns `file`, `sha256` and `input_dir`; `validate_job` with that `input_dir` until it returns the resolved job with its `task_count` |
 | Run | `submit_job` returns the job's handle. With the MCP Tasks extension it returns a task that completes with the job's result |
 | Follow | `wait_job` (at most 600 s per call), `get_job`, `list_jobs`, `get_events` |
 | Read | `get_result` gives a summary by default; `tasks` returns the records and `full` the manifest. `get_artifact` reads whole artifacts or pages (`offset`, `limit`) |
@@ -391,6 +448,35 @@ The server's options:
 
 A job tool takes the envelope inline (`job`, with relative inputs read from
 `input_dir`) or as `spec_path`, a job file with its inputs next to it.
+
+`describe_worker` is enough to build a first job without a checkout. Each
+worker lists:
+
+- `payload_schemas`: a strict JSON Schema per profile;
+- `input_schemas`: the schemas of fixed input formats, such as `lp-ip.model/1`;
+- `examples`: runnable jobs per profile, with their input files as `content`
+  (JSON) or `content_text`.
+
+An MCP-only client turns an example into a job like this:
+
+1. Store each input with `put_input`.
+2. Write the envelope: `schema_version` `optimization.job/0.1`, a new
+   `request_key`, the worker ID, `payload_schema` (the example's `profile`),
+   its `resources`, `limits` and `payload`, and `inputs` with the returned
+   `file` and `sha256`.
+3. Call `validate_job` with the returned `input_dir`.
+4. Change the payload toward the user's problem, keeping it valid against
+   `payload_schemas`.
+
+When no registered worker or model fits:
+
+- **MCP only:** tell the user what is missing: the worker, the model or the
+  option. The server cannot install code or register workers.
+- **With a shell:** use the library route instead, or build an application
+  worker. fcmaes-rust's
+  [application models](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/job-api/models.md)
+  and SQP-craft's model registry turn Rust models into job models. The node
+  owner then registers the worker with `workers add`.
 
 The server's limits:
 
@@ -404,11 +490,65 @@ The server's limits:
 Protocol: the server supports MCP 2026-07-28 statelessly (`server/discover`)
 and 2025-11-25 back to 2024-11-05 after `initialize`. It offers tools only.
 
-Trust: the server cannot register workers or change the node. Every connected
-client acts for the node's owner, so connect only trusted clients.
+Trust: the server cannot register workers, change the node or run code.
+`put_input` stores data, never code. Every connected client acts for the
+node's owner, so connect only trusted clients.
 
 The guide's [Agents and MCP](docs/job-api.md#agents-and-mcp) covers tasks,
 durability and error codes.
+
+## 7. Resources on a large machine
+
+CPU slots are accounting, not a speedup promise and not enforcement: the
+runner admits jobs while `outer_workers * inner_threads <= cpu_slots <=
+capacity`, but it does not pin threads, enforce a quota or reserve memory.
+Plan the layout yourself:
+
+1. **Measure the host.** `node doctor` (MCP `describe_node`) reports `host`:
+   `usable_cpus` (affinity mask and cgroup quota), `physical_cores`,
+   `numa_nodes`, `usable_memory_bytes`, and a warning when the node's
+   capacity exceeds the usable CPUs. Size the capacity from `usable_cpus`, not
+   from the machine's CPU count.
+2. **Estimate memory per task.** Model data, the population or archive, and a
+   simulator's working set, times the outer workers of all concurrent jobs
+   (and of any direct library callers on the same host). Lower the outer
+   width until it fits `usable_memory_bytes` with headroom. The runner has no
+   memory admission.
+3. **Give each level of parallelism one owner.** Outer tasks, inner threads,
+   and pools inside the model (BLAS/OpenMP, Rayon, a simulator's threads,
+   Python processes) multiply. Set the model's own pools (for example
+   `OMP_NUM_THREADS=1`) when the job's threads already use the slots.
+4. **Create useful parallel work, not duplicates.** Identical tasks (LP null
+   starts, one SQP start repeated) repeat the same deterministic solve.
+
+What each surface can use:
+
+| Surface | Width | Consequence |
+| --- | --- | --- |
+| Common job envelope | `outer_workers * inner_threads <= cpu_slots <= 1024` | The node can hold many jobs; a job's outer workers help only when it has that many tasks |
+| LP job (`lp-ip.solve/1`) | One model per job; `inner_threads` 1–8 (numerical kernels); component, packing and tree workers forced to 1 | Many models: many jobs (for example 64 one-slot jobs or 8 eight-slot jobs). One LP is not a 64-thread solve |
+| LP library | `solve_batch` with 1–16 workers; `component_threads` defaults to 16 when `threads=1` | Set `component_threads=1` when the caller owns concurrency |
+| SQP job (`sqp.solve/1`) | One task per start; `inner_threads` 1–8 | Many distinct starts with `inner_threads=1` is the first many-core layout; Clarabel is serial, active-set kernels parallelize only above size thresholds |
+| SQP library | `batch::solve_many`: outer × inner at most 8 | Beyond 8, use jobs or separate processes |
+| fcmaes population profiles | `inner_threads` parallelize the population (results do not depend on the width) | Useful when the objective is expensive and the population large enough |
+| fcmaes serial BiteOpt/DE | `inner_threads=1` unless `batch` is set | Use outer retries; `batch` changes the feedback timing |
+| `fcmaes.surrogate/1` | `concurrent * evaluation_threads <= inner_threads <= 8` per run | More slots mean more independent runs, not one larger surrogate |
+| fast-cma-es | Retry processes, population evaluators, the simulator's pools | Count usable CPUs (`usable_cpus()` in its `examples/external_simulator.py`) and choose one owner |
+
+Candidate layouts for 64 usable slots, to compare, not benchmarked
+recommendations:
+
+| Workload | Layout |
+| --- | --- |
+| Many independent scalar searches on a registered model | One job, `cpu_slots=64, outer_workers=64, inner_threads=1`, at least 64 retries |
+| Expensive population objective | One run with `inner_threads=64`, or eight runs with eight each |
+| Many LP/MIP models | 64 one-slot jobs, or eight eight-slot jobs |
+| One NLP, many starts | One job with 64 distinct starts, `outer_workers=64, inner_threads=1` |
+| Expensive surrogate searches | Eight runs × eight inner threads, each with its own history and budget |
+
+For a performance comparison, fix the model, data, budgets, seeds and
+acceptance rule. Report wall time, completed work, solution quality, peak
+memory and how many tasks completed. CPU utilization alone is no result.
 
 ## Pitfalls
 

@@ -12,6 +12,26 @@ revision. No version has been published to crates.io yet.
 
 Findings of the October 2026 review of agent discovery:
 
+- `ai-context.md`, the entry point for AI agents, reworked:
+  - The chooser asks for the wanted output (one solution, a Pareto front,
+    diverse solutions) and the guarantee before the structure, so a smooth
+    bi-objective problem is no longer routed to a single SQP solve (F07).
+    Linear and smooth Pareto fronts can be computed as weighted-sum or
+    ε-constraint series of LP or SQP solves.
+  - A table routes requests outside the toolbox (QP/MIQP, conic, large
+    sparse NLP, MINLP with proofs, combinatorial structure, ask/tell,
+    stochastic simulation, several machines, pause and resume) (F14).
+  - A checklist for passing points from fcmaes to SQP (F15).
+  - What to do when no registered worker or model fits.
+  - The scalar `feasible` claim checks the declared constraints only, not
+    penalties inside the objective (F08).
+  - A section on large machines: the host report, memory per task, one
+    owner per level of parallelism, the width of each surface and
+    candidate layouts for 64 slots (F05, F09).
+  - The MCP-only workflow from `describe_worker` examples through
+    `put_input` to `validate_job`, with `get_guide` and `put_input` in the
+    tools table.
+- `AGENTS.md`, a short entry point for coding agents (F06).
 - MCP `put_input` (F02): an MCP-only client stores the input files of a job,
   such as a new LP model, as `content` (UTF-8 text), `content_base64` or
   `from_artifact` (a file of an existing job), in the node's
