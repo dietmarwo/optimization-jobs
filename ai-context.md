@@ -80,7 +80,7 @@ Decide in this order, so that structure never overrides the requested output:
 | Linear objective and constraints, continuous and/or integer variables | LP-IP-craft | A MIP needs finite bounds on every variable (or bounds presolve can infer); no QP/MIQP; no relative-gap stop; numerical statuses, no exact certificates. When peak speed decides, or for a large, hard industrial MIP, compare with a mature solver such as HiGHS under the same independent check |
 | Smooth nonlinear objective and constraints, continuous variables, at most 256, gradient and Jacobian available; a local optimum suffices or good starts exist | SQP-craft | Local method with dense BFGS; use multistart for multimodal models. More than 256 variables or exact Hessians: an IPOPT-family solver fits better |
 | Expensive deterministic simulation (seconds to a minute per call), continuous box, 1–32 variables, at most 256 calls, few evaluations at a time | `fcmaes.surrogate/1` (fcmaes-rust job worker, experimental), compared with BiteOpt | Job-only: the simulation must be a Rust model in an fcmaes application worker; there is no Python surrogate. No constraints, noise or mixed variables. Prefer retry (BiteOpt first) for separable or many-modal problems with ten or more variables, and when many cores can evaluate in parallel. In Python, use fcmaes with a parallel population (fast-cma-es "Expensive objective") |
-| Black box: nonsmooth, noisy or multimodal, box bounds; integers or categories decoded from continuous variables | fcmaes retry: BiteOpt first; DE for robust exploration and integer decoding; CMA-ES with a good start; CR-FM-NES for higher dimensions; PGPE for noise and very high dimensions | Benchmark at least two choices on equal budgets and seeds. Constraints become penalties or repairs: check the raw constraints separately ([Results](#results-claims-and-evidence)) |
+| Black box: nonsmooth, noisy or multimodal, box bounds; integers or categories decoded from continuous variables | fcmaes retry: BiteOpt first; DE for robust exploration and integer decoding; CMA-ES with a good start (`guess` in `fcmaes.retry/1`); CR-FM-NES for higher dimensions; PGPE for noise and very high dimensions | Benchmark at least two choices on equal budgets and seeds. Constraints become penalties or repairs: check the raw constraints separately ([Results](#results-claims-and-evidence)) |
 
 ### Several objectives (a Pareto front)
 
@@ -157,8 +157,11 @@ A user's own nonlinear model becomes a job model as Rust code in a worker:
 - **fcmaes:** an application worker, i.e. a closure with parameters and
   SHA-256-checked data inputs (see fcmaes-rust's
   [application models](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/job-api/models.md)).
-  `Scalar::simulation` models are cancellable simulations; only
-  `fcmaes.surrogate/1` accepts them.
+  `Scalar::simulation` models are fallible, cancellable simulations;
+  `fcmaes.surrogate/1`, `fcmaes.retry/1` and `fcmaes.evaluate/1` accept
+  them, so one model can be compared under the surrogate and BiteOpt. In a
+  retry a failed evaluation counts as `+inf` and is counted in
+  `failed_evaluations`.
 - **SQP:** a model in SQP-craft's public `Registry`, with a `config`
   schema, SHA-256-checked data inputs and a derivative check, built as an
   application worker (see SQP-craft's
