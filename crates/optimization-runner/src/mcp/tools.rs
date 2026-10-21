@@ -1,6 +1,6 @@
 //! The tools of `optimization-mcp` and the `optimization-run` calls behind
 //! them.
-use super::{Ctx, Launch, Server, tasks};
+use super::{Ctx, Launch, Server, inputs, tasks};
 use optimization_job_api::{
     Input, JobSpec, MAX_INPUT_BYTES, checked_input, process::bounded_command_until, storage::digest,
 };
@@ -64,7 +64,7 @@ pub enum Outcome {
     Cancelled,
 }
 
-fn fail(code: &str, message: impl Into<String>) -> Fail {
+pub(super) fn fail(code: &str, message: impl Into<String>) -> Fail {
     Fail::Tool(ToolError {
         code: code.into(),
         message: message.into(),
@@ -172,6 +172,26 @@ pub fn definitions() -> Vec<Value> {
             object(
                 json!({"worker":{"type":"string","description":"ID of a registered worker, from describe_node."}}),
                 &["worker"],
+            ),
+        ),
+        (
+            "put_input",
+            "Store an input file",
+            json!({"readOnlyHint":false,"destructiveHint":false,"idempotentHint":true,"openWorldHint":false}),
+            "Stores data that a job reads as an input file, such as a new LP model, in this node's content-addressed input store, and returns file, sha256, bytes and input_dir. A job then lists {\"name\": NAME, \"file\": file, \"sha256\": sha256} in inputs and is passed to validate_job and submit_job with input_dir; inputs stored this way share input_dir, so one job can use several. Pass exactly one of content (text, stored as its UTF-8 bytes; a JSON input as its serialized text), content_base64 (bytes) or from_artifact (a file of an existing job, to use it together with other stored inputs). Storing the same content again returns the same file. At most 64 MiB per input; the store holds data, never code.",
+            object(
+                json!({
+                    "content": {"type":"string","description":"Text, stored as its UTF-8 bytes; a JSON input as the text a JSON serializer wrote."},
+                    "content_base64": {"type":"string","contentEncoding":"base64","description":"Bytes in base64 (RFC 4648)."},
+                    "from_artifact": {
+                        "type":"object",
+                        "description":"An artifact of an existing job, copied into the store as get_artifact reads it whole.",
+                        "properties":{"job_id":job_id,"name":{"type":"string","description":"Artifact name from artifact_index of get_job or the result."}},
+                        "required":["job_id","name"],
+                        "additionalProperties":false,
+                    },
+                }),
+                &[],
             ),
         ),
         (
@@ -306,6 +326,7 @@ pub fn call(server: &Server, name: &str, args: &Value, ctx: &Ctx) -> Outcome {
                 ctx,
             )
         }),
+        "put_input" => inputs::put(server, args, ctx),
         "submit_job" => return submit_job(server, args, ctx),
         "get_job" => job_id(args).and_then(|id| server.get(&id, ctx)),
         "wait_job" => wait_job(server, args, ctx),
@@ -329,7 +350,7 @@ fn path(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
-fn string(args: &Value, key: &str) -> Result<String, Fail> {
+pub(super) fn string(args: &Value, key: &str) -> Result<String, Fail> {
     args[key]
         .as_str()
         .filter(|s| !s.is_empty())
@@ -342,7 +363,7 @@ fn string(args: &Value, key: &str) -> Result<String, Fail> {
         })
 }
 
-fn job_id(args: &Value) -> Result<String, Fail> {
+pub(super) fn job_id(args: &Value) -> Result<String, Fail> {
     let id = string(args, "job_id")?;
     if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(fail(
@@ -570,7 +591,7 @@ fn read_json_file(path: &Path, cap: u64) -> Result<Value, String> {
 }
 
 /// The bytes of a regular file of at most `cap` bytes.
-fn read_file(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
+pub(super) fn read_file(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
     use std::io::Read;
     let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
     if !metadata.is_file() {

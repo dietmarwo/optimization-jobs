@@ -15,6 +15,7 @@ Both protocol eras are covered: 2026-07-28, stateless with per-request
 `initialize` handshake. JOB_API_REQUIRE_WORKER=1 makes the real-worker test
 fail instead of skipping when no real worker is found.
 """
+import base64
 import hashlib
 import json
 import os
@@ -40,8 +41,8 @@ TASKS = "io.modelcontextprotocol/tasks"
 VERSION = "2026-07-28"
 TERMINAL = {"completed", "failed", "cancelled", "timed_out", "interrupted"}
 WORKER = next((name for name, (binary, _, _) in REAL.items() if (TARGET / binary).exists()), None)
-TOOLS = ["describe_node", "describe_worker", "validate_job", "submit_job", "get_job", "wait_job",
-         "get_result", "get_events", "get_artifact", "list_jobs", "cancel_job", "kill_job",
+TOOLS = ["describe_node", "describe_worker", "put_input", "validate_job", "submit_job", "get_job",
+         "wait_job", "get_result", "get_events", "get_artifact", "list_jobs", "cancel_job", "kill_job",
          "repair_job"]
 
 
@@ -488,6 +489,130 @@ class Jobs(Server):
         task = summary["tasks"][0]
         self.assertIn(task["evidence"], {"claimed", "rechecked", "certified"})
         self.assertNotEqual(task["claim"], "none")
+
+
+class Inputs(Server):
+    """put_input: the node's content-addressed input store (review F02)."""
+
+    def store(self):
+        return self.root / "mcp" / "inputs"
+
+    def test_stored_inputs_are_named_by_their_sha256_and_used_by_jobs(self):
+        text = json.dumps({"values": [1.0, 2.0]})
+        digest = hashlib.sha256(text.encode()).hexdigest()
+        stored = self.client.ok("put_input", {"content": text})
+        self.assertEqual(stored, {"file": digest, "sha256": digest, "bytes": len(text),
+                                  "input_dir": str(self.store())})
+        self.assertEqual((self.store() / digest).read_text(), text)
+        # Bytes, here not UTF-8, and text that is not ASCII.
+        blob = bytes(range(256))
+        other = self.client.ok("put_input", {"content_base64": base64.b64encode(blob).decode()})
+        self.assertEqual((other["sha256"], other["bytes"], other["input_dir"]),
+                         (hashlib.sha256(blob).hexdigest(), 256, stored["input_dir"]))
+        accents = self.client.ok("put_input", {"content": "Größe\n"})
+        self.assertEqual((self.store() / accents["file"]).read_bytes(), "Größe\n".encode())
+        self.assertEqual(accents["bytes"], 8)
+        # Storing again is the same answer and makes the file fresh again.
+        old = time.time() - 3 * 86400
+        os.utime(self.store() / digest, (old, old))
+        self.assertEqual(self.client.ok("put_input", {"content": text}), stored)
+        self.assertGreater((self.store() / digest).stat().st_mtime, time.time() - 60)
+        # A damaged file is replaced.
+        (self.store() / digest).write_text("damaged")
+        self.assertEqual(self.client.ok("put_input", {"content": text}), stored)
+        self.assertEqual((self.store() / digest).read_text(), text)
+        self.assertEqual(sorted(p.name for p in self.store().iterdir()),
+                         sorted([digest, other["file"], accents["file"]]))
+        # One job reads several stored inputs: they share the input_dir.
+        job = fake("stored", {"mode": "complete"})
+        job["inputs"] = [{"name": "data", "file": stored["file"], "sha256": stored["sha256"]},
+                         {"name": "blob", "file": other["file"], "sha256": other["sha256"]}]
+        arguments = {"job": job, "input_dir": stored["input_dir"]}
+        self.assertTrue(self.client.ok("validate_job", arguments)["valid"])
+        ident = self.client.ok("submit_job", arguments)["job_id"]
+        self.assertEqual(self.wait(ident)["state"], "completed")
+        staged = self.root / "jobs" / ident / "inputs"
+        self.assertEqual(((staged / "data").read_text(), (staged / "blob").read_bytes()), (text, blob))
+
+    def test_arguments_limits_and_errors(self):
+        unknown = {"job_id": "0" * 32, "name": "results"}
+        for arguments in [{}, {"content": "a", "content_base64": "YQ=="}, {"content": 1},
+                          {"content_base64": "YQ="}, {"content_base64": "not base64!"},
+                          {"from_artifact": "results"}, {"from_artifact": {"job_id": "0" * 32}},
+                          {"from_artifact": {**unknown, "extra": 1}},
+                          {"from_artifact": {**unknown, "job_id": "nothex"}}]:
+            with self.subTest(arguments=arguments):
+                error = self.client.error("put_input", arguments)
+                self.assertEqual((error["code"], error["retryable"]), ("invalid_arguments", False))
+        self.assertEqual(self.client.error("put_input", {"from_artifact": unknown})["code"], "unknown_job")
+        self.assertFalse(any(self.store().iterdir()) if self.store().exists() else False)
+        # The store's total size limit; content already stored needs no room.
+        small = self.connect("--input-store-bytes", "100")
+        first = small.ok("put_input", {"content": "x" * 60})
+        error = small.error("put_input", {"content": "y" * 60})
+        self.assertEqual((error["code"], error["retryable"]), ("input_store_full", False))
+        self.assertIn("holds 60 bytes; 60 more would exceed its limit of 100 bytes", error["message"])
+        self.assertEqual(small.ok("put_input", {"content": "x" * 60}), first)
+        self.assertEqual([p.name for p in self.store().iterdir()], [first["file"]])
+
+    def test_artifacts_become_inputs_of_later_jobs(self):
+        ident = self.client.ok("submit_job", {"job": fake("artifacts", {"mode": "artifacts"})})["job_id"]
+        directory = self.root / "jobs" / ident
+        deadline = time.time() + 20
+        while not (directory / "snapshot.json").exists() and time.time() < deadline:
+            time.sleep(0.05)
+        # While the job runs, a records artifact is copied up to its last
+        # complete record, as a whole read of get_artifact returns it.
+        log_file = directory / "log.jsonl"
+        complete = log_file.read_bytes()
+        with open(log_file, "a") as f:
+            f.write('{"schema_version":1,"chec')
+        log = self.client.ok("put_input", {"from_artifact": {"job_id": ident, "name": "log"}})
+        whole = self.client.ok("get_artifact", {"job_id": ident, "name": "log"})
+        self.assertEqual((log["sha256"], log["bytes"]), (whole["sha256"], whole["bytes"]))
+        self.assertEqual((self.store() / log["file"]).read_bytes(), complete)
+        log_file.write_bytes(complete)
+        self.assertEqual(self.client.error("put_input", {"from_artifact": {"job_id": ident, "name": "none"}})["code"],
+                         "unknown_artifact")
+        # An artifact over the 64 MiB input limit (sparse: it takes no disk).
+        snapshot = directory / "snapshot.json"
+        content = snapshot.read_bytes()
+        os.truncate(snapshot, 64 * 1024 * 1024 + 1)
+        error = self.client.error("put_input", {"from_artifact": {"job_id": ident, "name": "snapshot"}})
+        self.assertEqual(error["code"], "invalid_arguments")
+        self.assertIn("64 MiB", error["message"])
+        snapshot.write_bytes(content)
+        (directory / "release").touch()
+        self.assertEqual(self.wait(ident)["state"], "completed")
+        # After the end: the file the manifest lists, checked against its SHA-256.
+        index = self.client.ok("get_result", {"job_id": ident})["artifact_index"]
+        copied = self.client.ok("put_input", {"from_artifact": {"job_id": ident, "name": "snapshot"}})
+        self.assertEqual((copied["sha256"], copied["bytes"]),
+                         (index["snapshot"]["sha256"], index["snapshot"]["bytes"]))
+        # The copy and a new input in one later job.
+        extra = self.client.ok("put_input", {"content": "settings"})
+        job = fake("continued", {"mode": "complete"})
+        job["inputs"] = [{"name": "previous", "file": copied["file"], "sha256": copied["sha256"]},
+                         {"name": "settings", "file": extra["file"], "sha256": extra["sha256"]}]
+        follow = self.client.ok("submit_job", {"job": job, "input_dir": copied["input_dir"]})["job_id"]
+        self.assertEqual(self.wait(follow)["state"], "completed")
+        self.assertEqual((self.root / "jobs" / follow / "inputs" / "previous").read_bytes(),
+                         snapshot.read_bytes())
+        snapshot.write_text("{}")
+        error = self.client.error("put_input", {"from_artifact": {"job_id": ident, "name": "snapshot"}})
+        self.assertIn("changed after the job ended", error["message"])
+
+    def test_a_starting_server_removes_inputs_unused_for_a_week(self):
+        kept = self.client.ok("put_input", {"content": "kept"})
+        old = self.client.ok("put_input", {"content": "old"})
+        week = time.time() - 7 * 86400 - 600
+        os.utime(self.store() / old["file"], (week, week))
+        leftover = self.store() / f".{old['file']}.1.tmp"
+        leftover.write_text("partial")
+        os.utime(leftover, (week, week))
+        fresh = self.connect()
+        self.assertEqual(fresh.request("tools/list")["result"]["resultType"], "complete")
+        self.assertEqual([p.name for p in self.store().iterdir()], [kept["file"]])
 
 
 class Tasks(Server):
