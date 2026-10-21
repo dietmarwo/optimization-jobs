@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "title": "Optimization tools for AI agents",
+  "description": "Open-source Python and Rust optimization: parallel black-box search, LP/MIP, smooth nonlinear solvers, and durable jobs through MCP or a shell.",
+  "url": "https://dietmarwo.github.io/optimization-jobs/",
+  "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
+  "availability_checked": "2026-10-21",
+  "projects": [
+    {
+      "id": "fast-cma-es",
+      "name": "fast-cma-es / fcmaes",
+      "repository": "https://github.com/dietmarwo/fast-cma-es",
+      "branch": "master",
+      "summary": "Parallel gradient-free optimization for Python: black-box, multi-objective and quality-diversity search.",
+      "fit": "Python objectives and simulations; parallel retries or population evaluation; CMA-ES, DE, BiteOpt, MODE and MAP-Elites.",
+      "limits": "Heuristic search, with constraints handled by the selected method. No stock job worker or MCP server in this package.",
+      "availability": "PyPI: fcmaes. Build from source for changes after the latest release.",
+      "guide": "https://github.com/dietmarwo/fast-cma-es/blob/master/ai-context.md",
+      "tutorial": "https://dietmarwo.github.io/fast-cma-es/tutorials/",
+      "documentation": "https://dietmarwo.github.io/fast-cma-es/",
+      "languages": ["Python", "C++"],
+      "packages": [{"registry": "PyPI", "name": "fcmaes", "url": "https://pypi.org/project/fcmaes/", "status": "published"}],
+      "topics": ["optimization", "black-box-optimization", "parallel-computing", "cma-es", "multi-objective-optimization", "quality-diversity", "python"]
+    },
+    {
+      "id": "fcmaes-rust",
+      "name": "fcmaes-rust",
+      "repository": "https://github.com/dietmarwo/fcmaes-rust",
+      "branch": "main",
+      "summary": "Native Rust parallel black-box optimization, Python bindings, and a worker for durable optimization jobs.",
+      "fit": "Rust objectives, parallel global search, Pareto search and quality diversity. Application workers run registered Rust models as jobs.",
+      "limits": "Python callbacks do not gain native Rust parallelism. The experimental surrogate targets small deterministic continuous-box problems; consult its limits before use.",
+      "availability": "crates.io: fcmaes-core; PyPI: fcmaes-rust. Job worker and experimental surrogate: source only.",
+      "guide": "https://github.com/dietmarwo/fcmaes-rust/blob/main/ai-context.md",
+      "tutorial": "https://github.com/dietmarwo/fcmaes-rust/blob/main/tutorials/job-api/README.md",
+      "documentation": "https://dietmarwo.github.io/fcmaes-rust/",
+      "languages": ["Rust", "Python"],
+      "packages": [
+        {"registry": "crates.io", "name": "fcmaes-core", "url": "https://crates.io/crates/fcmaes-core", "status": "published"},
+        {"registry": "PyPI", "name": "fcmaes-rust", "url": "https://pypi.org/project/fcmaes-rust/", "status": "published"},
+        {"registry": "source", "name": "fcmaes-job-worker", "status": "source-only"},
+        {"registry": "source", "name": "fcmaes-surrogate", "status": "source-only"}
+      ],
+      "topics": ["optimization", "black-box-optimization", "parallel-computing", "rust", "cma-es", "multi-objective-optimization", "quality-diversity", "ai-agents"]
+    },
+    {
+      "id": "LP-IP-craft",
+      "name": "LP-IP-craft",
+      "repository": "https://github.com/dietmarwo/LP-IP-craft",
+      "branch": "main",
+      "summary": "Native Rust linear and mixed-integer linear programming with Python bindings and a shell/MCP job worker.",
+      "fit": "Models with linear objectives and constraints. Libraries take structured models; the job worker accepts a hashed model artifact, with an MPS converter in the repository.",
+      "limits": "MIP variables need finite bounds, supplied or inferred. No QP/MIQP. Statuses and gaps are numerical findings under tolerances; benchmark hard industrial MIPs against mature solvers.",
+      "availability": "Source only: Rust crates, Python bindings and lp-ip-job-worker. Registry release workflows are prepared.",
+      "guide": "https://github.com/dietmarwo/LP-IP-craft/blob/main/ai-context.md",
+      "tutorial": "https://github.com/dietmarwo/LP-IP-craft/blob/main/tutorials/job-api/README.md",
+      "documentation": "https://github.com/dietmarwo/LP-IP-craft/blob/main/README.md",
+      "languages": ["Rust", "Python"],
+      "packages": [
+        {"registry": "source", "name": "lp-ip-craft", "status": "source-only"},
+        {"registry": "source", "name": "lp-ip-craft-native", "status": "source-only"},
+        {"registry": "source", "name": "lp-ip-job-worker", "status": "source-only"}
+      ],
+      "topics": ["optimization", "linear-programming", "mixed-integer-programming", "milp", "rust", "python", "mcp", "ai-agents"]
+    },
+    {
+      "id": "SQP-craft",
+      "name": "SQP-craft",
+      "repository": "https://github.com/dietmarwo/SQP-craft",
+      "branch": "main",
+      "summary": "Rust sequential quadratic programming for smooth constrained optimization, with Python bindings and a shell/MCP job worker.",
+      "fit": "Smooth continuous models with gradients and Jacobians, local refinement and multistart. User nonlinear jobs require a registered model in an application worker.",
+      "limits": "Dense BFGS with at most 256 variables. Local first-order results, not global certificates. For larger sparse NLPs, consider an IPOPT-family solver.",
+      "availability": "Source only: Rust crates, Python bindings and sqp-job-worker. Registry release workflows are prepared.",
+      "guide": "https://github.com/dietmarwo/SQP-craft/blob/main/ai-context.md",
+      "tutorial": "https://github.com/dietmarwo/SQP-craft/blob/main/tutorials/job-api/README.md",
+      "documentation": "https://github.com/dietmarwo/SQP-craft/blob/main/README.md",
+      "languages": ["Rust", "Python"],
+      "packages": [
+        {"registry": "source", "name": "sqp-craft", "status": "source-only"},
+        {"registry": "source", "name": "sqp-craft-solver", "status": "source-only"},
+        {"registry": "source", "name": "sqp-job-worker", "status": "source-only"}
+      ],
+      "topics": ["optimization", "nonlinear-optimization", "sequential-quadratic-programming", "rust", "python", "mcp", "ai-agents"]
+    },
+    {
+      "id": "optimization-jobs",
+      "name": "optimization-jobs",
+      "repository": "https://github.com/dietmarwo/optimization-jobs",
+      "branch": "main",
+      "summary": "Durable optimization jobs for AI agents: local Rust runner, worker SDK and MCP server with a shared CPU budget.",
+      "fit": "An agent needs to discover workers, validate, submit, follow or cancel jobs and read results and artifacts through MCP or a shell.",
+      "limits": "Linux, one local node, cooperative CPU accounting. Install and register workers first. No distributed scheduler or exact optimizer-state resume.",
+      "availability": "Source only: optimization-job-api and optimization-runner (optimization-run and optimization-mcp). No solver is bundled.",
+      "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
+      "tutorial": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md",
+      "documentation": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md",
+      "languages": ["Rust"],
+      "packages": [
+        {"registry": "source", "name": "optimization-job-api", "status": "source-only"},
+        {"registry": "source", "name": "optimization-runner", "status": "source-only"}
+      ],
+      "topics": ["optimization", "mcp", "mcp-server", "ai-agents", "rust", "job-scheduler", "parallel-computing", "operations-research"]
+    }
+  ]
+}

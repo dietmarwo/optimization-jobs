@@ -10,6 +10,25 @@ revision. No version has been published to crates.io yet.
 
 ### Added
 
+Discovery (October 2026):
+
+- An ecosystem landing page for the five repositories (`site/`), built and
+  validated by `scripts/build_site.py` (standard library only, no network)
+  into `target/site`. One catalog, `site/catalog.json`, feeds the project
+  cards, the JSON-LD, `llms.txt` and the sitemap. The workflow
+  `Ecosystem discovery site` builds a preview on every pull request and
+  deploys to GitHub Pages only when Pages uses GitHub Actions and the
+  repository variable `PUBLISH_ECOSYSTEM_SITE` is `true`.
+- `docs/discovery/`: the publication checklist, a release-first plan,
+  directory submission drafts (proposals, not listings) and a reference
+  index that separates the one verified third-party integration (the
+  OptunaHub fcmaes sampler) from maintainer evidence. An issue form collects
+  independent evaluations.
+- The README and both crate READMEs link the overview and the shared agent
+  guide; both crates set `homepage`. The runner's README carries the MCP
+  Registry ownership line `mcp-name: io.github.dietmarwo/optimization-jobs`
+  for a future listing and installs from a source checkout.
+
 Findings of the rereview of agent workflows (October 2026):
 
 - `ai-context.md` (and the copy `get_guide` serves): the Pareto rows call
@@ -136,6 +155,9 @@ Earlier additions:
 
 ### Changed
 
+- `RELEASING.md`: the tag command reads the version from the runner's
+  manifest instead of a hard-coded number, and a section covers discovery
+  after a release.
 - `workers add` accepts a `describe` output of up to 1 MiB (was 64 KiB): payload
   schemas and examples make it long.
 - The shared job API moved here from fcmaes-rust, LP-IP-craft and SQP-craft,
