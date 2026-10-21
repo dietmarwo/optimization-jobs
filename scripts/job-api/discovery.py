@@ -72,6 +72,9 @@ def completeness(description):
                 problems.append(f"{where}: an input without name and file")
                 continue
             name = spec["name"]
+            parts = spec["file"].replace("\\", "/").split("/")
+            if spec["file"].startswith("/") or ".." in parts or not any(p not in ("", ".") for p in parts):
+                problems.append(f"{where}: input {name}: file {spec['file']!r} is not a relative path inside the job's directory")
             if ("content" in spec) == ("content_text" in spec):
                 problems.append(f"{where}: input {name} needs exactly one of content and content_text")
             elif "content_text" in spec and not isinstance(spec["content_text"], str):

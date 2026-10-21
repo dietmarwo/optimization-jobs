@@ -11,11 +11,13 @@ use super::{
 };
 use optimization_job_api::{
     MAX_INPUT_BYTES,
+    artifact::digest_file,
     storage::{digest, lock},
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fs,
     io::Write,
@@ -137,25 +139,26 @@ pub fn put(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
         .into_iter()
         .filter(|key| !args[*key].is_null())
         .collect();
-    let bytes = match given[..] {
+    // Text is stored from the request itself, without a copy.
+    let bytes: Cow<[u8]> = match given[..] {
         ["content"] => {
             let text = args["content"]
                 .as_str()
                 .ok_or_else(|| tools::fail("invalid_arguments", "content must be a string"))?;
-            text.as_bytes().to_vec()
+            Cow::Borrowed(text.as_bytes())
         }
         ["content_base64"] => {
             let text = args["content_base64"].as_str().ok_or_else(|| {
                 tools::fail("invalid_arguments", "content_base64 must be a string")
             })?;
-            base64(text).map_err(|e| {
+            Cow::Owned(base64(text).map_err(|e| {
                 tools::fail(
                     "invalid_arguments",
                     format!("content_base64 is not valid base64: {e}"),
                 )
-            })?
+            })?)
         }
-        ["from_artifact"] => artifact(server, &args["from_artifact"], ctx)?,
+        ["from_artifact"] => Cow::Owned(artifact(server, &args["from_artifact"], ctx)?),
         _ => {
             return Err(tools::fail(
                 "invalid_arguments",
@@ -275,7 +278,7 @@ fn artifact(server: &Server, source: &Value, ctx: &Ctx) -> Result<Vec<u8>, Fail>
 /// True if `path` is a regular file holding exactly the content of `sha256`.
 fn intact(path: &Path, sha256: &str, size: usize) -> bool {
     fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && m.len() == size as u64)
-        && fs::read(path).is_ok_and(|bytes| digest(&bytes) == sha256)
+        && digest_file(path).is_ok_and(|(_, found)| found == sha256)
 }
 
 /// Bytes of the regular files in the store, except `except`.

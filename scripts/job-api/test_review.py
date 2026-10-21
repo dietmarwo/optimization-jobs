@@ -643,6 +643,8 @@ class Discovery(Node):
                 lambda d: d["examples"][1]["inputs"][1].update(content={}),
             "example 0 (other/1): not a profile of the worker":
                 lambda d: d["examples"][0].update(profile="other/1"),
+            "example 1 (test.fake/1): input notes: file '../notes.csv' is not a relative path inside the job's directory":
+                lambda d: d["examples"][1]["inputs"][1].update(file="../notes.csv"),
         }
         for problem, change in missing.items():
             with self.subTest(problem=problem):
