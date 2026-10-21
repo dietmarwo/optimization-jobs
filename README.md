@@ -1,5 +1,13 @@
 # optimization-jobs
 
+**Open-source optimization for AI agents:**
+[ecosystem overview](https://dietmarwo.github.io/optimization-jobs/) ·
+[shared solver-selection guide](ai-context.md).
+
+Choose between Python/Rust black-box optimization, LP/MIP and smooth nonlinear
+solvers. This repository provides their shared shell/MCP job layer; it has no
+solver of its own.
+
 Durable, versioned optimization jobs for agents and people: a strict job
 envelope, a result contract with claims and evidence, a worker SDK, a local
 runner, `optimization-run`, that schedules native solver workers against one

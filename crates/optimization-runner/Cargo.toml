@@ -6,6 +6,7 @@ rust-version = "1.88"
 license = "MIT"
 description = "Local runner (optimization-run) and MCP server (optimization-mcp) for versioned optimization jobs on one CPU budget"
 repository = "https://github.com/dietmarwo/optimization-jobs"
+homepage = "https://dietmarwo.github.io/optimization-jobs/"
 documentation = "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md"
 readme = "README.md"
 keywords = ["optimization", "jobs", "runner", "mcp", "agents"]

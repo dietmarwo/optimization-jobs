@@ -1,0 +1,56 @@
+name: Ecosystem discovery site
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'scripts/build_site.py'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: discovery-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and validate the static site
+        run: python3 scripts/build_site.py
+      - name: Upload preview for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecosystem-site-preview
+          path: target/site
+          retention-days: 7
+      - name: Upload Pages artifact
+        if: github.repository == 'dietmarwo/optimization-jobs' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.PUBLISH_ECOSYSTEM_SITE == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: target/site
+
+  deploy:
+    if: github.repository == 'dietmarwo/optimization-jobs' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.PUBLISH_ECOSYSTEM_SITE == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

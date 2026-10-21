@@ -1,0 +1,50 @@
+name: Independent evaluation or integration
+description: Share a reproducible external evaluation or an integration of an ecosystem project.
+title: '[Evaluation] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports of failures and negative results are welcome. An integration, a package listing,
+        and an equal-budget benchmark support different claims; please identify which you provide.
+  - type: dropdown
+    id: project
+    attributes:
+      label: Project evaluated
+      multiple: true
+      options: [fast-cma-es, fcmaes-rust, LP-IP-craft, SQP-craft, optimization-jobs]
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Public source and relationship to the project
+      description: Link the code/report and name the author. Disclose maintainer, contributor or other relationships relevant to independence.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: What does the evidence establish?
+      description: Integration, correctness, scaling, comparative performance, or a failure. State the problem class and limits.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Exact revisions, installation and run commands, inputs or hashes, raw outputs and dependencies. For an integration, include its supported versions and a runnable example.
+    validations:
+      required: true
+  - type: textarea
+    id: comparison
+    attributes:
+      label: Benchmark controls (if applicable)
+      description: CPU model and allocation, OS/compiler, outer/inner threads, seeds, tolerances, evaluation and wall-time budgets, CPU effort, held-out cases, independent result checks and failures. Explain unequal budgets.
+  - type: textarea
+    id: conclusions
+    attributes:
+      label: Results and limitations
+      description: Include unsuccessful cases and uncertainty. A numerical status or useful integration does not establish universal solver superiority.
+    validations:
+      required: true

@@ -60,7 +60,7 @@ mixed-node job with the three workers.
 ## Tag and publish
 
 ```bash
-version=0.3.0   # the version in both crate manifests
+version="$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("crates/optimization-runner/Cargo.toml").read_text())["package"]["version"])')"  # Python 3.11+
 git tag -a "v$version" -m "Release optimization-jobs $version"
 git push origin "v$version"
 ```
@@ -79,3 +79,13 @@ cargo new job-api-check && cd job-api-check && cargo add optimization-job-api@"$
 ```
 
 Check the crate pages and the docs.rs build, then create the GitHub release.
+
+## Discovery after a release
+
+Follow the [ecosystem publication checklist](docs/discovery/README.md).
+The [release-first plan](docs/discovery/release-first.md) puts registry releases
+and clean-install verification before external integration outreach.
+Package descriptions and README links reach registries only with a new
+release. Check the rendered package page after publishing and update the
+shared catalog when installation availability changes. Repository topics
+and About text are GitHub settings, not fields a commit changes.

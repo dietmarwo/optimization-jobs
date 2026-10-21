@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{TITLE}} · fcmaes &amp; craft</title>
+  <meta name="description" content="{{DESCRIPTION}}">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="{{URL}}">
+  <link rel="stylesheet" href="style.css">
+  <link rel="alternate" type="application/json" href="catalog.json" title="Optimization ecosystem catalog">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{DESCRIPTION}}">
+  <meta property="og:url" content="{{URL}}">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">{{JSON_LD}}</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="./">fcmaes <span>&amp;</span> craft</a>
+    <nav aria-label="Main navigation">
+      <a href="#choose">Choose a tool</a>
+      <a href="#start">Run a job</a>
+      <a href="#evidence">Evidence</a>
+      <a href="https://github.com/dietmarwo/optimization-jobs">GitHub</a>
+    </nav>
+  </header>
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="eyebrow">Python · Rust · many-core CPUs · MCP</p>
+      <h1 id="hero-title">Optimization tools<br>for AI agents.</h1>
+      <p class="lead">Turn a model or simulation into a measured search. Choose a
+        solver, give it a CPU and evaluation budget, and check the result.</p>
+      <p>Five open-source repositories connect parallel black-box search,
+        linear and mixed-integer programming, smooth nonlinear optimization,
+        and durable jobs. Use a library, a shell, or the Model Context Protocol.</p>
+      <div class="actions">
+        <a class="button" href="{{GUIDE}}">Read the shared agent guide <span aria-hidden="true">↗</span></a>
+        <a class="secondary" href="#choose">Find the right starting point ↓</a>
+      </div>
+      <p class="note">MIT-licensed projects. Select by model structure and required evidence;
+        compare candidates on your workload.</p>
+    </section>
+
+    <section id="choose" aria-labelledby="choose-title">
+      <p class="eyebrow">01 / Match the problem</p>
+      <h2 id="choose-title">Start with the output you need.</h2>
+      <div class="decision-grid">
+        <article><h3>One good solution</h3><p>Keep linear structure for LP/MIP.
+          Use SQP for a small smooth NLP with derivatives. Use fcmaes for a
+          black-box simulation, multimodality or nonsmoothness.</p></article>
+        <article><h3>A Pareto front</h3><p>Use MODE for black boxes. Structured
+          linear or smooth models can use a sequence of scalarized solves;
+          independently filter and check the candidates.</p></article>
+        <article><h3>Diverse good solutions</h3><p>Use MAP-Elites or the Diversifier
+          in fcmaes. Define behavior descriptors that capture the diversity
+          your application actually needs.</p></article>
+      </div>
+      <p class="note">Need a large sparse NLP, conic solver, dedicated routing/CP
+        solver or certified global MINLP? The
+        <a href="{{GUIDE}}">shared guide</a> explains when to use tools outside this ecosystem.</p>
+    </section>
+
+    <section id="projects" aria-labelledby="projects-title">
+      <p class="eyebrow">02 / Choose an interface</p>
+      <h2 id="projects-title">The five repositories.</h2>
+      <p>Libraries solve in your program. The three Rust workers share one job
+        contract and one runner. Python fcmaes remains a library.</p>
+      <div class="projects">{{PROJECTS}}</div>
+      <p class="note">Availability checked {{CHECKED}}. Package releases can lag
+        source changes; read each changelog before using a new feature.</p>
+    </section>
+
+    <section id="start" aria-labelledby="start-title">
+      <p class="eyebrow">03 / Run and inspect</p>
+      <h2 id="start-title">A shared job layer for a shell or MCP.</h2>
+      <p>On Linux with Rust 1.88 or newer, start from one worker repository.
+        Its locked build includes a compatible runner and MCP server.
+        The runnable tutorial initializes a node and exercises example jobs:</p>
+      <pre><code>git clone https://github.com/dietmarwo/fcmaes-rust
+cd fcmaes-rust
+cargo build --release --locked -p optimization-runner -p fcmaes-job-worker
+cargo build --release --locked -p fcmaes-job-worker --example custom_worker
+python3 tutorials/job-api/run.py --root /tmp/fcmaes-job-tutorial</code></pre>
+      <p>Use a fresh tutorial directory. Read the
+        <a href="https://github.com/dietmarwo/fcmaes-rust/blob/main/tutorials/job-api/README.md">fcmaes job tutorial</a>
+        for prerequisites, resource settings and output inspection. Equivalent tutorials:
+        <a href="https://github.com/dietmarwo/LP-IP-craft/blob/main/tutorials/job-api/README.md">LP/MIP</a> and
+        <a href="https://github.com/dietmarwo/SQP-craft/blob/main/tutorials/job-api/README.md">SQP</a>.</p>
+      <div class="decision-grid two">
+        <article><h3>Connect an agent</h3><p>Configure its MCP client to launch
+          <code>optimization-mcp --root /absolute/path/to/node</code> over stdio,
+          using the absolute executable path. The owner must initialize the node
+          and register workers first.</p><p>Then call <code>get_guide</code>,
+          <code>describe_node</code> and <code>describe_worker</code>. Use the returned
+          schemas and examples to validate and submit a job.</p></article>
+        <article><h3>Budget the CPU explicitly</h3><p>Discover the host and worker
+          limits before choosing outer workers and inner threads. The runner
+          accounts for <code>outer_workers × inner_threads ≤ cpu_slots</code>;
+          this is cooperative admission, not physical CPU isolation.</p><p>A many-core
+          host often benefits from concurrent trials or starts. Eight inner threads
+          are not automatically the best choice for one solve.</p></article>
+      </div>
+      <p>LP/MIP jobs accept model data. A new nonlinear application needs a model
+        registered in a Rust worker; jobs do not carry arbitrary Python callbacks
+        or shell commands. See the <a href="{{GUIDE}}">shared guide</a> for setup,
+        model registration, limitations and result checks.</p>
+    </section>
+
+    <section id="evidence" aria-labelledby="evidence-title">
+      <p class="eyebrow">04 / Check the evidence</p>
+      <h2 id="evidence-title">Integration is evidence. Ranking needs a benchmark.</h2>
+      <p><a href="https://hub.optuna.org/samplers/fcmaes/">OptunaHub's FastCmaesSampler</a>,
+        by Jacob Pfeil, integrates fcmaes CMA-ES into Optuna. It is an attributable
+        third-party integration of fast-cma-es; it does not validate the other
+        four projects or establish a performance ranking.</p>
+      <p>The repositories provide their own tests, benchmark harnesses and
+        reproduction instructions. Compare solver versions on the same models,
+        tolerances, CPU allocations and budgets, include failures and repeat seeds.
+        Report wall time and total CPU effort separately.</p>
+      <p><a href="https://github.com/dietmarwo/optimization-jobs/blob/main/docs/discovery/references.md">Reference index and evidence policy</a>
+        · <a href="https://github.com/dietmarwo/optimization-jobs/issues/new?template=independent-evaluation.yml">Share a reproducible evaluation</a></p>
+    </section>
+  </main>
+  <footer>
+    <p>fcmaes &amp; craft · Open-source optimization tools by Dietmar Wolz and contributors.</p>
+    <p><a href="{{GUIDE}}">Canonical agent guide</a> ·
+      <a href="catalog.json">JSON catalog</a> · <a href="llms.txt">Text index</a> ·
+      <a href="https://github.com/dietmarwo/optimization-jobs/tree/main/site">Page source</a></p>
+  </footer>
+</body>
+</html>

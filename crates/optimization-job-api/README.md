@@ -1,5 +1,8 @@
 # optimization-job-api
 
+[Optimization ecosystem](https://dietmarwo.github.io/optimization-jobs/) ·
+[Shared solver-selection and agent guide](https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md)
+
 Versioned optimization jobs for agents and people: the job envelope
 `optimization.job/0.1`, the result contract `optimization.result/0.2` with
 claims and evidence, checked journals, input hashing, worker-declared
