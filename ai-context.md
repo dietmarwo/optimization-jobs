@@ -86,9 +86,29 @@ Decide in this order, so that structure never overrides the requested output:
 
 | Structure | Method | Notes |
 | --- | --- | --- |
-| Linear | A series of LPs/MIPs in LP-IP-craft: weighted sums, or ε-constraints (minimize one objective, bound the others as extra rows), one model per front point | Exact points of a linear front within numerical tolerances; weighted sums find only its vertices. MODE would discard the structure |
-| Smooth, at most 256 variables | ε-constraint SQP solves with multistart (one model per bound, or bounds as a model parameter), or fcmaes MODE | SQP gives local, first-order front points; MODE needs no derivatives but more evaluations |
+| Linear | A series of LPs/MIPs in LP-IP-craft: weighted sums with strictly positive weights, or ε-constraints (minimize one objective, bound the others as extra rows), one model per candidate point | Candidates, not certified Pareto points (below). Weighted sums reach only supported points: for an LP the front is convex and every efficient point is supported, but a MIP's front can have unsupported points that no weights reach. MODE would discard the structure |
+| Smooth, at most 256 variables | ε-constraint or weighted-sum SQP solves with multistart (one model per bound or weight, or both as model parameters), or fcmaes MODE | A converged solve is a first-order point of the scalarized problem, not proof of local Pareto optimality. MODE needs no derivatives but more evaluations |
 | Black box | fcmaes MODE (or weighted `moretry` in the libraries); with exactly two objectives keep every evaluation in the exact archive (`fcmaes.pareto`, `ParetoArchive2D`) | Constraints come after the objectives and are feasible at `g(x) <= 0`; MODE's final population is not the front of everything it evaluated |
+
+Scalarization gives candidate points; check them before calling them a
+front:
+
+- **Ties.** An ε-constraint optimum can be dominated when the bound is not
+  tight or the optimum is not unique. Minimizing `f1 = x` subject to
+  `f2 = -y <= 0` on `[0,1]^2` may return `(0,0)` with objectives `(0,0)`,
+  which `(0,1)` with `(0,-1)` dominates; the solver is right, the label would
+  be wrong. Resolve ties with a second stage (fix the first objective at its
+  optimum and minimize the others) or a small augmentation term, as in
+  AUGMECON.
+- **Unsupported points.** A weighted sum with a degenerate direction has a
+  whole optimal face, and the solver returns one point of it. Of the
+  efficient points `(0,3)`, `(2,2)` and `(3,0)` of a discrete problem, no
+  positive weights make `(2,2)` optimal.
+- **Filtering.** Evaluate every candidate's original objectives and
+  constraints independently, and keep the non-dominated ones.
+- **Reporting.** Report each point's own scalar evidence (termination, gap,
+  KKT residuals), and call the result a set of non-dominated candidates, not
+  a certified Pareto front.
 
 ### Many diverse solutions
 

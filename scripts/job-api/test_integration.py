@@ -148,6 +148,15 @@ else:
                     self.assertEqual(result['state'],'completed',what)
                     run=json.loads((Path(result['directory'])/'run.json').read_text())
                     self.assertGreaterEqual(run['completed_tasks'],1,what)
+                    if self.schema_checks():
+                        # An optional field set to null: the schema and the
+                        # worker agree on whether that is valid.
+                        for field,payload in discovery.null_variants(d,example):
+                            job['payload']=payload;job['request_key']=f'null-{name}-{k}-{field}'
+                            spec.write_text(json.dumps(job))
+                            p=subprocess.run([str(RUN),'--root',str(self.root),'validate','--spec',str(spec)],capture_output=True,text=True,timeout=45)
+                            self.assertEqual(discovery.schema_accepts(d,example['profile'],payload),p.returncode==0,
+                                f"{what}: {field}=null: schema and worker disagree; {p.stderr[-300:]}")
     def test_actual_workers_numerics_journals_and_idempotency(self):
         for name in WORKERS:
             p,s,j,d,r=self.run_spec(self.fixture(name))

@@ -119,7 +119,7 @@ checkout of the worker's repository. Each worker lists three keys for that:
 
 | Key | Content |
 | --- | --- |
-| `payload_schemas` | For each profile in `profiles`, a strict JSON Schema (draft 2020-12, with `$schema` and an `$id` such as `urn:optimization-jobs:payload:lp-ip.solve/1`) of its payload: `additionalProperties: false` where the worker rejects unknown fields, `required` as the worker requires, types, enums and simple ranges. Rules a schema cannot express (cross-field rules, per-model dimensions, `inner_threads` limits) are in a `$comment` |
+| `payload_schemas` | For each profile in `profiles`, a strict JSON Schema (draft 2020-12, with `$schema` and an `$id` such as `urn:optimization-jobs:payload:lp-ip.solve/1`) of its payload: `additionalProperties: false` where the worker rejects unknown fields, `required` as the worker requires, types, enums and simple ranges. An optional field the worker treats as absent when it is `null` allows `null` in the schema; one that rejects `null` does not. Rules a schema cannot express (cross-field rules, per-model dimensions, `inner_threads` limits) are in a `$comment` |
 | `input_schemas` | Only for profiles that read input files of a fixed format: for each format, such as `lp-ip.model/1`, its JSON Schema |
 | `examples` | At least one runnable example per profile, and one for each payload shape (a model with data inputs, say) |
 
@@ -829,7 +829,9 @@ draft 2020-12 schema, every example payload and every example input with a
 format must validate, and a payload with an unknown field must not. Every
 example becomes a job (inputs written and hashed, a fresh `request_key`) that
 must validate, run and complete with at least one task, and every payload
-the shared scripts give a real worker must validate against its schema.
+the shared scripts give a real worker must validate against its schema. For
+each optional top-level field of an example, set to `null`, the schema and
+the worker must agree on whether the payload is valid.
 `test_review.py` holds the runner
 regression tests of the 0.1.1 review, the error codes and the schema checks;
 it drives a protocol fixture (`fake_worker.py`, which speaks protocol 0.1 and

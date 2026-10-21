@@ -178,3 +178,31 @@ def payload_problems(description, profile, payload):
     if not isinstance(schema, dict):
         return []
     return _errors(f"{profile} payload", schema, payload)
+
+
+def null_variants(description, example):
+    """The example's payload with each optional top-level field set to
+    `null`: `(field, payload)` pairs. A worker whose field deserializes as an
+    optional value treats `null` as absent and its schema must allow it; a
+    worker that rejects `null` there must have a schema that rejects it too.
+    Either way, the schema and the worker must agree, which a caller checks
+    by validating each variant with both."""
+    schema = (description.get("payload_schemas") or {}).get(example.get("profile"))
+    payload = example.get("payload")
+    if not isinstance(schema, dict) or not isinstance(payload, dict):
+        return []
+    required = set(schema.get("required") or [])
+    variants = []
+    for field in schema.get("properties") or {}:
+        if field not in required:
+            variant = copy.deepcopy(payload)
+            variant[field] = None
+            variants.append((field, variant))
+    return variants
+
+
+def schema_accepts(description, profile, payload):
+    """Whether the worker's payload schema of `profile` accepts `payload`.
+    Needs `jsonschema`."""
+    schema = description["payload_schemas"][profile]
+    return jsonschema.Draft202012Validator(schema).is_valid(payload)
