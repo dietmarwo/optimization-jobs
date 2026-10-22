@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/optimization-jobs.png" alt="optimization-jobs: durable optimization jobs for AI agents">
+</p>
+
 # optimization-jobs
 
 **Open-source optimization for AI agents:**

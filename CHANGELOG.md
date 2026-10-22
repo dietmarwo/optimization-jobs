@@ -28,6 +28,7 @@ Discovery (October 2026):
   guide; both crates set `homepage`. The runner's README carries the MCP
   Registry ownership line `mcp-name: io.github.dietmarwo/optimization-jobs`
   for a future listing and installs from a source checkout.
+- The README opens with a banner (`docs/images/optimization-jobs.png`).
 
 Findings of the rereview of agent workflows (October 2026):
 
