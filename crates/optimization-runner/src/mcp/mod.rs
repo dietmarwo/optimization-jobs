@@ -11,8 +11,8 @@
 //! workers and initializes no node: that stays with the person who owns the
 //! node.
 //!
-//! See `docs/job-api.md#agents-and-mcp` for the tools and their mapping onto
-//! the runner.
+//! See the guide's section [Agents and MCP](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#agents-and-mcp) for the tools
+//! and their mapping onto the runner.
 mod guide;
 mod inputs;
 mod tasks;

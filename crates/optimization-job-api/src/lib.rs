@@ -1,4 +1,7 @@
-//! Versioned optimization jobs, durable journals, worker SDK and legacy compatibility.
+#![doc = include_str!("../README.md")]
+//!
+//! The [`legacy`] module keeps compatibility with the earlier `fcmaes.job/0.1`
+//! format; its numerical semantics are unchanged.
 pub mod artifact;
 pub mod legacy;
 pub mod process;
@@ -11,7 +14,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// An error with a stable, machine-readable code. The runner prints the code
-/// next to the message; docs/job-api.md lists every code.
+/// next to the message; the [guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#errors) lists every code.
 #[derive(Debug)]
 pub struct Coded {
     pub code: &'static str,

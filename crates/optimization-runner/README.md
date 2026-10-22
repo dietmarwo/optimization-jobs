@@ -12,12 +12,13 @@ Two binaries for versioned optimization jobs on one node:
 - `optimization-mcp`: a Model Context Protocol server over stdio that gives
   agents the same jobs as tools and tasks.
 
-Install from a source checkout (Linux, Rust 1.88 or newer):
+Install on Linux with Rust 1.88 or newer, from crates.io or, for changes
+after the latest release, from a source checkout:
 
 ```sh
-git clone https://github.com/dietmarwo/optimization-jobs
-cd optimization-jobs
-cargo install --path crates/optimization-runner --locked
+cargo install optimization-runner --locked
+# or: git clone https://github.com/dietmarwo/optimization-jobs && cd optimization-jobs \
+#     && cargo install --path crates/optimization-runner --locked
 optimization-run --root /tmp/node node init --capacity 8
 optimization-run --root /tmp/node workers add --id fcmaes --executable /path/to/fcmaes-job-worker
 optimization-run --root /tmp/node run --spec JOB.json

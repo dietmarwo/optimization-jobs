@@ -1,4 +1,4 @@
-//! The `optimization-run` runner and the `optimization-mcp` server.
+#![doc = include_str!("../README.md")]
 mod host;
 pub mod mcp;
 
@@ -151,7 +151,7 @@ fn install_stop_handlers() {
 const IMMEDIATE_GRACE: Duration = Duration::from_secs(1);
 /// Largest `describe` output a worker may register: its profiles, models
 /// and options, and the JSON Schemas of its payloads and inputs with
-/// runnable examples (docs/job-api.md#discovery-for-agents).
+/// runnable examples ([guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#discovery-for-agents)).
 const MAX_DESCRIPTION: usize = 1 << 20;
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 enum Stop {

@@ -110,6 +110,11 @@ jobs:
           fi
           for build in fcmaes-rust:fcmaes-job-worker LP-IP-craft:lp-ip-job-worker SQP-craft:sqp-job-worker; do
             repo=${build%%:*} package=${build#*:}
+            if [ "$SDK" = checkout ]; then
+              # A patch with another version than the locked one is only used
+              # after the lockfile entries are re-resolved (here, in the CI clone).
+              (cd "$RUNNER_TEMP/$repo" && cargo update "${flags[@]}" -p optimization-job-api -p optimization-runner)
+            fi
             (cd "$RUNNER_TEMP/$repo" && cargo build --release "${flags[@]}" -p "$package")
             # Which optimization-job-api the worker was built with.
             (cd "$RUNNER_TEMP/$repo" && cargo metadata --format-version 1 "${flags[@]}") |

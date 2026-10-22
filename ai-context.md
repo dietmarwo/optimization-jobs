@@ -4,7 +4,7 @@ Last reviewed 2026-10-21 against `main` with the changes of an external
 review of agent workflows: workers publish payload schemas and runnable
 examples in `describe`, the MCP server has `get_guide` and `put_input`, and
 `node doctor` reports the host's usable CPUs and memory. The crates are
-`optimization-job-api` and `optimization-runner` 0.2.0, the envelope is
+`optimization-job-api` and `optimization-runner` 0.3.0, the envelope is
 `optimization.job/0.1` and the result contract `optimization.result/0.2`.
 In another checkout, check `Cargo.toml`, the `describe_node`/`describe_worker`
 output and the linked guides before you rely on a command, option or claim.
@@ -30,9 +30,9 @@ model ([where to read next](#where-to-read-next)).
 | --- | --- | --- | --- | --- |
 | [fast-cma-es](https://github.com/dietmarwo/fast-cma-es) | Black-box, nonsmooth, multimodal, multi-objective and quality-diversity problems, with the objective in Python | `fcmaes` (Python, C++ backend) | none | PyPI `fcmaes` |
 | [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | The same algorithms in pure Rust, plus experimental exact-GP Bayesian optimization of expensive simulations | `fcmaes-core` (Rust), `fcmaes_rust` (Python binding) | `fcmaes-job-worker`: `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.surrogate/1` (experimental), `fcmaes.evaluate/1` | crates.io `fcmaes-core`, PyPI `fcmaes-rust`; worker and surrogate from source |
-| [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | LP and MIP (linear objective, linear rows, continuous and integer variables) | `lp-ip-craft`, `lp-ip-craft-native` (Rust), `lp_ip_craft` (Python) | `lp-ip-job-worker`: `lp-ip.solve/1`, `lp-ip.evaluate/1` | none yet: from source |
-| [SQP-craft](https://github.com/dietmarwo/SQP-craft) | Smooth constrained NLP, at most 256 variables, analytic derivatives | `sqp-craft` (core), `sqp-craft-solver`, the backends `sqp-craft-clarabel` and `sqp-craft-activeset` (Rust), `sqp_craft` (Python) | `sqp-job-worker`: `sqp.solve/1`, `sqp.evaluate/1` | none yet: from source |
-| optimization-jobs (this one) | No solver of its own: the job envelope, result contract, worker SDK, runner and MCP server | `optimization-job-api` (worker SDK) | runner `optimization-run`, MCP server `optimization-mcp` | none yet: from source |
+| [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | LP and MIP (linear objective, linear rows, continuous and integer variables) | `lp-ip-craft`, `lp-ip-craft-native` (Rust), `lp_ip_craft` (Python) | `lp-ip-job-worker`: `lp-ip.solve/1`, `lp-ip.evaluate/1` | crates.io `lp-ip-craft`, `lp-ip-craft-native`, PyPI `lp-ip-craft` (from 0.29.0) |
+| [SQP-craft](https://github.com/dietmarwo/SQP-craft) | Smooth constrained NLP, at most 256 variables, analytic derivatives | `sqp-craft` (core), `sqp-craft-solver`, the backends `sqp-craft-clarabel` and `sqp-craft-activeset` (Rust), `sqp_craft` (Python) | `sqp-job-worker`: `sqp.solve/1`, `sqp.evaluate/1` | crates.io `sqp-craft` and its solver and backend crates, PyPI `sqp-craft` (from 0.17.0) |
+| optimization-jobs (this one) | No solver of its own: the job envelope, result contract, worker SDK, runner and MCP server | `optimization-job-api` (worker SDK) | runner `optimization-run`, MCP server `optimization-mcp` | crates.io `optimization-job-api`, `optimization-runner` (from 0.3.0) |
 
 The two fcmaes projects are independent implementations of the same algorithm
 family. fast-cma-es is the one for objectives written in Python. fcmaes-rust
@@ -208,7 +208,13 @@ requirements and, where there are any, our own dependencies.
 ```sh
 python -m pip install fcmaes        # fast-cma-es; CPython 3.10+
 python -m pip install fcmaes-rust   # import fcmaes_rust; CPython 3.11-3.13
+python -m pip install lp-ip-craft   # import lp_ip_craft; CPython 3.10+
+python -m pip install sqp-craft     # import sqp_craft; CPython 3.10+
 ```
+
+The two craft packages have abi3 wheels for Linux x86_64, Windows x64 and
+macOS x86_64/arm64; elsewhere pip builds them from the sdist with Rust 1.85
+or newer.
 
 fcmaes has wheels for CPython 3.10–3.13 on x86-64 Linux and Windows and on
 macOS (Intel and Apple Silicon). Elsewhere, for example Python 3.14 or Linux
@@ -235,30 +241,35 @@ git clone https://github.com/dietmarwo/fcmaes-rust
 
 None of these Python packages depends on another repository of ours.
 
-The registry releases (fcmaes 2.0.3, fcmaes-rust and `fcmaes-core` 0.1.5)
-predate the October 2026 MODE fixes (correct SBX and polynomial mutation,
-non-dominated sorting, feasibility first; fast-cma-es #31, fcmaes-rust #1)
-and the exact two-objective archives (`fcmaes.pareto`, `ParetoArchive2D`).
-Until the next release, build from source for MODE work, for example
+For MODE work use fcmaes 2.1.0 or later and fcmaes-rust/`fcmaes-core` 0.2.0
+or later (`pip install "fcmaes>=2.1"`, `"fcmaes-rust>=0.2"`). Earlier
+releases (fcmaes 2.0.3, fcmaes-rust and `fcmaes-core` 0.1.5) predate the
+October 2026 MODE fixes (correct SBX and polynomial mutation, non-dominated
+sorting, feasibility first; fast-cma-es #31, fcmaes-rust #1) and the exact
+two-objective archives (`fcmaes.pareto`, `ParetoArchive2D`). Check the
+registry for the installed version; for changes after the latest release,
+build from source, for example
 `python -m pip install "git+https://github.com/dietmarwo/fast-cma-es" --config-settings=cmake.define.FCMAES_FETCH_EIGEN=ON`,
-and in Rust use `fcmaes-core` from git ([below](#rust-crates)).
+and in Rust use git dependencies ([below](#rust-crates)).
 
 ### Rust crates
 
 ```toml
 [dependencies]
-fcmaes-core = "0.1"   # crates.io; for the MODE fixes: { git = "https://github.com/dietmarwo/fcmaes-rust" }
+fcmaes-core = "0.2"          # 0.2.0 or later has the MODE fixes and ParetoArchive2D
 # LP/MIP: the model, options and checks, and the solver
-lp-ip-craft = { git = "https://github.com/dietmarwo/LP-IP-craft" }
-lp-ip-craft-native = { git = "https://github.com/dietmarwo/LP-IP-craft" }
+lp-ip-craft = "0.29"
+lp-ip-craft-native = "0.29"
 # Smooth NLP: the core (ProblemSpec, NlpProblem), the solver and a QP backend
-sqp-craft = { git = "https://github.com/dietmarwo/SQP-craft" }
-sqp-craft-solver = { git = "https://github.com/dietmarwo/SQP-craft" }
-sqp-craft-clarabel = { git = "https://github.com/dietmarwo/SQP-craft" }    # or sqp-craft-activeset
+sqp-craft = "0.17"
+sqp-craft-solver = "0.17"
+sqp-craft-clarabel = "0.17"  # or sqp-craft-activeset
 ```
 
-LP-IP-craft and SQP-craft have release workflows for crates.io and PyPI. Until
-their first release, use git dependencies, ideally with a pinned `rev`.
+These are the first crates.io releases of LP-IP-craft and SQP-craft (October
+2026). If a version is not on crates.io yet, or for changes after the latest
+release, use git dependencies, ideally with a pinned `rev`, for example
+`lp-ip-craft = { git = "https://github.com/dietmarwo/LP-IP-craft", rev = "..." }`.
 
 ### Job workers, the runner and the MCP server
 
@@ -276,10 +287,12 @@ git clone https://github.com/dietmarwo/SQP-craft
 (cd SQP-craft && cargo build --release --locked -p optimization-runner -p sqp-job-worker)
 ```
 
-The runner and MCP server can also be built alone in this repository:
-`cargo build --release --locked`, or
-`cargo install --path crates/optimization-runner --locked` to put both on
-`PATH`.
+The runner and MCP server can also be installed alone:
+`cargo install optimization-runner --locked` (crates.io, from 0.3.0) puts
+both on `PATH`; in a checkout of this repository, `cargo build --release
+--locked` or `cargo install --path crates/optimization-runner --locked`. A
+runner from any of these sources accepts the three workers (worker protocol
+`optimization.worker/0.2`).
 
 One node, with one absolute root and one CPU budget, serves all three
 workers. Use one runner build for the node, and register the workers by

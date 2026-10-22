@@ -44,12 +44,23 @@ maps problem classes to profiles:
 | [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | `lp-ip-job-worker` | `lp-ip.solve/1`, `lp-ip.evaluate/1` |
 | [SQP-craft](https://github.com/dietmarwo/SQP-craft) | `sqp-job-worker` | `sqp.solve/1`, `sqp.evaluate/1` |
 
-## Install from source
+## Install
 
-Nothing has been published to crates.io yet; build from source. You need
-Linux (the runner supervises processes through Linux interfaces), git, and
-Rust 1.88 or newer (`rustup` from https://rustup.rs). Cargo fetches every
-other dependency. Python 3.10 or newer is needed only for the test scripts.
+From 0.3.0 the crates are on crates.io. On Linux (the runner supervises
+processes through Linux interfaces) with Rust 1.88 or newer (`rustup` from
+https://rustup.rs):
+
+```sh
+cargo install optimization-runner --locked   # optimization-run and optimization-mcp on PATH
+```
+
+Worker crates depend on `optimization-job-api = "0.3"`.
+
+### From source
+
+For changes after the latest release, build from source. You need Linux,
+git and Rust 1.88 or newer; Cargo fetches every other dependency. Python
+3.10 or newer is needed only for the test scripts.
 
 ```sh
 git clone https://github.com/dietmarwo/optimization-jobs
