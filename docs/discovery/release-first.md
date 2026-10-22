@@ -5,7 +5,27 @@ The intended sequence is **tested registry releases → clean-install verificati
 Rust registry is **crates.io**; Cargo is its package manager. Nothing in these
 documents publishes a package or sends a message.
 
-## Release inventory
+## Status, 22 October 2026
+
+Steps 1–4 of the order below are done. Released and installed from the
+registries in clean environments (wheels with smoke tests and the PyPI
+README examples; the crate README examples built against crates.io;
+`cargo install optimization-runner --locked` with an MCP `initialize`,
+`tools/list` and `get_guide`):
+
+| Repository | Released |
+| --- | --- |
+| fast-cma-es | PyPI `fcmaes` 2.1.0 |
+| fcmaes-rust | PyPI `fcmaes-rust` 0.2.0, crates.io `fcmaes-core` 0.2.0 |
+| LP-IP-craft | PyPI `lp-ip-craft` 0.29.0, crates.io `lp-ip-craft` and `lp-ip-craft-native` 0.29.0 (first release) |
+| SQP-craft | PyPI `sqp-craft` 0.17.0, crates.io `sqp-craft`, `sqp-craft-parallel`, `sqp-craft-activeset`, `sqp-craft-clarabel`, `sqp-craft-solver` 0.17.0 (first release) |
+| optimization-jobs | crates.io `optimization-job-api` and `optimization-runner` 0.3.0 (first release) |
+
+Still open: step 5 (outreach with a compatibility example) and the MCP
+Registry checks in the [directory pack](directory-submissions.md). The
+inventory below is the state before these releases.
+
+## Release inventory (before the October 2026 releases)
 
 Registry APIs were checked on 2026-10-21. Versions below are inventory, not a
 claim that the current main branches have passed release qualification.

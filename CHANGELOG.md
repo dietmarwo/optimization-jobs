@@ -8,6 +8,14 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Changed
+
+- The landing page catalog and `docs/discovery` record the October 2026
+  releases after installing each package from its registry: fcmaes 2.1.0,
+  fcmaes-rust/`fcmaes-core` 0.2.0, lp-ip-craft 0.29.0 and sqp-craft 0.17.0
+  (PyPI and crates.io), and these crates 0.3.0. The LP-IP-craft, SQP-craft
+  and optimization-jobs cards link their registry pages.
+
 ## [0.3.0] - 2026-10-22
 
 The first release on crates.io: `cargo install optimization-runner --locked`
