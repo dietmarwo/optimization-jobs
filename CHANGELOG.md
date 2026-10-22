@@ -4,9 +4,18 @@ All notable changes to `optimization-job-api` and `optimization-runner`
 (`optimization-run`, `optimization-mcp`) are documented here. Both crates
 share one version. Until 0.2.0 the crates lived in fcmaes-rust, LP-IP-craft
 and SQP-craft; worker repositories depend on them through git at a pinned
-revision. No version has been published to crates.io yet.
+revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-10-22
+
+The first release on crates.io: `cargo install optimization-runner --locked`
+installs `optimization-run` and `optimization-mcp`, and worker crates can
+depend on `optimization-job-api = "0.3"`. The solver workers still pin this
+repository through git. Envelope `optimization.job/0.1`, result contract
+`optimization.result/0.2` and worker protocol `optimization.worker/0.2` are
+unchanged from 0.2.0.
 
 ### Added
 
@@ -156,6 +165,15 @@ Earlier additions:
 
 ### Changed
 
+- `publish-crates.yml`: while Trusted Publishing is not enabled
+  (`CRATES_IO_TRUSTED_PUBLISHING`), a tag publishes the two crates with the
+  secret `CARGO_REGISTRY_TOKEN`, the API crate first and skipping versions
+  already on crates.io, so the first release needs no local toolchain.
+  `RELEASING.md` describes the token and its removal afterwards.
+- The shared guide's installation section names the registry releases of
+  October 2026 (fcmaes 2.1.0, fcmaes-rust and `fcmaes-core` 0.2.0,
+  LP-IP-craft 0.29.0, SQP-craft 0.17.0, these crates 0.3.0), which contain
+  the MODE fixes and the exact Pareto archives.
 - `RELEASING.md`: the tag command reads the version from the runner's
   manifest instead of a hard-coded number, and a section covers discovery
   after a release.

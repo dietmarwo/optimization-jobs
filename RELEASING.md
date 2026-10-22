@@ -23,22 +23,34 @@ Publishing, modeled on fcmaes-rust:
 
 1. Create a GitHub environment named `release` (protect it if releases
    should need approval).
-2. Publish the first version of each crate manually to establish ownership,
-   from a clean checkout of the release commit:
+2. Publish the first version with a crates.io API token; crates.io accepts a
+   Trusted Publisher only for an existing crate. There are two ways; the
+   first needs only a browser:
+
+   - **Token in GitHub (no local toolchain):** on crates.io, Account Settings
+     → API Tokens, create a token with the scopes `publish-new` and
+     `publish-update`, restricted to the crates `optimization-*`, with a
+     short expiry. Add it as the secret `CARGO_REGISTRY_TOKEN` of the
+     `release` environment. The release tag then publishes
+     `optimization-job-api` and then `optimization-runner`, skipping
+     versions already on crates.io, so rerunning the job completes a
+     partial upload.
+   - **From a clean checkout of the release commit:**
 
    ```bash
    cargo login
    cargo publish --workspace --locked
    ```
 
+   After the first upload, delete the secret and revoke the token.
 3. For each crate, configure a crates.io Trusted Publisher: owner
    `dietmarwo`, repository `optimization-jobs`, workflow
    `publish-crates.yml`, environment `release`.
 4. Set the GitHub repository variable `CRATES_IO_TRUSTED_PUBLISHING` to
    `true`.
 
-Until the variable is set, the workflow runs every check on a tag and skips
-the upload.
+Until the variable is set, the workflow uploads only with the token secret;
+without it, it runs every check on a tag and skips the upload.
 
 ## Pre-release checks
 
