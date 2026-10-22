@@ -7,10 +7,10 @@ license = "MIT"
 description = "Versioned optimization jobs for agents: job envelope, result contract with claims and evidence, checked journals and the worker SDK"
 repository = "https://github.com/dietmarwo/optimization-jobs"
 homepage = "https://dietmarwo.github.io/optimization-jobs/"
-documentation = "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md"
+documentation = "https://docs.rs/optimization-job-api"
 readme = "README.md"
 keywords = ["optimization", "jobs", "agents", "solver", "mcp"]
-categories = ["science", "api-bindings"]
+categories = ["science", "mathematics"]
 publish = ["crates-io"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -219,8 +219,9 @@ fn lowercase_sha256(s: &str) -> bool {
 }
 
 impl Outcome {
-    /// Checks the rules of the result contract (docs/job-api.md, "Claims and
-    /// evidence"). The runner applies them to every journal record.
+    /// Checks the rules of the result contract (the guide's section
+    /// [Termination, claim and evidence](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#termination-claim-and-evidence)).
+    /// The runner applies them to every journal record.
     pub fn check(&self) -> std::result::Result<(), String> {
         let claim = self.claim.as_str();
         if self.termination.is_empty() {

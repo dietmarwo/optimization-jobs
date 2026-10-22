@@ -165,6 +165,15 @@ Earlier additions:
 
 ### Changed
 
+- crates.io and docs.rs pages: both crates' rustdoc front page is their
+  README; `optimization-job-api` links its API documentation on docs.rs (the
+  runner keeps the guide) and is categorized under science and mathematics
+  instead of API bindings; rustdoc references to `docs/job-api.md` are
+  links to the guide's sections.
+- CI: the mixed node with this checkout's SDK re-resolves the workers'
+  lockfile entries, so a version bump of the shared crates (0.3.0) is
+  tested too; before, Cargo ignored a patch whose version differed from the
+  locked one.
 - `publish-crates.yml`: while Trusted Publishing is not enabled
   (`CRATES_IO_TRUSTED_PUBLISHING`), a tag publishes the two crates with the
   secret `CARGO_REGISTRY_TOKEN`, the API crate first and skipping versions
