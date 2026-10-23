@@ -22,7 +22,7 @@ python3 tutorials/agentic/run.py run --sources /path/to/checkouts \
   --output /path/to/checkouts/prompt-results --chapter all --cores 2
 ```
 
-The output directory must be empty or new. To run one chapter, choose `trebuchet`, `production`, `energy`, `curve-fit`, `gtoc1`, `surrogate`, `lp-ip` or `sqp`. `--seed` changes the optimizer seed; production training/holdout simulation roots remain separately fixed. `--target-m` changes the trebuchet target. `--budget-scale` scales the four application searches; the curve-fitting reference jobs and exact LP check retain their own stated budgets. This is intentional and visible in the retained specs.
+The output directory must be empty or new. To run one chapter, choose `trebuchet`, `production`, `energy`, `curve-fit`, `gtoc1`, `surrogate`, `lp-ip`, `sqp` or `rail-traffic`. `--seed` changes the optimizer seed; production training/holdout simulation roots remain separately fixed. `--target-m` changes the trebuchet target. `--budget-scale` scales the four application searches; the curve-fitting reference jobs and exact LP check retain their own stated budgets. This is intentional and visible in the retained specs.
 
 The build uses one target directory but copies the two curve-fit example binaries to distinct filenames before the next build can replace `examples/custom_worker`. `build-manifest.json` records their hashes. Simulator dependencies remain in standalone optional tutorial workspaces.
 
@@ -32,4 +32,6 @@ The `--chapter` option also selects which workers to build; its default `all` bu
 
 `--lp-capacity` changes the project budget (default 10, strictly between 0 and 15); `--sqp-dimension` changes the allocation dimension (default 4, range 2–32). Surrogate budgets stay at 48 Branin calls, eight warm calls, and 32 calls for each oscillator method; `--budget-scale` does not change these or the LP/SQP chapters.
 
-The driver validates payloads and input schemas from discovery. Its infeasibility exception is specific to the deliberately impossible LP/IP job. Run `python3 tutorials/agentic/test_contract.py` for the evidence acceptance boundaries and independent analytic checks. The agentic tutorial CI matrix builds and executes these three chapters with real workers and current stable Rust, retains results and runs these tests. It uses the repositories' existing pinned job-API dependencies.
+The driver validates payloads and input schemas from discovery. Its infeasibility exception is limited to explicitly expected infeasible jobs. Run `python3 tutorials/agentic/test_contract.py` for the evidence acceptance boundaries and independent analytic checks. The agentic tutorial CI matrix builds and executes the surrogate, LP/IP, SQP and rail chapters with real workers and current stable Rust, retains results and runs these tests. It uses the repositories' existing pinned job-API dependencies.
+
+The [rail-traffic tutorial](rail-traffic/README.md) uses the LP/IP worker and an independently checked six-train model. `build --chapter rail-traffic` needs only optimization-jobs and LP-IP-craft. `--rail-scenario` selects a scenario copy for demand-sensitivity experiments. Its fixed solve budgets do not use `--budget-scale`. See its [setup](rail-traffic/SETUP.md) and [validation](rail-traffic/VALIDATION.md).
