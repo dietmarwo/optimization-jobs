@@ -5,7 +5,7 @@
   "url": "https://dietmarwo.github.io/optimization-jobs/",
   "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
   "comparison": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/optimization-systems-for-ai-agents.md",
-  "availability_checked": "2026-10-22",
+  "availability_checked": "2026-10-23",
   "projects": [
     {
       "id": "fast-cma-es",
@@ -31,7 +31,7 @@
       "summary": "Native Rust parallel black-box optimization, Python bindings, and a worker for durable optimization jobs.",
       "fit": "Rust objectives, parallel global search, Pareto search and quality diversity. Application workers run registered Rust models as jobs.",
       "limits": "Python callbacks do not gain native Rust parallelism. The experimental surrogate targets small deterministic continuous-box problems; consult its limits before use.",
-      "availability": "crates.io: fcmaes-core; PyPI: fcmaes-rust (0.2.0 and later include the MODE fixes and ParetoArchive2D). Job worker and experimental surrogate: source only.",
+      "availability": "crates.io: fcmaes-core; PyPI: fcmaes-rust (0.2.0 and later include the MODE fixes and ParetoArchive2D; 0.2.1 accepts list arguments and validates inputs). Job worker and experimental surrogate: source only.",
       "guide": "https://github.com/dietmarwo/fcmaes-rust/blob/main/ai-context.md",
       "tutorial": "https://github.com/dietmarwo/fcmaes-rust/blob/main/tutorials/job-api/README.md",
       "documentation": "https://dietmarwo.github.io/fcmaes-rust/",

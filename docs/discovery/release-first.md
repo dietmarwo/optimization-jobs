@@ -5,18 +5,22 @@ The intended sequence is **tested registry releases → clean-install verificati
 Rust registry is **crates.io**; Cargo is its package manager. Nothing in these
 documents publishes a package or sends a message.
 
-## Status, 22 October 2026
+## Status, 23 October 2026
 
 Steps 1–4 of the order below are done. Released and installed from the
 registries in clean environments (wheels with smoke tests and the PyPI
 README examples; the crate README examples built against crates.io;
 `cargo install optimization-runner --locked` with an MCP `initialize`,
-`tools/list` and `get_guide`):
+`tools/list` and `get_guide`). fcmaes-rust 0.2.1 followed on 23 October with
+the Python binding fixes. Its PyPI wheel passed the smoke test and the
+repository's binding, stub and contract tests (82). The crate README example
+and the Dual Annealing fix were built against `fcmaes-core` 0.2.1 from
+crates.io:
 
 | Repository | Released |
 | --- | --- |
 | fast-cma-es | PyPI `fcmaes` 2.1.0 |
-| fcmaes-rust | PyPI `fcmaes-rust` 0.2.0, crates.io `fcmaes-core` 0.2.0 |
+| fcmaes-rust | PyPI `fcmaes-rust` 0.2.1, crates.io `fcmaes-core` 0.2.1 (0.2.0 on 22 October) |
 | LP-IP-craft | PyPI `lp-ip-craft` 0.29.0, crates.io `lp-ip-craft` and `lp-ip-craft-native` 0.29.0 (first release) |
 | SQP-craft | PyPI `sqp-craft` 0.17.0, crates.io `sqp-craft`, `sqp-craft-parallel`, `sqp-craft-activeset`, `sqp-craft-clarabel`, `sqp-craft-solver` 0.17.0 (first release) |
 | optimization-jobs | crates.io `optimization-job-api` and `optimization-runner` 0.3.0 (first release) |
