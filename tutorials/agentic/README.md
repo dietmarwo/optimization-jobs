@@ -16,6 +16,8 @@ These nine tutorials let an agent execute maintained numerical models, validate 
 
 Start with [SETUP.md](SETUP.md), then paste a chapter's `prompt.md`. Each chapter has a follow-up prompt that changes or examines the experiment. [VALIDATION.md](VALIDATION.md) separates program tests, executed pilot campaigns and fresh model trials.
 
+A related [fluid-dynamics workshop](https://github.com/dietmarwo/fcmaes-rust/blob/main/tutorials/cfd-room-ventilation/agentic/README.md) in fcmaes-rust applies the same prompt-first approach to a native CFD model. It drives that model's command-line program directly, because the model has no job worker.
+
 ## Execution contract
 
 - Read the shared [solver-selection guide](../../ai-context.md) and the selected worker's discovery. These workers are source-only, optional tutorial builds.

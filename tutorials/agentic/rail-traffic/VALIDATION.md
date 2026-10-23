@@ -16,6 +16,14 @@ Values are passenger-minutes, rounded for display. Each scenario completed seven
 
 The independent checker validated releases, horizon, exclusive occupancy plus clearance, caps, queue precedence and recomputed objectives. Every oracle visited all 720 orders; it does not reuse the MIP matrix. All held-fixed stress sequences were replayed for the preselected extra delays 0, 2 and 5. These are deterministic cases, not a probabilistic robustness estimate.
 
+## Integration re-run
+
+When the chapter was integrated (23 October 2026), `run.py build --chapter rail-traffic` and all three campaigns were executed again with Rust/Cargo 1.97.0 and matplotlib 3.11.2:
+- the default fixture and both passenger-count follow-ups again completed 21 jobs with 39 result records;
+- every claim, objective, bound, solution vector, node and simplex-iteration count, oracle result and stress replay equals [validation.json](validation.json); only the remaining job time passed to the worker (`time_limit_seconds`) differs, because it reflects elapsed setup time;
+- the three figures are byte-identical to those beside this page;
+- the six rail tests and the six evidence-contract tests pass, and the existing LP/IP chapter (four jobs, seven records) still runs through the shared driver with unchanged numerical results.
+
 ## Program checks and limits
 
 - Six formulation/checker tests pass, including comparison of all 720 orders under four policies, infeasibility, stress propagation and seven malformed-input cases.

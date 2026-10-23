@@ -244,7 +244,8 @@ def plot(data, policies, stress, out):
     import matplotlib.pyplot as plt
     names = [n for n in ('fcfs', 'weighted', 'fair10', 'fair8', 'queue10') if policies[n]['feasible']]
     colors = plt.get_cmap('tab10').colors
-    fig, axes = plt.subplots(len(names), 1, figsize=(10, 2.2*len(names)), sharex=True)
+    fig, axes = plt.subplots(len(names), 1, figsize=(10, 2.2*len(names)), sharex=True, squeeze=False)
+    axes = axes[:, 0]
     for ax, name in zip(axes, names):
         for i, (train, start) in enumerate(zip(data['trains'], policies[name]['starts'])):
             ax.barh(i, train['duration'], left=start, color=colors[i % 10], height=.65)
@@ -264,5 +265,5 @@ def plot(data, policies, stress, out):
     for name, rows in stress.items():
         ax.plot([r['extra_delay'] for r in rows], [r['max_delay'] for r in rows], marker='o', label=name)
     ax.axhline(10, color='#b33a3a', linestyle='--', label='10-minute policy cap')
-    ax.set(xlabel='Additional incoming delay of ICE101 (minutes)', ylabel='Worst train delay after fixed-order replay (minutes)')
+    ax.set(xlabel=f"Additional incoming delay of {data['trains'][0]['id']} (minutes)", ylabel='Worst train delay after fixed-order replay (minutes)')
     ax.legend(); ax.grid(alpha=.2); fig.tight_layout(); fig.savefig(out/'rail-stress.png', dpi=150); plt.close(fig)

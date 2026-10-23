@@ -1,6 +1,6 @@
 # Executed validation
 
-The original five chapters and the three additional chapters have separate validation records below.
+The original five chapters and the three additional chapters have separate validation records below. The rail-traffic chapter has [its own record](rail-traffic/VALIDATION.md).
 
 Validated on Linux with Rust/Cargo 1.90.0, Python 3.12.14, jsonschema 4.26.0 and matplotlib 3.10.8. Numerical campaigns use seed 42, two CPU slots and the documented pilot budgets. The container exposes eight usable CPUs (nine affinity CPUs); Cargo builds use four jobs with release LTO disabled and 16 codegen units. This is functional validation, not a timing benchmark. Rust 1.88 is the documented minimum but was not separately exercised here.
 
@@ -85,3 +85,7 @@ The earlier fresh-context `gpt-6.1-sol` trial of these three prompts is historic
 When these chapters were merged (23 October 2026), the selected builds and runs were repeated with Rust/Cargo 1.97.0. The three default chapters and the four follow-ups (33 jobs / 73 records) matched the published summary in every numerical field; only timing fields differ (proposal and evaluation seconds, remaining time limits). An all-chapter run (39 jobs / 73 records) reproduced the first five chapters' quoted values unchanged.
 
 The new GitHub Actions matrix builds each selected chapter with locked dependencies, runs worker/contract tests and the numerical campaign, and retains specs, results and figures. Rust diagnostic steps register the existing ecosystem problem matcher and explicitly disable color after the cache step. The existing optional-feature CI, shared test-helper lint fix, book entry and lockfile repairs from the first integration remain intact.
+
+## Rail traffic
+
+The rail-traffic chapter was added after the surrogate, LP/IP and SQP chapters merged. It reuses the LP/IP worker and adds an independent timetable checker and an exhaustive order oracle. Its campaigns, follow-ups, program checks and limits are recorded in [rail-traffic/VALIDATION.md](rail-traffic/VALIDATION.md) and [rail-traffic/validation.json](rail-traffic/validation.json).

@@ -10,7 +10,7 @@ This tutorial turns that question into a checked experiment. The reader describe
 
 ## Why this is relevant
 
-DB already describes AI-supported conflict management for S-Bahn operations [1]. The 2025 paper by DB InfraGO authors Stephan Zieger and Hannah Richta describes the ADA-PMB dispatching assistant and its interface to dispatchers [2]. This independent workshop is a small educational example for discussing an agent layer around existing planning tools, rather than a proposed replacement for those systems.
+DB already describes AI-supported conflict management for S-Bahn operations [1]. A 2025 paper by Stephan Zieger and Hannah Richta describes DB InfraGO's ADA-PMB dispatching assistant and its interface to dispatchers [2]. This independent workshop is a small educational example for discussing an agent layer around existing planning tools, rather than a proposed replacement for those systems.
 
 The useful management question is: **can an agent turn a request into an explicit decision model, expose its assumptions, run reproducible alternatives and explain why an operator might reject the best-scoring answer?**
 
