@@ -8,6 +8,12 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Changed
+
+- The landing page catalog and `docs/discovery` record fcmaes-rust 0.2.1
+  (PyPI and crates.io, 23 October 2026) after installing it from both
+  registries, and every registry version was rechecked that day.
+
 ### Added
 
 - `docs/optimization-systems-for-ai-agents.md`: fcmaes & craft compared with
