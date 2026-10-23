@@ -1,4 +1,4 @@
-Use the checked-out optimization-jobs prompt tutorials and matching solver repositories. Read tutorials/agentic/README.md, SETUP.md, and this chapter's README. Inspect available binaries, node capacity, and worker discovery. Build missing workers using the documented setup. Use at most two CPU slots and seed 42, keep the declared tolerances unchanged, and use a new output directory.
+Use a checkout of optimization-jobs with a sibling checkout of fcmaes-rust. Read tutorials/agentic/README.md, SETUP.md, and this chapter's README. Inspect available binaries, node capacity, and worker discovery. Build missing workers using the documented setup. Use at most two CPU slots and seed 42, keep the declared tolerances unchanged, and use a new output directory.
 
 Demonstrate surrogate optimization with the registered Branin benchmark and native damped-oscillator calibration. First spend 48 Branin calls, retrieve its declared observation snapshot through the artifact interface, verify its SHA-256, and start a new job with those 48 observations and exactly eight additional calls. Explain why this does not resume optimizer state.
 

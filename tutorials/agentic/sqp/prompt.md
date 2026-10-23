@@ -1,4 +1,4 @@
-Use the checked-out optimization-jobs prompt tutorials and matching solver repositories. Read tutorials/agentic/README.md, SETUP.md, and this chapter's README. Inspect available binaries, node capacity, and worker discovery. Build missing workers using the documented setup. Use at most two CPU slots and seed 42, keep the declared tolerances unchanged, and use a new output directory.
+Use a checkout of optimization-jobs with a sibling checkout of SQP-craft. Read tutorials/agentic/README.md, SETUP.md, and this chapter's README. Inspect available binaries, node capacity, and worker discovery. Build missing workers using the documented setup. Use at most two CPU slots and seed 42, keep the declared tolerances unchanged, and use a new output directory.
 
 Use the stock SQP worker's registered simplex model: minimize the sum of squared shares, sum(shares)=1, and each share in [0,1], initially dimension four. State the smoothness, analytic derivatives, bounds, equality, fixed tolerances and four starts. Run active_set and clarabel on exactly the same starts and budgets.
 
