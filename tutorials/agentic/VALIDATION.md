@@ -34,6 +34,15 @@ Application parity tests compare native scalar, multi-objective and QD values, r
 
 The final scripted campaign completed 25 jobs/40 result records. Every job and payload passed the published/worker JSON Schemas, every result passed the result schema, accounting was complete and numerical claims carried rechecked evidence. CSV residual losses, the SQP anchor and the one-hour LP were recomputed separately. Pilot work is retained by job; objective calls, validation calls, LP pivots and SQP iterations are different units.
 
+## Integration re-run
+
+When the series was merged (23 October 2026), `run.py build` and `run.py run --chapter all --cores 2` were executed again on the merged sources:
+- toolchain: Rust/Cargo 1.97.0 and matplotlib 3.11.2;
+- every number quoted in the five chapters reproduced bit for bit: trebuchet, production training and holdout throughput, energy baseline, search, holdout LCOE and LP, curve-fit losses, and both GTOC1 scores;
+- the campaign again ran 25 jobs with 40 result records and the same 12,058 counted evaluations, with all schema, accounting and evidence checks passing.
+
+The four application test suites with `--features job-worker` (113 tests) also passed; fcmaes-rust CI now runs them. The fresh-model trials below were not repeated.
+
 ## Fresh model trial
 
 A fresh-context `gpt-6.1-sol` shell agent read the five prompt files and linked instructions, used prepared binaries, and completed all five chapters sequentially: 25 jobs/40 result records. It had no earlier results or implementation notes in its starting context. It inspected discovery, specs, outcome evidence, checksums, plots and replay files, and wrote a chronological log. This tests prompt usability with a shell agent, not a chat interface or clean-machine installation. It is one fresh starting context across five chapters, not five independently reset trials or a model-ranking study.
