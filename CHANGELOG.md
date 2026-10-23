@@ -10,6 +10,8 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- README badges as in fcmaes-rust: pure-Rust runner, crates.io, docs.rs, MCP over stdio,
+  Linux, the ecosystem overview and the AI agent guide.
 - The landing page catalog and `docs/discovery` record the October 2026
   releases after installing each package from its registry: fcmaes 2.1.0,
   fcmaes-rust/`fcmaes-core` 0.2.0, lp-ip-craft 0.29.0 and sqp-craft 0.17.0
