@@ -12,6 +12,14 @@ Choose between Python/Rust black-box optimization, LP/MIP and smooth nonlinear
 solvers. This repository provides their shared shell/MCP job layer; it has no
 solver of its own.
 
+![Pure Rust](https://img.shields.io/badge/runner-100%25%20Rust-brightgreen)
+[![crates.io](https://img.shields.io/crates/v/optimization-runner.svg?cacheSeconds=300)](https://crates.io/crates/optimization-runner)
+[![docs.rs](https://docs.rs/optimization-job-api/badge.svg)](https://docs.rs/optimization-job-api)
+![MCP server](https://img.shields.io/badge/MCP-server%20over%20stdio-blueviolet)
+![Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
+[![Ecosystem overview](https://img.shields.io/badge/ecosystem-overview-blue)](https://dietmarwo.github.io/optimization-jobs/)
+[![AI agent guide](https://img.shields.io/badge/guide-AI%20agents-blue)](ai-context.md)
+
 Durable, versioned optimization jobs for agents and people: a strict job
 envelope, a result contract with claims and evidence, a worker SDK, a local
 runner, `optimization-run`, that schedules native solver workers against one
