@@ -101,15 +101,16 @@ ambiguous in an AI search. The word “jobs” alone can also mean employment.
 
 ## 3. Release accurate package metadata
 
-Availability recorded in the catalog on 2026-10-21:
+Availability recorded in the catalog on 2026-10-22, after installing each
+package from its registry:
 
-| Repository | Already published | Still source-only |
+| Repository | Published | Still source-only |
 | --- | --- | --- |
-| fast-cma-es | PyPI `fcmaes` | Changes after its latest release |
-| fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` | Job worker, surrogate and other internal crates |
-| LP-IP-craft | None recorded | Library crates, Python distribution, worker |
-| SQP-craft | None recorded | Library crates, Python distribution, worker |
-| optimization-jobs | None recorded | API crate, runner/MCP crate |
+| fast-cma-es | PyPI `fcmaes` 2.1.0 | Changes after its latest release |
+| fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.2.0 | Job worker, surrogate and other internal crates |
+| LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.29.0 | Job worker |
+| SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.17.0 | Job worker |
+| optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.3.0 | — |
 
 Use each repository's `RELEASING.md` and existing tested release workflows.
 The discovery changes touched no package version, release tag, dependency pin,

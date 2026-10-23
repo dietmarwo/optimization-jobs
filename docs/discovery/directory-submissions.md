@@ -41,8 +41,9 @@ workers (replace both absolute paths; the JSON layout is client-dependent):
 ```
 
 The [official Registry package guide](https://modelcontextprotocol.io/registry/package-types)
-now documents Cargo packages. This is a feasible distribution route once the
-runner crate is published; a source checkout alone is not that registry artifact.
+now documents Cargo packages. The runner crate is published (0.3.0, October
+2026), so this distribution route is open; a source checkout alone is not that
+registry artifact.
 The runner's crate README includes the proposed visible `mcp-name:` token needed
 for Cargo ownership verification. It is preparation, not evidence of registration.
 
@@ -50,7 +51,10 @@ Before generating and publishing a `server.json`:
 
 1. Publish and install the intended `optimization-runner` crate version using
    [RELEASING.md](../../RELEASING.md). Verify that the rendered crate README
-   contains the visible ownership token.
+   contains the visible ownership token. Done for 0.3.0 (22 October 2026):
+   `cargo install optimization-runner --locked` installs both binaries, and
+   the packaged README carries the `mcp-name:` line; check the rendered
+   crates.io page before submitting.
 2. Resolve executable selection in the target registry/client. The package is
    `optimization-runner`, but the MCP binary is `optimization-mcp`, and the same
    package also ships `optimization-run`. The inspected
