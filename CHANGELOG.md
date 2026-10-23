@@ -8,12 +8,6 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
-### Changed
-
-- The landing page catalog and `docs/discovery` record fcmaes-rust 0.2.1
-  (PyPI and crates.io, 23 October 2026) after installing it from both
-  registries, and every registry version was rechecked that day.
-
 ### Added
 
 - [Five prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet
@@ -37,6 +31,9 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- The landing page catalog and `docs/discovery` record fcmaes-rust 0.2.1
+  (PyPI and crates.io, 23 October 2026) after installing it from both
+  registries, and every registry version was rechecked that day.
 - README badges as in fcmaes-rust: pure-Rust runner, crates.io, docs.rs, MCP over stdio,
   Linux, the ecosystem overview and the AI agent guide.
 - The landing page catalog and `docs/discovery` record the October 2026
