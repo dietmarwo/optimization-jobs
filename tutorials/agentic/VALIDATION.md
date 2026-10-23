@@ -1,5 +1,7 @@
 # Executed validation
 
+The original five chapters and the three additional chapters have separate validation records below.
+
 Validated on Linux with Rust/Cargo 1.90.0, Python 3.12.14, jsonschema 4.26.0 and matplotlib 3.10.8. Numerical campaigns use seed 42, two CPU slots and the documented pilot budgets. The container exposes eight usable CPUs (nine affinity CPUs); Cargo builds use four jobs with release LTO disabled and 16 codegen units. This is functional validation, not a timing benchmark. Rust 1.88 is the documented minimum but was not separately exercised here.
 
 The checkouts were refreshed to these merged heads before implementation:
@@ -52,3 +54,32 @@ Its review found no blocking defect. It prompted a route-helper help improvement
 ## Boundaries
 
 These are executable adaptations of model definitions and experiment workflows. They do not reproduce original publication budgets, optimizer trajectories or statistical studies. Production's generic MODE uses rounded real encodings, GTOC1 uses generic BiteOpt retries instead of coordinated DE-CMA-ES, and energy retains microlp. Existing curve-fit examples are not a fair solver comparison. LP-IP-craft, SQP-craft and fast-cma-es patches add relevant documentation links; their numerical implementations are unchanged. Full Python binding suites and full publication campaigns were not run. Browser replay files were generated and inspected; browser interaction was not exercised.
+
+## Surrogate, LP/IP and SQP extension
+
+The three additional chapters were retested after the first five tutorials and their integration fixes were merged. The current source revisions, numerical summaries, binary hashes, work counts and follow-up results are published in [additional-pilot-summary.json](validation/additional-pilot-summary.json). These checks used current stable Rust/Cargo **1.99.1**, Python 3.12.14, jsonschema 4.26.0 and matplotlib 3.11.2 on Linux. They do not supersede or reattribute the original integration record above.
+
+| Check | Result |
+|---|---|
+| Current stable Clippy, warnings denied, all targets of the three workers | Pass |
+| fcmaes worker + surrogate Rust suites | 67 pass |
+| LP/IP worker Rust suite | 12 pass |
+| SQP worker Rust suite | 19 pass |
+| Tutorial evidence-contract and analytic tests | 6 pass |
+| Existing real surrogate MCP/cancellation integration suite | 2 pass |
+| Stale snapshot hash, wrong model identity and invalid CLI settings | 9 rejection checks pass |
+| New CI workflow | actionlint passes; each selected build/run tested locally with only optimization-jobs and its required solver checkout |
+| Documentation | mdBook 0.5.4 builds; all internal links/anchors across 141 pages pass; native inventory and static site pass |
+| Three default chapters, seed 42 and two slots | 14 completed jobs / 33 records |
+| Four follow-ups: seeds 7/19, LP capacity 9, SQP dimension 8 | 19 completed jobs / 40 records |
+| All eight chapters, shared-driver regression | 39 completed jobs / 73 records |
+
+The selected builds use the native workspace release profiles; the all-chapter regression uses four Cargo jobs with LTO disabled and 16 codegen units. Both use the same current stable toolchain. The CI-style local runs use two build jobs and two numerical slots. GitHub-hosted Actions were not triggered as part of this validation; the new workflow runs these checks on pull requests, main and a weekly schedule.
+
+Every campaign completed with full accounting and schema checks. All positive numerical claims carry rechecked evidence. Each deliberately impossible LP/IP job retains `infeasible` with `claimed` evidence: the worker exports no certificate. Its elementary cost contradiction is a separate check. Infeasible point evaluations correctly use `none`.
+
+The numerical checks recompute Branin objectives and analytic oscillator losses, verify all surrogate artifacts and retained/new observation counts, enumerate the tiny binary decision model and its fractional bound, and recompute simplex/Rosenbrock objectives and stationarity. The eight-share follow-up's objective 0.125 was recorded before execution. All eight chapters' reported points, scalar objectives, feasibility flags and claims exactly matched the earlier implementation run; elapsed times are not compared.
+
+The earlier fresh-context `gpt-6.1-sol` trial of these three prompts is historical usability evidence: 33 jobs/73 records for the requested runs, five further jobs/19 records after correcting a prediction-order lapse, and nine jobs/26 records after improving a plot and an integrality assertion. No model trial was repeated after this rebase. The earlier trial did not change numerical budgets or tolerances. Its complete transcript and execution logs are not published in the repository; the checked-in summaries and `run.py` provide the numerical examples and regeneration path.
+
+The new GitHub Actions matrix builds each selected chapter with locked dependencies, runs worker/contract tests and the numerical campaign, and retains specs, results and figures. Rust diagnostic steps register the existing ecosystem problem matcher and explicitly disable color after the cache step. The existing optional-feature CI, shared test-helper lint fix, book entry and lockfile repairs from the first integration remain intact.

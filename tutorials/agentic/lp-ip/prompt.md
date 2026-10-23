@@ -1,0 +1,9 @@
+Use the checked-out optimization-jobs prompt tutorials and matching solver repositories. Read tutorials/agentic/README.md, SETUP.md, and this chapter's README. Inspect available binaries, node capacity, and worker discovery. Build missing workers using the documented setup. Use at most two CPU slots and seed 42, keep the declared tolerances unchanged, and use a new output directory.
+
+Formulate the three-project choice as a maximize problem: costs [6,5,4], values [9,8,7], budget 10, one binary variable per project. State its finite bounds and linear budget row. Use the existing LP-IP-craft worker with hashed model artifacts; no new numerical model code is needed.
+
+Solve its continuous relaxation and its binary version. Use both a cold MIP start and a density-greedy feasible incumbent, keeping the original feasibility and integrality tolerances. Independently enumerate all eight binary choices and check the fractional-knapsack bound. Explain the maximization bound direction and the integrality gap. Evaluate the returned integer point, the fractional solution and the over-budget all-selected point against the binary model.
+
+Finally require all three projects under the same budget and solve that deliberately impossible model. Distinguish lifecycle completed from the infeasible outcome and its claimed evidence. Give the elementary budget contradiction separately; do not turn it into a solver-exported certificate.
+
+Run the supplied run.py driver with --chapter lp-ip. Inspect actual specs, results, work counters and figures; report failures honestly and do not edit checks to obtain a pass. Return a short problem card, the numerical decisions, what each claim means, and links to report.json, the chapter summary, and figures. Record source revisions and binary hashes. Treat this as a small teaching pilot, not a solver ranking or a publication-scale study.

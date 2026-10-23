@@ -10,6 +10,8 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
+- Three further [prompt tutorials](tutorials/agentic/README.md): surrogate observation reuse and oscillator calibration, LP/IP relaxation and binary choices, and SQP multistart/backend checks. The driver verifies artifacts and independent numerical checks, with an explicit exception for the deliberately uncertified infeasibility claim. `build --chapter` selects the needed workers. A CI matrix builds and executes all three with real workers on current stable Rust, preserving plain diagnostic output and result artifacts.
+
 - [Five prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet
   design, production policies, energy sizing, curve fitting and GTOC1 route
   screening. Each chapter has a copyable prompt, a walkthrough with a

@@ -53,7 +53,7 @@ maps problem classes to profiles:
 | [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | `lp-ip-job-worker` | `lp-ip.solve/1`, `lp-ip.evaluate/1` |
 | [SQP-craft](https://github.com/dietmarwo/SQP-craft) | `sqp-job-worker` | `sqp.solve/1`, `sqp.evaluate/1` |
 
-[Five prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet design, production policies, energy sizing, curve fitting and GTOC1 route screening, with optional native application workers and an executable validation driver.
+[Eight prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet design, production policies, energy sizing, curve fitting, GTOC1 route screening, surrogate optimization, LP/IP allocation and constrained SQP, with optional native application workers and an executable validation driver.
 
 ## Install
 

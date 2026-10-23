@@ -1,0 +1,9 @@
+Use the checked-out optimization-jobs prompt tutorials and matching solver repositories. Read tutorials/agentic/README.md, SETUP.md, and this chapter's README. Inspect available binaries, node capacity, and worker discovery. Build missing workers using the documented setup. Use at most two CPU slots and seed 42, keep the declared tolerances unchanged, and use a new output directory.
+
+Use the stock SQP worker's registered simplex model: minimize the sum of squared shares, sum(shares)=1, and each share in [0,1], initially dimension four. State the smoothness, analytic derivatives, bounds, equality, fixed tolerances and four starts. Run active_set and clarabel on exactly the same starts and budgets.
+
+Independently check the returned objective, equality and stationarity against the uniform analytic solution. Evaluate a uniform point, a corner allocation and the zero vector without optimizing; explain why feasible and first_order are different claims. Show the equal allocation and compare backend evidence without claiming a speed advantage.
+
+Run the registered two-dimensional Rosenbrock model from four distinct starts, re-evaluate all returned points, and recompute objectives and gradients. Report any nonconverged start honestly. Explain the limits of first-order evidence and why the simplex's elementary convex proof does not transfer to arbitrary nonlinear programs.
+
+Run the supplied run.py driver with --chapter sqp. Inspect actual specs, results, work counters and figures; report failures honestly and do not edit checks to obtain a pass. Return a short problem card, the numerical decisions, what each claim means, and links to report.json, the chapter summary, and figures. Record source revisions and binary hashes. Treat this as a small teaching pilot, not a solver ranking or a publication-scale study.

@@ -1,0 +1,129 @@
+name: Agentic tutorials
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tutorials/agentic/**'
+      - '.github/workflows/agentic-tutorials.yml'
+      - '.github/rust-problem-matcher.json'
+      - 'crates/**'
+      - 'docs/job-api/schemas/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    paths:
+      - 'tutorials/agentic/**'
+      - '.github/workflows/agentic-tutorials.yml'
+      - '.github/rust-problem-matcher.json'
+      - 'crates/**'
+      - 'docs/job-api/schemas/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+  # Also detect changes in the source-built solver workers.
+  schedule:
+    - cron: '43 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tutorial:
+    name: ${{ matrix.chapter }} with a real worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - chapter: surrogate
+            solver: fcmaes-rust
+            package: fcmaes-job-worker
+          - chapter: lp-ip
+            solver: LP-IP-craft
+            package: lp-ip-job-worker
+          - chapter: sqp
+            solver: SQP-craft
+            package: sqp-job-worker
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/agentic
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: sources/optimization-jobs
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/${{ matrix.solver }}
+          ref: main
+          path: sources/${{ matrix.solver }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: agentic-${{ matrix.chapter }}
+          workspaces: |
+            sources/optimization-jobs -> ../../target/agentic
+            sources/${{ matrix.solver }} -> ../../target/agentic
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: sources/optimization-jobs/tutorials/agentic/requirements.txt
+      - name: Python dependencies and evidence contract
+        run: |
+          python3 -m pip install -r sources/optimization-jobs/tutorials/agentic/requirements.txt
+          python3 sources/optimization-jobs/tutorials/agentic/test_contract.py
+      - name: Register Rust diagnostics
+        run: echo "::add-matcher::sources/optimization-jobs/.github/rust-problem-matcher.json"
+      - name: Clippy on the worker and its examples
+        # rust-cache can set color=always; plain diagnostics preserve annotations.
+        env:
+          CARGO_TERM_COLOR: never
+        run: >-
+          cargo clippy --locked --all-targets -p ${{ matrix.package }}
+          --manifest-path sources/${{ matrix.solver }}/Cargo.toml -- -D warnings
+      - name: Worker tests
+        env:
+          CARGO_TERM_COLOR: never
+        run: >-
+          cargo test --locked -p ${{ matrix.package }}
+          --manifest-path sources/${{ matrix.solver }}/Cargo.toml
+      - name: Surrogate numerical tests
+        if: matrix.chapter == 'surrogate'
+        env:
+          CARGO_TERM_COLOR: never
+        run: >-
+          cargo test --locked -p fcmaes-surrogate
+          --manifest-path sources/fcmaes-rust/Cargo.toml
+      - name: Locked build of the selected tutorial
+        env:
+          CARGO_TERM_COLOR: never
+        run: >-
+          python3 sources/optimization-jobs/tutorials/agentic/run.py build
+          --sources "$GITHUB_WORKSPACE/sources" --chapter ${{ matrix.chapter }}
+          --bin-dir "$GITHUB_WORKSPACE/prompt-bin" --build-dir "$CARGO_TARGET_DIR"
+      - name: Execute the tutorial and its numerical checks
+        run: >-
+          python3 sources/optimization-jobs/tutorials/agentic/run.py run
+          --sources "$GITHUB_WORKSPACE/sources" --chapter ${{ matrix.chapter }}
+          --bin-dir "$GITHUB_WORKSPACE/prompt-bin"
+          --output "$GITHUB_WORKSPACE/prompt-results" --cores 2 --seed 42
+      - name: Retain specs, results, plots and build provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentic-${{ matrix.chapter }}
+          if-no-files-found: warn
+          path: |
+            prompt-results/**
+            !prompt-results/node/**
+            prompt-bin/build-manifest.json
+            prompt-bin/build-logs/**
