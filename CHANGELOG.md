@@ -10,6 +10,8 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
+- Add a [rail-traffic prompt tutorial](tutorials/agentic/rail-traffic/README.md) with synthetic timetable recovery, service-delay caps, queue-preserving alternatives, independent enumeration, stress replay and a CI execution entry. It reuses the existing LP/IP worker.
+
 - Three further [prompt tutorials](tutorials/agentic/README.md): surrogate observation reuse and oscillator calibration, LP/IP relaxation and binary choices, and SQP multistart/backend checks. The driver verifies artifacts and independent numerical checks, with an explicit exception for the deliberately uncertified infeasibility claim. `build --chapter` selects the needed workers. A CI matrix builds and executes all three with real workers on current stable Rust, preserving plain diagnostic output and result artifacts.
 
 - [Five prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet

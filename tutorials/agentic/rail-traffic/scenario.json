@@ -1,0 +1,14 @@
+{
+  "schema_version": "rail-traffic.scenario/1",
+  "description": "Synthetic six-train single-block bottleneck; no real DB location, timetable or policy.",
+  "horizon_minutes": 60,
+  "clearance_minutes": 1,
+  "trains": [
+    {"id": "ICE101", "direction": "A-B", "planned": 0, "ready": 8, "duration": 4, "passengers": 420},
+    {"id": "RB201", "direction": "B-A", "planned": 5, "ready": 5, "duration": 4, "passengers": 60},
+    {"id": "ICE102", "direction": "B-A", "planned": 10, "ready": 10, "duration": 4, "passengers": 300},
+    {"id": "RB202", "direction": "A-B", "planned": 15, "ready": 15, "duration": 4, "passengers": 90},
+    {"id": "RE301", "direction": "A-B", "planned": 20, "ready": 20, "duration": 4, "passengers": 240},
+    {"id": "RE302", "direction": "B-A", "planned": 25, "ready": 25, "duration": 4, "passengers": 120}
+  ]
+}

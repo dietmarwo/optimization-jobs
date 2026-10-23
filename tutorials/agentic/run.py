@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or execute eight prompt tutorials with retained specs and results.
+"""Build or execute nine prompt tutorials with retained specs and results.
 
 Requires Python 3.10+, jsonschema and matplotlib; Linux/Rust 1.88+ for builds.
 The agent chooses and interprets experiments; this driver handles reproducibility.
@@ -19,7 +19,7 @@ import time
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-CHAPTERS = ('trebuchet', 'production', 'energy', 'curve-fit', 'gtoc1', 'surrogate', 'lp-ip', 'sqp')
+CHAPTERS = ('trebuchet', 'production', 'energy', 'curve-fit', 'gtoc1', 'surrogate', 'lp-ip', 'sqp', 'rail-traffic')
 TUTORIALS = {'trebuchet': ('rapier-trebuchet', 'trebuchet-job-worker'),
              'production': ('nexosim-production-line', 'production-job-worker'),
              'energy': ('energy-hub-bilevel', 'energy-job-worker'),
@@ -70,7 +70,7 @@ def build(args):
             continue
         cargo(args.sources / repo, ['-p', package, '--example', 'custom_worker'],
               [('examples/custom_worker', dest)])
-    if selected & {'energy', 'lp-ip'}:
+    if selected & {'energy', 'lp-ip', 'rail-traffic'}:
         cargo(args.sources / 'LP-IP-craft', ['-p', 'lp-ip-job-worker'], [('lp-ip-job-worker', 'lp-ip-job-worker')])
     if 'sqp' in selected:
         cargo(args.sources / 'SQP-craft', ['-p', 'sqp-job-worker'], [('sqp-job-worker', 'sqp-job-worker')])
@@ -588,6 +588,14 @@ def sqp(c):
     fig.tight_layout(); fig.savefig(c.out / 'sqp-multistart.png', dpi=150); plt.close(fig)
 
 
+def rail_traffic(c):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('rail_traffic', HERE / 'rail-traffic/rail.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.execute(c, write)
+
+
 def plot_front(c, name, result, labels, indices=(0, 1)):
     import matplotlib.pyplot as plt
     points = outcome(result)['details'].get('front', [])
@@ -615,6 +623,8 @@ def main():
     parser.add_argument('--budget-scale', type=int, default=1, help='1 is a smoke/pilot campaign, not publication quality')
     parser.add_argument('--lp-capacity', type=float, default=10., help='LP/MIP project budget, 0 < capacity < 15')
     parser.add_argument('--sqp-dimension', type=int, default=4, help='Simplex allocation coordinates, 2..32')
+    parser.add_argument('--rail-scenario', type=Path, default=HERE / 'rail-traffic/scenario.json',
+                        help='Synthetic rail scenario JSON; used only by rail-traffic')
     args = parser.parse_args()
     args.sources = args.sources.resolve(); args.bin_dir = args.bin_dir.resolve()
     if not 1 <= args.cores <= 16 or not 1 <= args.budget_scale <= 100 or not math.isfinite(args.target_m) or args.target_m <= 0:
@@ -626,7 +636,7 @@ def main():
     c = Campaign(args)
     for chapter in CHAPTERS if args.chapter == 'all' else [args.chapter]:
         {'trebuchet': trebuchet, 'production': production, 'energy': energy, 'curve-fit': curve_fit,
-         'gtoc1': gtoc1, 'surrogate': surrogate, 'lp-ip': lp_ip, 'sqp': sqp}[chapter](c)
+         'gtoc1': gtoc1, 'surrogate': surrogate, 'lp-ip': lp_ip, 'sqp': sqp, 'rail-traffic': rail_traffic}[chapter](c)
     report = {'schema_version': 'prompt-tutorial.report/1', 'scope': 'executed pilot; no publication-quality or independent-model claim',
               'seed': args.seed, 'cores': args.cores, 'target_m': args.target_m, 'budget_scale': args.budget_scale,
               'lp_capacity': args.lp_capacity, 'sqp_dimension': args.sqp_dimension,

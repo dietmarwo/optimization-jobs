@@ -50,6 +50,9 @@ jobs:
           - chapter: sqp
             solver: SQP-craft
             package: sqp-job-worker
+          - chapter: rail-traffic
+            solver: LP-IP-craft
+            package: lp-ip-job-worker
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_TARGET_DIR: ${{ github.workspace }}/target/agentic
@@ -81,6 +84,9 @@ jobs:
         run: |
           python3 -m pip install -r sources/optimization-jobs/tutorials/agentic/requirements.txt
           python3 sources/optimization-jobs/tutorials/agentic/test_contract.py
+      - name: Rail formulation and independent checker tests
+        if: matrix.chapter == 'rail-traffic'
+        run: python3 sources/optimization-jobs/tutorials/agentic/rail-traffic/test_rail.py
       - name: Register Rust diagnostics
         run: echo "::add-matcher::sources/optimization-jobs/.github/rust-problem-matcher.json"
       - name: Clippy on the worker and its examples
