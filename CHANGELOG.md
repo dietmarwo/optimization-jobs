@@ -8,6 +8,10 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Prompt tutorials
+
+- [Five prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet design, production policies, energy sizing, curve fitting and GTOC1 route screening, with optional native application workers and an executable validation driver.
+
 ### Added
 
 - `docs/optimization-systems-for-ai-agents.md`: fcmaes & craft compared with
