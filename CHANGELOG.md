@@ -8,11 +8,17 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
-### Prompt tutorials
-
-- [Five prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet design, production policies, energy sizing, curve fitting and GTOC1 route screening, with optional native application workers and an executable validation driver.
-
 ### Added
+
+- [Five prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet
+  design, production policies, energy sizing, curve fitting and GTOC1 route
+  screening. Each chapter has a copyable prompt, a walkthrough with a
+  measured pilot result and a follow-up prompt. `tutorials/agentic/run.py`
+  builds the workers (the optional application workers of four fcmaes-rust
+  tutorials, the curve-fit examples of fcmaes-rust and SQP-craft, the
+  LP-IP-craft worker) and runs the pilots through `optimization-run`,
+  checking worker payload schemas, the job and result schemas, accounting
+  and evidence, and keeping every spec, result and figure.
 
 - `docs/optimization-systems-for-ai-agents.md`: fcmaes & craft compared with
   GEMSEO, libEnsemble, Optees, Optuna/optuna-mcp, BO-MCP, cuOpt, Frontier,

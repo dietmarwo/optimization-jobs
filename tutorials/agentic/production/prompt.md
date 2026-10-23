@@ -1,4 +1,4 @@
-Use the checked-out optimization-jobs prompt tutorials and the matching patched solver repositories. Read tutorials/agentic/README.md and SETUP.md, then the production chapter. Inspect the available binaries, node capacity and worker discovery; build missing workers using the documented setup.
+Use a checkout of optimization-jobs with sibling checkouts of fcmaes-rust, LP-IP-craft, SQP-craft and fast-cma-es. Read tutorials/agentic/README.md and SETUP.md, then the production chapter. Inspect the available binaries, node capacity and worker discovery; build missing workers using the documented setup.
 
 Find production-line operating policies balancing throughput, lead time, work in progress and operating cost. Include staffing and buffer capacity, and tell me how reliable the shortlist is.
 

@@ -18,8 +18,8 @@ Start with [SETUP.md](SETUP.md), then paste a chapter's `prompt.md`. Each chapte
 - Reuse native objectives. Do not replace them with a simplified Python simulator. Numerical evaluations stay inside the worker; prompts operate at experiment level.
 - The default campaign uses two slots, fixed seeds and small budgets. Hardware quotas, not advertised machine size, determine available capacity. Builds may take longer than the numerical pilots.
 - Record requested and actual work. A completed job need not have a feasible or converged solution. No current worker reports `certified_optimum`.
-- An MCP client can use workers already registered by the node owner. Installing/building/registering workers needs a shell. The prompts are provider independent; no Sol-specific API or paid model key is required for numerical execution.
-- Job records survive loss of an MCP connection while the host remains alive. They do not guarantee that an ephemeral Work environment survives, and interrupted optimizers are not resumed in place.
+- An MCP client can use workers already registered by the node owner. Installing/building/registering workers needs a shell. The prompts are provider independent; no provider-specific API or paid model key is required for numerical execution.
+- Job records survive loss of an MCP connection while the host remains alive. They do not guarantee that an ephemeral agent sandbox survives, and interrupted optimizers are not resumed in place.
 - A replay with the same implementation is a useful consistency check, not independent validation of the simulator's physical fidelity.
 
 ## Maintainer interface

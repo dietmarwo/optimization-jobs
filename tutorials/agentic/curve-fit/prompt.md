@@ -1,4 +1,4 @@
-Use the checked-out optimization-jobs prompt tutorials and the matching patched solver repositories. Read tutorials/agentic/README.md and SETUP.md, then the curve-fit chapter. Inspect the available binaries, node capacity and worker discovery; build missing workers using the documented setup.
+Use a checkout of optimization-jobs with sibling checkouts of fcmaes-rust, LP-IP-craft, SQP-craft and fast-cma-es. Read tutorials/agentic/README.md and SETUP.md, then the curve-fit chapter. Inspect the available binaries, node capacity and worker discovery; build missing workers using the documented setup.
 
 Fit the supplied exponential-decay examples using the fcmaes and SQP application workers. Plot the fits and explain what each solver actually verified.
 

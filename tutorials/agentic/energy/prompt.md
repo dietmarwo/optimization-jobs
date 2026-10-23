@@ -1,4 +1,4 @@
-Use the checked-out optimization-jobs prompt tutorials and the matching patched solver repositories. Read tutorials/agentic/README.md and SETUP.md, then the energy chapter. Inspect the available binaries, node capacity and worker discovery; build missing workers using the documented setup.
+Use a checkout of optimization-jobs with sibling checkouts of fcmaes-rust, LP-IP-craft, SQP-craft and fast-cma-es. Read tutorials/agentic/README.md and SETUP.md, then the energy chapter. Inspect the available binaries, node capacity and worker discovery; build missing workers using the documented setup.
 
 Size PV, wind, battery and grid connection for the energy-hub teaching model. Show cost and emissions trade-offs, explain constraint violations, and check the chosen design on the reserved scenarios.
 

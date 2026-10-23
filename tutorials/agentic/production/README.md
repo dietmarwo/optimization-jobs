@@ -6,7 +6,7 @@
 
 > Find production-line operating policies balancing throughput, lead time, work in progress and operating cost. Include staffing and buffer capacity, and tell me how reliable the shortlist is.
 
-For a complete runnable instruction, paste [prompt.md](prompt.md) into an agent with a Linux shell, Rust toolchain and these patched sources, or use a prepared node with these workers. The maintained model is already implemented; the user supplies goals and interprets decisions.
+For a complete runnable instruction, paste [prompt.md](prompt.md) into an agent with a Linux shell, a Rust toolchain and checkouts of the five repositories, or use a prepared node with these workers. The maintained model is already implemented; the user supplies goals and interprets decisions.
 
 ## What the agent executes
 

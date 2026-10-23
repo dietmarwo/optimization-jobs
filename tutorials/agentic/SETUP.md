@@ -1,6 +1,13 @@
 # Setup appendix
 
-Use the patches from the same delivery on sibling checkouts named `optimization-jobs`, `fcmaes-rust`, `LP-IP-craft`, `SQP-craft` and `fast-cma-es`. Consult the delivery's base-revision manifest. Do not modify the upstream repositories' pinned dependency versions to make the examples work.
+Clone the five repositories side by side under one parent directory, keeping their names; their `main` (fast-cma-es: `master`) branches contain everything these tutorials use. [VALIDATION.md](VALIDATION.md) lists the revisions of the validated pilot. Do not modify the repositories' pinned dependency versions to make the examples work.
+
+```sh
+mkdir -p /path/to/checkouts && cd /path/to/checkouts
+for repo in optimization-jobs fcmaes-rust LP-IP-craft SQP-craft fast-cma-es; do
+  git clone https://github.com/dietmarwo/$repo
+done
+```
 
 Linux, Rust 1.88 or newer, a C linker, and Python 3.10 or newer are required. Install `jsonschema>=4.18,<5` and `matplotlib>=3.7,<4` in a virtual environment. Cargo needs network access on the first build. Workers and the runner are source builds, even where numerical solver libraries are on package registries.
 

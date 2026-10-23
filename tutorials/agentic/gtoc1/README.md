@@ -6,7 +6,7 @@
 
 > Screen different planet orders for the GTOC1 impulsive MGA model. Show a portfolio of promising routes and explain what still needs to be checked before considering a low-thrust mission.
 
-For a complete runnable instruction, paste [prompt.md](prompt.md) into an agent with a Linux shell, Rust toolchain and these patched sources, or use a prepared node with these workers. The maintained model is already implemented; the user supplies goals and interprets decisions.
+For a complete runnable instruction, paste [prompt.md](prompt.md) into an agent with a Linux shell, a Rust toolchain and checkouts of the five repositories, or use a prepared node with these workers. The maintained model is already implemented; the user supplies goals and interprets decisions.
 
 ## What the agent executes
 
