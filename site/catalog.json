@@ -4,6 +4,7 @@
   "description": "Open-source Python and Rust optimization: parallel black-box search, LP/MIP, smooth nonlinear solvers, and durable jobs through MCP or a shell.",
   "url": "https://dietmarwo.github.io/optimization-jobs/",
   "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
+  "comparison": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/optimization-systems-for-ai-agents.md",
   "availability_checked": "2026-10-22",
   "projects": [
     {

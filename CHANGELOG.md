@@ -8,6 +8,17 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Added
+
+- `docs/optimization-systems-for-ai-agents.md`: fcmaes & craft compared with
+  GEMSEO, libEnsemble, Optees, Optuna/optuna-mcp, BO-MCP, cuOpt, Frontier,
+  Dakota and smaller agent-facing projects. It covers a systems table, a
+  capability matrix, strengths on both sides, tool selection for SpOC4
+  Challenge 2, application areas and a benchmark plan, with pinned source
+  revisions. It reviews documentation and source, is prepared for the
+  maintainer, and runs no benchmarks. Linked from the README, the reference
+  index, the landing page and `llms.txt` (catalog key `comparison`).
+
 ### Changed
 
 - README badges as in fcmaes-rust: pure-Rust runner, crates.io, docs.rs, MCP over stdio,

@@ -33,6 +33,7 @@ def load_catalog() -> dict:
     require(data["schema_version"] == 1, "unsupported catalog schema")
     require(https_url(data["url"]) and data["url"].endswith("/"), "invalid site URL")
     require(https_url(data["guide"]), "invalid guide URL")
+    require(https_url(data["comparison"]), "invalid comparison URL")
     datetime.date.fromisoformat(data["availability_checked"])
     entries = data["projects"]
     require(len(entries) == 5 and {p["id"] for p in entries} == PROJECTS,
@@ -163,7 +164,7 @@ def build() -> Path:
         shutil.rmtree(OUTPUT)
     OUTPUT.mkdir(parents=True)
     substitutions = {key.upper(): html.escape(data[key], quote=True)
-                     for key in ("title", "description", "url", "guide")}
+                     for key in ("title", "description", "url", "guide", "comparison")}
     substitutions.update({
         "CHECKED": html.escape(data["availability_checked"]),
         "PROJECTS": "\n".join(project_html(p) for p in data["projects"]),
@@ -182,7 +183,8 @@ def build() -> Path:
     index = [f'# {data["title"]}', '', f'> {data["description"]}', '',
              '## Start here', '', f'- [Shared selection and operating guide]({data["guide"]})',
              f'- [Human overview]({data["url"]})',
-             f'- [Catalog with package availability]({data["url"]}catalog.json)', '',
+             f'- [Catalog with package availability]({data["url"]}catalog.json)',
+             f'- [Comparison with other optimization systems for agents]({data["comparison"]})', '',
              '## Project guides', '']
     index += [f'- [{p["name"]}]({p["guide"]}): {p["summary"]}' for p in data["projects"]]
     index += ['', 'Use runtime worker discovery for schemas, supported models and resource limits.',
