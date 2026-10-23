@@ -496,7 +496,7 @@ dependency and data licenses separately.
 | Repository | Responsibility | Agent entry point | Registry release (Oct 2026) |
 |---|---|---|---|
 | optimization-jobs | Jobs, CPU admission, supervision, results, MCP | [`ai-context.md`](../ai-context.md), then worker discovery | crates.io `optimization-job-api`, `optimization-runner` 0.3.0 |
-| fcmaes-rust | Native global, multiobjective and QD search; experimental surrogate | Rust library, Python `fcmaes_rust`, or the fcmaes worker | crates.io `fcmaes-core` 0.2.0, PyPI `fcmaes-rust` 0.2.0 |
+| fcmaes-rust | Native global, multiobjective and QD search; experimental surrogate | Rust library, Python `fcmaes_rust`, or the fcmaes worker | crates.io `fcmaes-core` 0.2.1, PyPI `fcmaes-rust` 0.2.1 |
 | fast-cma-es | Python optimization with native C++ algorithms | Python library, examples, tutorials | PyPI `fcmaes` 2.1.0 |
 | LP-IP-craft | LP and MILP | Sparse model data through the library or a job | PyPI `lp-ip-craft`, crates.io `lp-ip-craft` and `lp-ip-craft-native` 0.29.0 |
 | SQP-craft | Small smooth constrained NLP | A differentiable model through the library or a worker | PyPI `sqp-craft`, crates.io `sqp-craft-solver` and four companion crates 0.17.0 |
@@ -595,24 +595,29 @@ It has no constrained, mixed-variable, asynchronous or noisy BO. Warm
 observations start a new job; they are not a checkpoint resume.
 
 **Release notes.** 0.2.0 (22 October 2026) contains the MODE fixes and
-`ParetoArchive2D`. Testing the published 0.2.0 wheel on 23 October 2026
-found errata in its Python binding:
-- It accepts only NumPy arrays of the exact dtype (`float64`, `bool` for
-  `ints`), although its type stub admits sequences; pass `np.asarray(...)`.
-- Several invalid inputs raise pyo3's `PanicException` instead of
-  `ValueError`.
-- `optimize_da` panics on a bounded problem when every start value is at or
-  above `1e16` (a large penalty, `inf` or NaN).
-- `optimize_de` checks `max_evaluations` once per generation and can spend up
-  to `2 * popsize - 1` more evaluations; the reported `evaluations` is always
-  the actual count.
+`ParetoArchive2D`. 0.2.1 (23 October 2026) fixes errata found by testing the
+published 0.2.0 wheel:
+- 0.2.0 accepted only NumPy arrays of the exact dtype (`float64`, `bool` for
+  `ints`), although its type stub admits sequences. 0.2.1 also accepts lists
+  and tuples, with the same results.
+- In 0.2.0 several invalid inputs raised pyo3's `PanicException`; 0.2.1
+  raises `ValueError`.
+- `optimize_da` panicked on a bounded problem when every start value was at
+  or above `1e16` (a large penalty, `inf` or NaN). 0.2.1 returns
+  `stop == -1` with the best point evaluated.
+- A raising objective counts as a failed evaluation in both versions. 0.2.1
+  logs the first failure of a run once as a warning on the `fcmaes_rust`
+  logger, where 0.2.0 was silent.
 
-Fixes and documentation are under review in
-[fcmaes-rust #25](https://github.com/dietmarwo/fcmaes-rust/pull/25); the
-revision cited below predates them.
+`optimize_de` checks `max_evaluations` once per generation and can spend up
+to `2 * popsize - 1` more evaluations; the reported `evaluations` is always
+the actual count, as the 0.2.1 documentation states. The revision cited below
+predates 0.2.1; the
+[changelog](https://github.com/dietmarwo/fcmaes-rust/blob/main/CHANGELOG.md)
+lists the changes.
 
 Ten of the 22 tutorials pin `fcmaes-core` 0.1.3 from crates.io, so rerun
-their MODE results with 0.2.0 before using them in a comparison. A library
+their MODE results with 0.2.0 or later before using them in a comparison. A library
 algorithm does not imply a matching job option.
 
 Sources: [architecture and concurrency](https://github.com/dietmarwo/fcmaes-rust/blob/68694416f09e6acae0a47638b08f9ba467571be3/docs/architecture.md), [agent and release guidance](https://github.com/dietmarwo/fcmaes-rust/blob/68694416f09e6acae0a47638b08f9ba467571be3/ai-context.md), [application models](https://github.com/dietmarwo/fcmaes-rust/blob/68694416f09e6acae0a47638b08f9ba467571be3/docs/job-api/models.md), [surrogate contract](https://github.com/dietmarwo/fcmaes-rust/blob/68694416f09e6acae0a47638b08f9ba467571be3/docs/job-api/surrogate.md).
@@ -917,9 +922,9 @@ categories.
 
 The tutorials linked below are concrete starting points in fcmaes-rust; they
 show applicability, not superiority. Tutorials pinned to `fcmaes-core` 0.1.3
-need their MODE results rerun with 0.2.0 before a performance comparison, and
-an application tutorial must be integrated into a worker before the jobs API
-can run it.
+need their MODE results rerun with 0.2.0 or later before a performance
+comparison, and an application tutorial must be integrated into a worker
+before the jobs API can run it.
 
 ### 6.2 Mission and constellation design beyond SpOC4 (A)
 
