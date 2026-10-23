@@ -1,0 +1,1504 @@
+{
+  "scope": "Seed-42 two-slot smoke/pilot; simulated results, not publication reproduction",
+  "base_revisions": {
+    "optimization-jobs": "248a55b1b79d01dce489446a1af78c9c0d823591",
+    "LP-IP-craft": "dfb336c8c81be423ace58777c6efb85c84fddc0a",
+    "fcmaes-rust": "540412f43c1ae1c86a1733f5ee7c351c3a36af2f",
+    "SQP-craft": "b2c2c4322ad8df3d4b586888f18467100d674618",
+    "fast-cma-es": "f599a13c9d48dea4eaf7f04c1f1cbaf5c7ba19a3"
+  },
+  "binary_sha256": {
+    "gtoc1-route-card": "50602b82f2625b0833de551b10986d81b327c8c02bb1f6741a0b673376e46839",
+    "fcmaes-curve-worker": "17e538c4f827f642a44878a79a5a9e13cbc8500c0a2b65617ec5cc16c786801c",
+    "production-job-worker": "e8d97ec6e1bcb06ff776822de9de3f3109c281613a2218faecb5527e3a591cd3",
+    "lp-ip-job-worker": "8e9a3b9f7a408bdc0a177535bee453d515f2a89646e31a516eb270f51f0beaf7",
+    "optimization-mcp": "63ef6858c35298d3d42903bbb2b8b2517a928e9235bf65260bbd9dd2594e94e8",
+    "gtoc1-job-worker": "395083badd4cfe665f963d4ac43ee540abe1bda866fa2cd524e4ca975901dc55",
+    "sqp-curve-worker": "ba77716b0332da294cb9dde40e3d109368afe164bd9fbaa799b56375d343ee20",
+    "optimization-run": "16afebeb6342bae6f69043c6e9c9f0b3c0c117b7e6eda64509766a3208bf2ee9",
+    "energy-job-worker": "4e73b6564830d0dc3f9c25315681471640947488c9b0a2c2f9378cef2b5cf664",
+    "trebuchet-job-worker": "512dd890de92370a7ea64ee1b531be6bb9d270d442f9875909561c1d9a7662a6",
+    "rapier-trebuchet": "f7a8659e84e8b747b71c067005106c13b30082a1909f74b52fac8c63d68fda23"
+  },
+  "jobs": [
+    {
+      "name": "trebuchet-baseline",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "trebuchet",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/trebuchet-baseline.json",
+      "result": "results/trebuchet-baseline.json"
+    },
+    {
+      "name": "trebuchet-scalar",
+      "profile": "fcmaes.retry/1",
+      "worker": "trebuchet",
+      "work": {
+        "evaluations": 2000,
+        "validation_evaluations": 2
+      },
+      "claims": [
+        "best_found",
+        "best_found"
+      ],
+      "spec": "specs/trebuchet-scalar.json",
+      "result": "results/trebuchet-scalar.json"
+    },
+    {
+      "name": "trebuchet-recheck",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "trebuchet",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/trebuchet-recheck.json",
+      "result": "results/trebuchet-recheck.json"
+    },
+    {
+      "name": "trebuchet-pareto",
+      "profile": "fcmaes.mode/1",
+      "worker": "trebuchet",
+      "work": {
+        "evaluations": 128,
+        "validation_evaluations": 16
+      },
+      "claims": [
+        "non_dominated_set"
+      ],
+      "spec": "specs/trebuchet-pareto.json",
+      "result": "results/trebuchet-pareto.json"
+    },
+    {
+      "name": "trebuchet-qd",
+      "profile": "fcmaes.map-elites/1",
+      "worker": "trebuchet",
+      "work": {
+        "evaluations": 512,
+        "validation_evaluations": 2
+      },
+      "claims": [
+        "elite_archive"
+      ],
+      "spec": "specs/trebuchet-qd.json",
+      "result": "results/trebuchet-qd.json"
+    },
+    {
+      "name": "trebuchet-diversity-recheck",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "trebuchet",
+      "work": {
+        "evaluations": 2
+      },
+      "claims": [
+        "feasible",
+        "feasible"
+      ],
+      "spec": "specs/trebuchet-diversity-recheck.json",
+      "result": "results/trebuchet-diversity-recheck.json"
+    },
+    {
+      "name": "production-pareto",
+      "profile": "fcmaes.mode/1",
+      "worker": "production",
+      "work": {
+        "evaluations": 64,
+        "validation_evaluations": 16
+      },
+      "claims": [
+        "non_dominated_set"
+      ],
+      "spec": "specs/production-pareto.json",
+      "result": "results/production-pareto.json"
+    },
+    {
+      "name": "production-training-recheck",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "production",
+      "work": {
+        "evaluations": 3
+      },
+      "claims": [
+        "feasible",
+        "feasible",
+        "feasible"
+      ],
+      "spec": "specs/production-training-recheck.json",
+      "result": "results/production-training-recheck.json"
+    },
+    {
+      "name": "production-holdout",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "production",
+      "work": {
+        "evaluations": 3
+      },
+      "claims": [
+        "feasible",
+        "feasible",
+        "feasible"
+      ],
+      "spec": "specs/production-holdout.json",
+      "result": "results/production-holdout.json"
+    },
+    {
+      "name": "production-qd",
+      "profile": "fcmaes.map-elites/1",
+      "worker": "production",
+      "work": {
+        "evaluations": 64,
+        "validation_evaluations": 4
+      },
+      "claims": [
+        "elite_archive"
+      ],
+      "spec": "specs/production-qd.json",
+      "result": "results/production-qd.json"
+    },
+    {
+      "name": "energy-baseline",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "energy",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/energy-baseline.json",
+      "result": "results/energy-baseline.json"
+    },
+    {
+      "name": "energy-scalar",
+      "profile": "fcmaes.retry/1",
+      "worker": "energy",
+      "work": {
+        "evaluations": 48,
+        "validation_evaluations": 2
+      },
+      "claims": [
+        "best_found",
+        "best_found"
+      ],
+      "spec": "specs/energy-scalar.json",
+      "result": "results/energy-scalar.json"
+    },
+    {
+      "name": "energy-engineering-recheck",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "energy",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/energy-engineering-recheck.json",
+      "result": "results/energy-engineering-recheck.json"
+    },
+    {
+      "name": "energy-holdout",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "energy",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/energy-holdout.json",
+      "result": "results/energy-holdout.json"
+    },
+    {
+      "name": "energy-pareto",
+      "profile": "fcmaes.mode/1",
+      "worker": "energy",
+      "work": {
+        "evaluations": 32,
+        "validation_evaluations": 16
+      },
+      "claims": [
+        "non_dominated_set"
+      ],
+      "spec": "specs/energy-pareto.json",
+      "result": "results/energy-pareto.json"
+    },
+    {
+      "name": "energy-qd",
+      "profile": "fcmaes.map-elites/1",
+      "worker": "energy",
+      "work": {
+        "evaluations": 32,
+        "validation_evaluations": 3
+      },
+      "claims": [
+        "elite_archive"
+      ],
+      "spec": "specs/energy-qd.json",
+      "result": "results/energy-qd.json"
+    },
+    {
+      "name": "energy-one-hour-lp",
+      "profile": "lp-ip.solve/1",
+      "worker": "lp-ip",
+      "work": {
+        "nodes": 0,
+        "simplex_iterations": 1,
+        "validation_evaluations": 1
+      },
+      "claims": [
+        "numerical_optimum"
+      ],
+      "spec": "specs/energy-one-hour-lp.json",
+      "result": "results/energy-one-hour-lp.json"
+    },
+    {
+      "name": "curve-fit",
+      "profile": "fcmaes.retry/1",
+      "worker": "curve-fit",
+      "work": {
+        "evaluations": 8649,
+        "validation_evaluations": 4
+      },
+      "claims": [
+        "best_found",
+        "best_found",
+        "best_found",
+        "best_found"
+      ],
+      "spec": "specs/curve-fit.json",
+      "result": "results/curve-fit.json"
+    },
+    {
+      "name": "sqp-curve-fit",
+      "profile": "sqp.solve/1",
+      "worker": "sqp-curve-fit",
+      "work": {
+        "derivatives": 55,
+        "functions": 75,
+        "iterations": 51,
+        "qp_iterations": 14,
+        "validation_calls": 8
+      },
+      "claims": [
+        "first_order",
+        "first_order",
+        "first_order",
+        "first_order"
+      ],
+      "spec": "specs/sqp-curve-fit.json",
+      "result": "results/sqp-curve-fit.json"
+    },
+    {
+      "name": "gtoc1-0-baseline",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "gtoc1",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/gtoc1-0-baseline.json",
+      "result": "results/gtoc1-0-baseline.json"
+    },
+    {
+      "name": "gtoc1-0-search",
+      "profile": "fcmaes.retry/1",
+      "worker": "gtoc1",
+      "work": {
+        "evaluations": 256,
+        "validation_evaluations": 2
+      },
+      "claims": [
+        "best_found",
+        "best_found"
+      ],
+      "spec": "specs/gtoc1-0-search.json",
+      "result": "results/gtoc1-0-search.json"
+    },
+    {
+      "name": "gtoc1-0-recheck",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "gtoc1",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/gtoc1-0-recheck.json",
+      "result": "results/gtoc1-0-recheck.json"
+    },
+    {
+      "name": "gtoc1-1-baseline",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "gtoc1",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/gtoc1-1-baseline.json",
+      "result": "results/gtoc1-1-baseline.json"
+    },
+    {
+      "name": "gtoc1-1-search",
+      "profile": "fcmaes.retry/1",
+      "worker": "gtoc1",
+      "work": {
+        "evaluations": 256,
+        "validation_evaluations": 2
+      },
+      "claims": [
+        "best_found",
+        "best_found"
+      ],
+      "spec": "specs/gtoc1-1-search.json",
+      "result": "results/gtoc1-1-search.json"
+    },
+    {
+      "name": "gtoc1-1-recheck",
+      "profile": "fcmaes.evaluate/1",
+      "worker": "gtoc1",
+      "work": {
+        "evaluations": 1
+      },
+      "claims": [
+        "feasible"
+      ],
+      "spec": "specs/gtoc1-1-recheck.json",
+      "result": "results/gtoc1-1-recheck.json"
+    }
+  ],
+  "trebuchet": {
+    "checked": {
+      "claim": "feasible",
+      "details": {
+        "constraint_rule": "feasible when every constraint <= 0",
+        "constraints": [
+          0.0
+        ],
+        "objectives": [
+          0.032397249699762654,
+          736.8119732678949,
+          236.29530533539514
+        ],
+        "problem": "app.trebuchet.checked"
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds",
+          "constraints"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": null,
+      "termination": "evaluated",
+      "x": [
+        3.2890991039646575,
+        37.34810434521748,
+        0.5245831651187733,
+        3.6181218795215044,
+        -1.14497194702941,
+        0.13780947456827897,
+        0.0021964088234979195,
+        0.05252838638349133
+      ]
+    },
+    "baseline": {
+      "claim": "feasible",
+      "details": {
+        "constraint_rule": "feasible when every constraint <= 0",
+        "constraints": [
+          0.0
+        ],
+        "objectives": [
+          21.423772601530068,
+          1478.1201107302702,
+          340.15769626003924
+        ],
+        "problem": "app.trebuchet.checked"
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds",
+          "constraints"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": null,
+      "termination": "evaluated",
+      "x": [
+        3.5,
+        80.0,
+        4.0,
+        2.5,
+        -0.75,
+        -0.05,
+        2.0,
+        2.0
+      ]
+    },
+    "qd_occupied": 2,
+    "qd_capacity": 16
+  },
+  "production": {
+    "parameters": {
+      "replications": 2,
+      "horizon_minutes": 120,
+      "training_seed": 42,
+      "holdout_seed": 314159
+    },
+    "training": [
+      {
+        "claim": "feasible",
+        "details": {
+          "constraint_rule": "feasible when every constraint <= 0",
+          "constraints": [],
+          "objectives": [
+            -84.75,
+            5.1980969116935665,
+            7.520014325229165,
+            14.75682849891606
+          ],
+          "problem": "app.production.pareto"
+        },
+        "evidence": {
+          "checks": [
+            "objective",
+            "bounds"
+          ],
+          "level": "rechecked"
+        },
+        "feasible": true,
+        "objective": null,
+        "termination": "evaluated",
+        "x": [
+          29.15933074017875,
+          1.4820701381420205,
+          0.9577643746489659,
+          0.5391139688751194,
+          0.6195963029112566,
+          0.9312694711810976,
+          0.9107347236231169,
+          4.0,
+          3.72446454226508
+        ]
+      },
+      {
+        "claim": "feasible",
+        "details": {
+          "constraint_rule": "feasible when every constraint <= 0",
+          "constraints": [],
+          "objectives": [
+            -83.0,
+            4.854252244181736,
+            6.972030913074996,
+            14.420128806143245
+          ],
+          "problem": "app.production.pareto"
+        },
+        "evidence": {
+          "checks": [
+            "objective",
+            "bounds"
+          ],
+          "level": "rechecked"
+        },
+        "feasible": true,
+        "objective": null,
+        "termination": "evaluated",
+        "x": [
+          31.074994250518984,
+          1.4229141775353016,
+          0.984382812642339,
+          0.5090149157710193,
+          0.7770631440061141,
+          0.21717844851072798,
+          0.9107347236231169,
+          3.7351165260789667,
+          3.717271607966083
+        ]
+      },
+      {
+        "claim": "feasible",
+        "details": {
+          "constraint_rule": "feasible when every constraint <= 0",
+          "constraints": [],
+          "objectives": [
+            -77.25,
+            8.329733356537272,
+            14.871533689450008,
+            11.312466158524941
+          ],
+          "problem": "app.production.pareto"
+        },
+        "evidence": {
+          "checks": [
+            "objective",
+            "bounds"
+          ],
+          "level": "rechecked"
+        },
+        "feasible": true,
+        "objective": null,
+        "termination": "evaluated",
+        "x": [
+          21.11659012791068,
+          0.8233175649446028,
+          1.2773767359769308,
+          0.8889252605810842,
+          0.4214408489117031,
+          0.6302801618057491,
+          0.9972830596965302,
+          2.738952142181099,
+          2.595946897163728
+        ]
+      }
+    ],
+    "holdout": [
+      {
+        "claim": "feasible",
+        "details": {
+          "constraint_rule": "feasible when every constraint <= 0",
+          "constraints": [],
+          "objectives": [
+            -81.5,
+            4.02570539476281,
+            5.714416238425,
+            14.701830072935703
+          ],
+          "problem": "app.production.pareto"
+        },
+        "evidence": {
+          "checks": [
+            "objective",
+            "bounds"
+          ],
+          "level": "rechecked"
+        },
+        "feasible": true,
+        "objective": null,
+        "termination": "evaluated",
+        "x": [
+          29.15933074017875,
+          1.4820701381420205,
+          0.9577643746489659,
+          0.5391139688751194,
+          0.6195963029112566,
+          0.9312694711810976,
+          0.9107347236231169,
+          4.0,
+          3.72446454226508
+        ]
+      },
+      {
+        "claim": "feasible",
+        "details": {
+          "constraint_rule": "feasible when every constraint <= 0",
+          "constraints": [],
+          "objectives": [
+            -81.0,
+            4.248613241341756,
+            6.019942767974998,
+            14.398666942102643
+          ],
+          "problem": "app.production.pareto"
+        },
+        "evidence": {
+          "checks": [
+            "objective",
+            "bounds"
+          ],
+          "level": "rechecked"
+        },
+        "feasible": true,
+        "objective": null,
+        "termination": "evaluated",
+        "x": [
+          31.074994250518984,
+          1.4229141775353016,
+          0.984382812642339,
+          0.5090149157710193,
+          0.7770631440061141,
+          0.21717844851072798,
+          0.9107347236231169,
+          3.7351165260789667,
+          3.717271607966083
+        ]
+      },
+      {
+        "claim": "feasible",
+        "details": {
+          "constraint_rule": "feasible when every constraint <= 0",
+          "constraints": [],
+          "objectives": [
+            -75.75,
+            7.104292758040707,
+            14.865625674462512,
+            11.386215176409692
+          ],
+          "problem": "app.production.pareto"
+        },
+        "evidence": {
+          "checks": [
+            "objective",
+            "bounds"
+          ],
+          "level": "rechecked"
+        },
+        "feasible": true,
+        "objective": null,
+        "termination": "evaluated",
+        "x": [
+          21.11659012791068,
+          0.8233175649446028,
+          1.2773767359769308,
+          0.8889252605810842,
+          0.4214408489117031,
+          0.6302801618057491,
+          0.9972830596965302,
+          2.738952142181099,
+          2.595946897163728
+        ]
+      }
+    ]
+  },
+  "energy": {
+    "baseline": {
+      "claim": "feasible",
+      "details": {
+        "constraints": "none declared; penalties inside the objective are not checked",
+        "problem": "app.energy.scalar"
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": 0.1966840220307065,
+      "termination": "evaluated",
+      "x": [
+        0.48,
+        0.42,
+        0.6962360309717192,
+        0.6505149978319905,
+        0.4,
+        0.3,
+        0.5833333333333334,
+        0.75,
+        0.75,
+        0.25
+      ]
+    },
+    "scalar": {
+      "claim": "best_found",
+      "details": {
+        "evaluation_limit_mode": "hard",
+        "global_optimum_certified": false,
+        "requested_evaluations": 24,
+        "run_seed": 4570751413759120945
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": 0.05778290492264345,
+      "termination": "evaluation_limit",
+      "x": [
+        0.7117312438324143,
+        0.6423166751104379,
+        0.6377814267246301,
+        0.3953557371008074,
+        0.3275328541590162,
+        0.2699272703320121,
+        0.6333445111302184,
+        0.7351659015914888,
+        0.8851487594599055,
+        0.284138989154622
+      ]
+    },
+    "training": {
+      "claim": "feasible",
+      "details": {
+        "constraint_rule": "feasible when every constraint <= 0",
+        "constraints": [
+          -0.36639616425309596,
+          -0.0001,
+          -20.721376899196116,
+          -1.0
+        ],
+        "objectives": [
+          0.05778290492264345
+        ],
+        "problem": "app.energy.checked"
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds",
+          "constraints"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": null,
+      "termination": "evaluated",
+      "x": [
+        0.7117312438324143,
+        0.6423166751104379,
+        0.6377814267246301,
+        0.3953557371008074,
+        0.3275328541590162,
+        0.2699272703320121,
+        0.6333445111302184,
+        0.7351659015914888,
+        0.8851487594599055,
+        0.284138989154622
+      ]
+    },
+    "holdout": {
+      "claim": "feasible",
+      "details": {
+        "constraint_rule": "feasible when every constraint <= 0",
+        "constraints": [
+          -0.20020748921747644,
+          -0.0001,
+          -7.9163518762991885,
+          -1.0
+        ],
+        "objectives": [
+          0.05774108108682054
+        ],
+        "problem": "app.energy.checked"
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds",
+          "constraints"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": null,
+      "termination": "evaluated",
+      "x": [
+        0.7117312438324143,
+        0.6423166751104379,
+        0.6377814267246301,
+        0.3953557371008074,
+        0.3275328541590162,
+        0.2699272703320121,
+        0.6333445111302184,
+        0.7351659015914888,
+        0.8851487594599055,
+        0.284138989154622
+      ]
+    },
+    "lp": {
+      "claim": "numerical_optimum",
+      "details": {
+        "best_bound": 49.99999999999997,
+        "effective_options": [
+          [
+            "algorithm",
+            "dual_simplex+best_bound_diving_branch_and_bound"
+          ],
+          [
+            "linear_kernel",
+            "bounded_dual_revised_simplex+markowitz_lu"
+          ],
+          [
+            "max_factor_entries",
+            "4000000"
+          ],
+          [
+            "packing_root",
+            "false"
+          ],
+          [
+            "packing_root_iterations",
+            "1000"
+          ],
+          [
+            "packing_root_work",
+            "200000000"
+          ],
+          [
+            "packing_neighborhoods",
+            "0"
+          ],
+          [
+            "packing_neighborhood_size",
+            "192"
+          ],
+          [
+            "packing_workers",
+            "1"
+          ],
+          [
+            "packing_neighborhood_nodes",
+            "128"
+          ],
+          [
+            "packing_cuts",
+            "false"
+          ],
+          [
+            "packing_cut_work",
+            "2000000"
+          ],
+          [
+            "packing_combine_repairs",
+            "false"
+          ],
+          [
+            "packing_rounds",
+            "1"
+          ],
+          [
+            "packing_neighborhood_growth",
+            "0"
+          ],
+          [
+            "packing_seed_strategy",
+            "incumbent"
+          ],
+          [
+            "packing_residual_cliques",
+            "false"
+          ],
+          [
+            "packing_clique_work",
+            "50000"
+          ],
+          [
+            "packing_price_diagnostics",
+            "false"
+          ],
+          [
+            "packing_repair_seconds",
+            "None"
+          ],
+          [
+            "packing_proof_seconds",
+            "None"
+          ],
+          [
+            "partial_dual_bounds",
+            "false"
+          ],
+          [
+            "scalable_branching",
+            "false"
+          ],
+          [
+            "branch_probe_candidates",
+            "4"
+          ],
+          [
+            "branch_probe_pivots",
+            "32"
+          ],
+          [
+            "branch_probe_work",
+            "2000000"
+          ],
+          [
+            "tree_threads",
+            "1"
+          ],
+          [
+            "tree_split_depth",
+            "2"
+          ],
+          [
+            "refactor_interval",
+            "256"
+          ],
+          [
+            "adaptive_refactor",
+            "true"
+          ],
+          [
+            "basis_update",
+            "auto"
+          ],
+          [
+            "factor_pivot_search",
+            "4"
+          ],
+          [
+            "factor_ordering",
+            "auto"
+          ],
+          [
+            "steepest_edge",
+            "true"
+          ],
+          [
+            "root_cuts",
+            "false"
+          ],
+          [
+            "root_separation",
+            "false"
+          ],
+          [
+            "mip_presolve",
+            "true"
+          ],
+          [
+            "coefficient_tightening",
+            "true"
+          ],
+          [
+            "dual_presolve",
+            "false"
+          ],
+          [
+            "mip_presolve_rounds",
+            "8"
+          ],
+          [
+            "gmi_cuts",
+            "false"
+          ],
+          [
+            "mir_cuts",
+            "false"
+          ],
+          [
+            "mip_cut_rounds",
+            "8"
+          ],
+          [
+            "mip_cut_limit",
+            "16"
+          ],
+          [
+            "cut_exact_work",
+            "4000000"
+          ],
+          [
+            "root_heuristics",
+            "false"
+          ],
+          [
+            "heuristic_lp_calls",
+            "16"
+          ],
+          [
+            "branching_score",
+            "weighted_sum"
+          ],
+          [
+            "pseudocost_min_step",
+            "0"
+          ],
+          [
+            "branch_trace_limit",
+            "0"
+          ],
+          [
+            "root_cut_rounds",
+            "2"
+          ],
+          [
+            "cover_lifting",
+            "true"
+          ],
+          [
+            "root_propagation",
+            "true"
+          ],
+          [
+            "mixed_propagation",
+            "false"
+          ],
+          [
+            "singleton_presolve",
+            "true"
+          ],
+          [
+            "avoid_dominant_components",
+            "true"
+          ],
+          [
+            "devex",
+            "false"
+          ],
+          [
+            "adaptive_pricing",
+            "true"
+          ],
+          [
+            "factor_replay",
+            "false"
+          ],
+          [
+            "mip_diagnostics",
+            "false"
+          ],
+          [
+            "mip_trace_limit",
+            "256"
+          ],
+          [
+            "component_threads",
+            "1"
+          ],
+          [
+            "component_parallel_min_entries",
+            "2048"
+          ],
+          [
+            "decompose",
+            "true"
+          ],
+          [
+            "decomposition_min_variables",
+            "32"
+          ],
+          [
+            "time_limit_seconds",
+            "Some(299.995612654)"
+          ],
+          [
+            "node_limit",
+            "Some(1000)"
+          ],
+          [
+            "iteration_limit",
+            "Some(10000)"
+          ],
+          [
+            "pivot_tolerance",
+            "0.000000001"
+          ],
+          [
+            "dual_tolerance",
+            "0.0000001"
+          ],
+          [
+            "presolve",
+            "true"
+          ],
+          [
+            "redundant_rows",
+            "true"
+          ],
+          [
+            "redundant_row_min_ratio",
+            "1"
+          ],
+          [
+            "node_reoptimization",
+            "true"
+          ],
+          [
+            "strong_branching",
+            "false"
+          ],
+          [
+            "reliability_branching",
+            "false"
+          ],
+          [
+            "reliability_threshold",
+            "2"
+          ],
+          [
+            "reliability_max_probes",
+            "64"
+          ],
+          [
+            "reduced_cost_fixing",
+            "true"
+          ],
+          [
+            "incumbent_heuristic",
+            "true"
+          ],
+          [
+            "rational_certification",
+            "true"
+          ],
+          [
+            "feasibility_jump",
+            "false"
+          ],
+          [
+            "feasibility_jump_steps",
+            "2000"
+          ],
+          [
+            "objective_lattice",
+            "true"
+          ],
+          [
+            "diagnostics.factor_peak_entries",
+            "2"
+          ],
+          [
+            "diagnostics.refactorizations",
+            "2"
+          ],
+          [
+            "diagnostics.phase_one_pivots",
+            "0"
+          ],
+          [
+            "diagnostics.degenerate_pivots",
+            "0"
+          ],
+          [
+            "diagnostics.weight_resets",
+            "0"
+          ],
+          [
+            "diagnostics.row_pricings",
+            "1"
+          ],
+          [
+            "diagnostics.column_pricings",
+            "0"
+          ],
+          [
+            "diagnostics.replayed_pivots",
+            "0"
+          ],
+          [
+            "diagnostics.basis_updates",
+            "1"
+          ],
+          [
+            "diagnostics.forrest_tomlin_updates",
+            "0"
+          ],
+          [
+            "diagnostics.bound_flips",
+            "1"
+          ],
+          [
+            "diagnostics.basis_repairs",
+            "0"
+          ],
+          [
+            "diagnostics.basis_restores",
+            "0"
+          ],
+          [
+            "diagnostics.cost_perturbations",
+            "0"
+          ],
+          [
+            "diagnostics.component_count",
+            "1"
+          ],
+          [
+            "diagnostics.component_workers",
+            "1"
+          ],
+          [
+            "diagnostics.reoptimized_nodes",
+            "0"
+          ],
+          [
+            "diagnostics.presolve_removed_rows",
+            "0"
+          ],
+          [
+            "diagnostics.presolve_removed_columns",
+            "0"
+          ],
+          [
+            "diagnostics.cold_lp_solves",
+            "1"
+          ],
+          [
+            "diagnostics.cold_fallbacks",
+            "0"
+          ],
+          [
+            "diagnostics.unverified_infeasible_nodes",
+            "0"
+          ],
+          [
+            "diagnostics.heuristic_candidates",
+            "0"
+          ],
+          [
+            "diagnostics.mixed_propagation_rows",
+            "0"
+          ],
+          [
+            "diagnostics.mixed_propagation_visits",
+            "0"
+          ],
+          [
+            "diagnostics.mixed_propagation_terms",
+            "0"
+          ],
+          [
+            "diagnostics.mixed_propagation_changes",
+            "0"
+          ],
+          [
+            "diagnostics.mixed_propagation_infeasibilities",
+            "0"
+          ],
+          [
+            "diagnostics.mixed_propagation_work_limits",
+            "0"
+          ],
+          [
+            "diagnostics.feasibility_jump_steps",
+            "0"
+          ],
+          [
+            "diagnostics.feasibility_jump_work",
+            "0"
+          ],
+          [
+            "diagnostics.feasibility_jump_candidates",
+            "0"
+          ],
+          [
+            "diagnostics.feasibility_jump_weight_bumps",
+            "0"
+          ],
+          [
+            "diagnostics.pruned_nodes",
+            "0"
+          ],
+          [
+            "diagnostics.propagated_infeasible_nodes",
+            "0"
+          ],
+          [
+            "diagnostics.implied_bounds",
+            "0"
+          ],
+          [
+            "diagnostics.strong_branch_probes",
+            "0"
+          ],
+          [
+            "diagnostics.strong_branch_pivots",
+            "0"
+          ],
+          [
+            "diagnostics.strong_branch_work",
+            "0"
+          ],
+          [
+            "diagnostics.strong_branch_work_exits",
+            "0"
+          ],
+          [
+            "diagnostics.reduced_cost_fixings",
+            "0"
+          ],
+          [
+            "diagnostics.certification_solves",
+            "0"
+          ],
+          [
+            "diagnostics.rational_witness_attempts",
+            "0"
+          ],
+          [
+            "diagnostics.rational_witness_successes",
+            "0"
+          ],
+          [
+            "diagnostics.rational_witness_work",
+            "0"
+          ],
+          [
+            "diagnostics.certified_incumbents",
+            "0"
+          ],
+          [
+            "diagnostics.objective_lattice",
+            "false"
+          ],
+          [
+            "numeric_threads",
+            "1"
+          ]
+        ],
+        "engine_version": "0.29.0",
+        "exact_certificate": false,
+        "gap": {
+          "absolute": 2.842170943040401e-14,
+          "relative": 5.684341886080802e-16
+        },
+        "integrality_violation": 0.0,
+        "is_mip": false,
+        "lp_residuals": {
+          "complementarity": 0.0,
+          "dual_sign": 0.0,
+          "duality_gap": 0.0,
+          "primal": 0.0,
+          "stationarity": 0.0
+        },
+        "message": "Native dual simplex numerical solve: optimal (not an exact certificate)",
+        "primal_violation": 0.0,
+        "raw_status": "optimal",
+        "sense": "minimize",
+        "warm_start": "not_provided"
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds",
+          "constraints",
+          "kkt"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": 50.0,
+      "objective_bounds": {
+        "dual": 49.99999999999997,
+        "primal": 50.0,
+        "sense": "minimize"
+      },
+      "termination": "optimal",
+      "x": [
+        200.0,
+        200.0,
+        0.0
+      ]
+    }
+  },
+  "curve_fit": {
+    "fcmaes": {
+      "claim": "best_found",
+      "details": {
+        "evaluation_limit_mode": "soft",
+        "global_optimum_certified": false,
+        "requested_evaluations": 5000,
+        "run_seed": 15411881175776054229,
+        "stop_code": 4
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": 0.01047343605715231,
+      "termination": "optimizer_stop",
+      "x": [
+        3.000536746645918,
+        0.6987272669685822,
+        0.4982754344940016
+      ]
+    },
+    "sqp": {
+      "claim": "first_order",
+      "details": {
+        "acceptance": {
+          "complementarity": 1e-06,
+          "dual_sign": 1e-08,
+          "primal": 1e-07,
+          "stationarity": 1e-06
+        },
+        "elastic": {
+          "steps": 0,
+          "weight": 57463.65865402218,
+          "weight_increases": 0
+        },
+        "global_optimum_certified": false,
+        "kkt": {
+          "complementarity": 1.6308358160814527e-11,
+          "dual_sign": 0.0,
+          "primal": 1.4384982094384213e-10,
+          "stationarity": 9.983217270914668e-07
+        },
+        "message": "first-order KKT residuals within tolerance at the returned point",
+        "options": {
+          "backend": "active_set",
+          "elastic_mode": true,
+          "max_callback_calls": 4000,
+          "max_iterations": 200,
+          "threads": 1
+        },
+        "primal_violation": 1.4384982094384213e-10,
+        "qp_backend": "goldfarb-idnani 0.17.0",
+        "qp_status": "optimal"
+      },
+      "evidence": {
+        "checks": [
+          "objective",
+          "bounds",
+          "constraints",
+          "kkt"
+        ],
+        "level": "rechecked"
+      },
+      "feasible": true,
+      "objective": 0.0020524244676576823,
+      "termination": "converged",
+      "x": [
+        3.011989394378928,
+        0.6809152264400252,
+        0.4835709198591207
+      ]
+    }
+  },
+  "gtoc1": {
+    "claim": "MGA screening only",
+    "protocol": "generic-biteopt-retry",
+    "routes": [
+      {
+        "bodies": [
+          3,
+          2,
+          3,
+          5,
+          10
+        ],
+        "objective": -672103.514833538,
+        "mga_score": 672103.514833538
+      },
+      {
+        "bodies": [
+          3,
+          3,
+          2,
+          5,
+          10
+        ],
+        "objective": -614331.6814784417,
+        "mga_score": 614331.6814784417
+      }
+    ]
+  }
+}

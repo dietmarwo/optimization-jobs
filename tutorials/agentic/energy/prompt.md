@@ -1,0 +1,7 @@
+Use a checkout of optimization-jobs with sibling checkouts of fcmaes-rust, LP-IP-craft, SQP-craft and fast-cma-es. Read tutorials/agentic/README.md and SETUP.md, then the energy chapter. Inspect the available binaries, node capacity and worker discovery; build missing workers using the documented setup.
+
+Size PV, wind, battery and grid connection for the energy-hub teaching model. Show cost and emissions trade-offs, explain constraint violations, and check the chosen design on the reserved scenarios.
+
+Retain microlp inside every design evaluation. Measure the original analytic baseline and retain it if the small scalar search does not improve it. Use the separate checked model to report all four engineering constraints, then evaluate the frozen selection with scenario_set=holdout. Also run the independent one-hour LP-IP-craft dispatch lesson and check its balance and cost.
+
+Start with the chapter's pilot budgets, seed 42 and at most two CPU slots. Use the supplied run.py driver with --chapter energy in a new output directory. Inspect the actual result records and generated figures. Report failures and empty fronts honestly; do not change tests or tolerances to obtain a pass. Return the findings, a brief explanation of the claims, and links to report.json and the relevant plots/replay. Record source revisions and binary hashes. This is a pilot, not a publication-quality campaign.
