@@ -25,6 +25,10 @@ are useful starting points for reproduction. Their authorship stays explicit:
 - [LP-IP-craft parallel reproduction guide](https://github.com/dietmarwo/LP-IP-craft/blob/main/docs/parallel-028/REPRODUCE.md).
 - [SQP-craft benchmark results](https://github.com/dietmarwo/SQP-craft/blob/main/docs/benchmark-results.md).
 - [optimization-jobs acceptance harness](https://github.com/dietmarwo/optimization-jobs/tree/main/scripts/job-api).
+- [Comparison with other open-source optimization systems for agents](../optimization-systems-for-ai-agents.md):
+  a documentation and source review prepared for the maintainer, with
+  revisions pinned and no benchmarks; it proposes the measurements that
+  would turn it into evidence.
 
 These links expose project evidence. Hosting it on GitHub or having an AI review
 it does not make it an independently reproduced comparison. Registry entries
