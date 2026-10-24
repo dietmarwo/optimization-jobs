@@ -334,6 +334,9 @@ class Protocol(Server):
         self.assertEqual(node["capacity"], 8)
         # The host as node doctor reports it, with its warnings.
         doctor = self.call("node", "doctor")
+        self.assertEqual(node["capabilities"], doctor["capabilities"])
+        self.assertEqual(node["capabilities"]["execution_kinds"], ["optimization"])
+        self.assertFalse(node["capabilities"]["command_jobs"])
         self.assertEqual((node["host"], node["warnings"]), (doctor["host"] | {
             "memory_available_bytes": node["host"]["memory_available_bytes"],
             "usable_memory_bytes": node["host"]["usable_memory_bytes"]}, doctor["warnings"]))

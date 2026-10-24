@@ -24,6 +24,13 @@ optimization-run --root /tmp/node workers add --id fcmaes --executable /path/to/
 optimization-run --root /tmp/node run --spec JOB.json
 ```
 
+Built from `main` after 0.3.0, the runner also has `optimization-run node
+capabilities`, which lists the execution kinds and schemas it supports (only
+optimization jobs), and `optimization-run --root NODE jobs execution JOB_ID`,
+which prints how a finished job's worker process ended and the hash of its
+native result. The execution lifecycle behind them is internal, not a plugin
+API.
+
 Workers come from their own repositories:
 [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust),
 [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) and

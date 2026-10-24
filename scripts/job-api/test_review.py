@@ -221,6 +221,98 @@ class Node(unittest.TestCase):
         except (FileNotFoundError, json.JSONDecodeError):
             return None
 
+    def validate_record(self, name, value):
+        # Without jsonschema only the schema check is left out; the
+        # behavioral assertions of the calling test still run.
+        if jsonschema is None:
+            if os.environ.get("JOB_API_REQUIRE_SCHEMA") == "1":
+                self.fail("jsonschema is required")
+            return
+        schema = json.loads((SCHEMAS / name).read_text())
+        validator = jsonschema.Draft202012Validator(schema)
+        validator.check_schema(schema)
+        validator.validate(value)
+        if name == "execution.record-0.1.schema.json":
+            # The legacy fcmaes request has no 1024-slot cap. The neutral
+            # observation must not impose the shared optimization envelope's cap.
+            validator.validate(dict(value, cpu_slots=2048))
+            self.assertTrue(list(validator.iter_errors(dict(value, cpu_slots=0))))
+        invalid = dict(value, unexpected=True)
+        self.assertTrue(list(validator.iter_errors(invalid)))
+        invalid = dict(value, schema_version="execution.future/9")
+        self.assertTrue(list(validator.iter_errors(invalid)))
+
+
+class Execution(Node):
+    """The neutral record never stands in for the solver's native result."""
+
+    def test_capabilities_are_available_without_node_initialization(self):
+        missing = self.base / "not-initialized"
+        result = subprocess.run([str(RUN), "--root", str(missing), "node", "capabilities"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        caps = json.loads(result.stdout)
+        self.assertFalse(missing.exists())
+        self.validate_record("execution.capabilities-0.1.schema.json", caps)
+        self.assertEqual(caps, self.call("node", "doctor")["capabilities"])
+        self.assertEqual(caps["execution_kinds"], ["optimization"])
+        path, _ = self.write({"schema_version": "execution.command/0.1", "argv": ["/bin/true"]})
+        self.assertEqual(self.error("validate", "--spec", path)["code"], "invalid_job")
+        for unsupported in ("command_jobs", "generic_file_transfer", "fleet"):
+            self.assertFalse(caps[unsupported])
+
+    def test_observed_exit_is_separate_from_the_native_optimization_outcome(self):
+        cases = [({"mode": "complete"}, "completed", {"code": 0, "signal": None}),
+                 ({"mode": "sleep", "seconds": 0}, "failed", {"code": 0, "signal": None}),
+                 ({"mode": "crash"}, "failed", {"code": None, "signal": signal.SIGSEGV}),
+                 ({"mode": "garbage_journal"}, "failed", {"code": 3, "signal": None})]
+        for payload, state, process in cases:
+            with self.subTest(payload=payload):
+                path, key = self.write(envelope("fake", payload))
+                result = self.raw("run", "--spec", path)
+                self.assertEqual(result.returncode, 2 if payload["mode"] == "garbage_journal" else 0,
+                                 result.stderr)
+                ident = job_id(key)
+                directory = self.root / "jobs" / ident
+                value = self.call("jobs", "execution", ident)
+                self.validate_record("execution.record-0.1.schema.json", value)
+                self.assertEqual((value["kind"], value["source"], value["state"]),
+                                 ("optimization", "launcher", state))
+                self.assertEqual(value["attempt_id"], ident)
+                self.assertEqual(value["identity"], json.loads((directory / "provenance.json").read_text())["identity"])
+                self.assertEqual(value["observation"], {
+                    "process": process, "stop_reason": None, "containment": "stopped"})
+                self.assertEqual(value["logs"], {"stdout": "stdout.log", "stderr": "stderr.log"})
+                native = (directory / "run.json").read_bytes()
+                self.assertEqual(value["native_result"], {
+                    "file": "run.json", "schema_version": "optimization.result/0.2",
+                    "bytes": len(native), "sha256": hashlib.sha256(native).hexdigest()})
+                self.assertEqual(json.loads(native)["status"], state)
+                self.assertEqual(json.loads((directory / "job.json").read_text())["finished_at"], value["finished_at"])
+                self.assertFalse({"objective", "feasible", "claim", "work", "results"} & value.keys())
+                # Repeated request keys keep the original attempt and observation.
+                before = (directory / ".execution.json").read_bytes()
+                self.raw("run", "--spec", path)
+                self.assertEqual((directory / ".execution.json").read_bytes(), before)
+
+    def test_active_and_preexisting_attempts_do_not_invent_execution_records(self):
+        process, ident, directory = self.start(envelope("fake", {"mode": "sleep"}, wall=60))
+        self.wait_for(lambda: (directory / "worker-process.json").exists())
+        # A running attempt has no record yet; the same call succeeds later.
+        error = self.error("jobs", "execution", ident)
+        self.assertEqual((error["code"], error["retryable"]), ("attempt_active", True))
+        self.call("jobs", "cancel", ident, "--now")
+        process.communicate(timeout=10)
+        value = self.call("jobs", "execution", ident)
+        self.validate_record("execution.record-0.1.schema.json", value)
+        self.assertEqual(value["state"], "cancelled")
+        self.assertEqual(value["observation"]["stop_reason"], "cancelled")
+        self.assertEqual(value["observation"]["containment"], "stopped")
+        (directory / ".execution.json").unlink()  # pre-P1 terminal directory
+        self.assertEqual(self.call("jobs", "get", ident)["state"], "cancelled")
+        self.assertEqual(self.error("jobs", "execution", ident)["code"], "execution_unavailable")
+
+
 class Review(Node):
     def test_unreadable_journal_ends_failed_and_keeps_listing(self):
         path, key = self.write(envelope("fake", {"mode": "garbage_journal"}))
@@ -255,8 +347,22 @@ class Review(Node):
         self.call("jobs", "cancel", hold_id, "--now")
         hold.communicate(timeout=10)
         self.assertFalse((queued_dir / "worker-process.json").exists())
+        # Old attempt metadata remains recoverable without fabricating identity.
+        provenance = queued_dir / "provenance.json"
+        old = json.loads(provenance.read_text())
+        old.pop("identity")
+        old.pop("attempt_id")
+        provenance.write_text(json.dumps(old))
         repaired = self.call("jobs", "repair", queued_id)
         self.assertEqual(repaired["state"], "interrupted")
+        execution = self.call("jobs", "execution", queued_id)
+        self.validate_record("execution.record-0.1.schema.json", execution)
+        self.assertEqual(execution["source"], "repair")
+        self.assertEqual(execution["attempt_id"], queued_id)
+        self.assertIsNone(execution["identity"])
+        self.assertEqual(execution["elapsed_seconds"], 0.0)
+        self.assertEqual(execution["observation"], {
+            "process": None, "stop_reason": None, "containment": "not_started"})
         # No worker ever ran: zero work with complete accounting.
         run = json.loads((queued_dir / "run.json").read_text())
         self.assertEqual(run["work"], {})
@@ -454,6 +560,15 @@ class Review(Node):
         finally:
             record.write_text(json.dumps(group))
         self.assertEqual(repaired["state"], "interrupted")
+        execution = self.call("jobs", "execution", ident)
+        self.validate_record("execution.record-0.1.schema.json", execution)
+        self.assertEqual(execution["source"], "repair")
+        self.assertIsNone(execution["elapsed_seconds"])
+        self.assertEqual(execution["observation"], {
+            "process": None, "stop_reason": None, "containment": "stopped"})
+        native = (directory / "run.json").read_bytes()
+        self.assertIsNone(json.loads(native)["elapsed_seconds"])
+        self.assertEqual(execution["native_result"]["sha256"], hashlib.sha256(native).hexdigest())
         self.assertEqual(json.loads((self.root / "slots.json").read_text()), {})
 
     def test_doctor_reports_the_host_and_init_warns_about_capacity(self):

@@ -10,6 +10,30 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
+- `node capabilities` prints the runner's `execution.capabilities/0.1`: the
+  execution kinds it dispatches (only `optimization`), the job, worker and
+  result schemas it accepts, and `false` for command jobs, generic file
+  transfer and fleet execution. It needs no initialized node; `node doctor`
+  and MCP `describe_node` include the same object.
+- `jobs execution JOB_ID` prints a finished job's `execution.record/0.1`
+  (`.execution.json` in the job directory): process exit code or signal,
+  stop reason, containment, log references and the size and SHA-256 of the
+  native `run.json`. Claims, objectives, feasibility and work stay in
+  `run.json`. The record is served only when `job.json` is terminal with the
+  same state and finish time: a job that has not finished returns the
+  retryable `attempt_active`, and a finished one without a matching record
+  (finished by an earlier runner) returns the new error
+  `execution_unavailable`; nothing is backfilled. Repair records
+  `not_started` containment for attempts that never reached `running`. Both
+  schemas are published in `docs/job-api/schemas` and embedded in the
+  runner.
+- Rust tests drive the lifecycle with a test-only adapter that produces no
+  optimization output (success, failure, timeout, queued cancellation, spawn
+  and process-record failures). The review harness checks the capabilities,
+  records with real exit codes and signals, repair records without an
+  observed exit, records of old provenance and unchanged records on repeated
+  requests.
+
 - A [rail-traffic prompt tutorial](tutorials/agentic/rail-traffic/README.md) with synthetic timetable recovery, service-delay caps, queue-preserving alternatives, independent enumeration, stress replay and a CI execution entry. It reuses the existing LP/IP worker.
 
 - Three further [prompt tutorials](tutorials/agentic/README.md): surrogate observation reuse and oscillator calibration, LP/IP relaxation and binary choices, and SQP multistart/backend checks. The driver verifies artifacts and independent numerical checks, with an explicit exception for the deliberately uncertified infeasibility claim. `build --chapter` selects the needed workers. A CI matrix builds and executes all three with real workers on current stable Rust, preserving plain diagnostic output and result artifacts.
@@ -35,6 +59,13 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- The runner's launch path is split into private modules: admission (the
+  slot ledger), supervision (process group, bounded logs, stop and deadline
+  handling) and the execution lifecycle, with worker invocation, result
+  validation and the native manifest in an optimization adapter. Locks,
+  conservative reservations, request identity, the job, worker and result
+  contracts and the CLI and MCP tools are unchanged.
+
 - The landing page catalog and `docs/discovery` record fcmaes-rust 0.2.1
   (PyPI and crates.io, 23 October 2026) after installing it from both
   registries, and every registry version was rechecked that day.
@@ -45,6 +76,13 @@ revision. 0.3.0 is the first version on crates.io.
   fcmaes-rust/`fcmaes-core` 0.2.0, lp-ip-craft 0.29.0 and sqp-craft 0.17.0
   (PyPI and crates.io), and these crates 0.3.0. The LP-IP-craft, SQP-craft
   and optimization-jobs cards link their registry pages.
+
+### Fixed
+
+- A failure to read the boot ID right after a worker started returned before
+  the worker was stopped. It now takes the path of a failed process record:
+  the worker group is killed and reaped, and its slots stay reserved unless
+  the group is verifiably gone.
 
 ## [0.3.0] - 2026-10-22
 

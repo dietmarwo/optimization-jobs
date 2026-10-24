@@ -383,6 +383,7 @@ job validate --spec job.json             # the resolved job with task_count; run
 job run --spec job.json                  # blocks until the end, prints the final job
 job jobs list                            # newest first, with id, state, directory, artifact_index
 job jobs get JOB_ID                      # state and progress
+job jobs execution JOB_ID                # how the worker process ended (after 0.3.0)
 job jobs wait JOB_ID --timeout 60        # returns at the end or after the timeout
 job result JOB_DIRECTORY                 # the result manifest
 job jobs artifact JOB_ID results --offset 0 --limit 100   # a page of checked records
@@ -406,6 +407,18 @@ whether one is available). Lifecycle states:
 
 `completed` means the tasks returned normally, not that the solution is
 optimal; read the outcomes.
+
+A runner built from `main` after 0.3.0 also keeps an execution record of
+each finished job (`jobs execution JOB_ID`, `execution.record/0.1`): the
+worker's exit code or signal, the stop reason, whether its process group is
+verifiably stopped, and the size and SHA-256 of `run.json`. It holds no
+claim, objective or work; report those from the result manifest. A job that
+has not finished returns `attempt_active` (wait, then ask again); one finished
+by an older runner returns `execution_unavailable`.
+`node capabilities` (and `capabilities` in `node doctor` and MCP
+`describe_node`) lists what the runner dispatches: optimization jobs only,
+with no command jobs, file transfer or fleet execution
+([guide](docs/job-api.md#execution-discovery-and-terminal-observations)).
 
 ### Results, claims and evidence
 

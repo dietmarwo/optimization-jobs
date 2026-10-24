@@ -42,6 +42,14 @@ protocol 0.2, coded runner errors and the JSON Schemas to the 0.1.1
 synchronization. Solver dependencies remain in the individual worker crates;
 the runner never links all three engines.
 
+Inside the runner, private modules separate admission (the slot ledger),
+supervision (process group, bounded logs, stop and deadline handling) and the
+execution lifecycle. An adapter supplies the command and interprets how it
+ended; the optimization adapter validates worker results, accounts for work
+and builds the native manifest. These are implementation boundaries, not a
+public Rust plugin API. The only execution kind is `optimization`; a neutral
+adapter exists only in the Rust tests.
+
 The runner accepts workers of protocol `optimization.worker/0.1` and `/0.2`.
 Every 0.1 result record is a valid 0.2 record, so a registered 0.1 worker keeps
 working; its records simply carry no evidence. A runner built before 0.2
@@ -255,6 +263,7 @@ optimization-run --root NODE validate --spec JOB.json
 optimization-run --root NODE run --spec JOB.json
 optimization-run --root NODE jobs list
 optimization-run --root NODE jobs get JOB_ID
+optimization-run --root NODE jobs execution JOB_ID
 optimization-run --root NODE jobs events JOB_ID
 optimization-run --root NODE jobs wait JOB_ID --timeout 60
 optimization-run --root NODE result JOB_DIRECTORY
@@ -297,6 +306,66 @@ SQP can complete with a local restoration failure. A time/iteration limit can
 still retain a feasible candidate. Deadline classification is a lifecycle
 decision, independent of a solver's termination reason.
 
+### Execution discovery and terminal observations
+
+These commands are not in 0.3.0: they need a runner built from `main`
+after that release (see `[Unreleased]` in the changelog). The versions of the
+job, worker and native result contracts are unchanged.
+
+```sh
+optimization-run node capabilities
+optimization-run --root NODE jobs execution JOB_ID
+```
+
+`node capabilities` works without creating or initializing a node. Its
+`execution.capabilities/0.1` object is also included as `capabilities` in
+`node doctor` and MCP `describe_node`. It lists accepted job/worker schemas,
+result/record schemas and the execution kinds the runner actually dispatches.
+Command jobs, generic file transfer and fleet execution are explicitly false.
+The [capability schema](job-api/schemas/execution.capabilities-0.1.schema.json)
+is separate from worker `describe`: solver profiles are still discovered
+from each worker.
+
+`jobs execution` reads the additive
+[`execution.record/0.1`](job-api/schemas/execution.record-0.1.schema.json)
+sidecar `.execution.json`. A normal finalization writes the native `run.json`,
+then the sidecar, then terminal `job.json`, all with atomic replacements.
+A crash between these writes still needs the existing conservative `repair`;
+reading a sidecar never authorizes a retry or frees a reservation.
+
+The record contains attempt ID and content identity, execution kind, terminal
+state, declared CPU slots (limits remain adapter-specific), timestamps, process exit code **or** signal when
+observed, stop reason, containment, and references to bounded stdout/stderr.
+It attaches the native result by relative filename, schema version, byte count
+and SHA-256 of the finalized file. It contains no objective, feasibility,
+claim, evidence or work counters: use the native result for these. An exit
+code of zero without a valid optimization manifest still means a failed job.
+Legacy `fcmaes.job/0.1` keeps its integer native result schema version `1`.
+The hidden filename avoids collisions with existing named worker artifacts;
+it is read through this CLI command, not `jobs artifact` or a new MCP tool.
+
+`source: "launcher"` records the duration measured during launch (zero for
+cancellation before admission). `source: "repair"` cannot recover an observed
+exit code: `observation.process` is null. Its elapsed time is zero for an
+unadmitted attempt, the validated worker duration for a recovered complete
+manifest, or null if unknown. Old provenance without a content identity keeps
+`identity: null`; its attempt ID can come from `job.json`. Unknown containment
+retains slots, just as before extraction.
+
+`jobs execution` serves a record only when `job.json` is terminal with the
+same state and `finished_at`. An attempt that has not finished returns
+`attempt_active` (retryable: call again after `jobs wait`, or repair the
+attempt if its launcher was lost). A finished attempt without a matching record
+returns `execution_unavailable`: it was finished by a runner without records,
+or the file was not written by this attempt's finalization (the worker runs in
+the job directory). Existing `jobs get`, result inspection and recovery
+continue to work; old terminal attempts are not backfilled or rerun. A corrupt
+sidecar returns `runner_error` and does not affect native inspection.
+
+`source: "repair"` reports `containment: "not_started"` when the attempt never
+reached `running` (the launcher writes it before it spawns the worker), and
+`"stopped"` otherwise, since repair runs only after both locks are free.
+
 ### Errors
 
 A runner error, including a malformed command line, exits with status 2 and
@@ -318,9 +387,10 @@ prints one JSON line on stderr (`--help` and `--version` print normally):
 | `node_not_initialized` | The root has no `node.json` | `node init --capacity N` |
 | `unknown_job` | No job with this ID on this root | Check the ID and root |
 | `already_terminal` | Cancel or repair of a job that has already ended | Nothing to do |
+| `execution_unavailable` | `jobs execution` of a finished attempt without a matching record (finished before records existed) | Use `jobs get` and the result |
 | `unknown_artifact` | The job has no artifact of that name, or its file does not exist yet | A name from `artifact_index` (`jobs get` or the result) |
 | `artifact_too_large` | A whole read of an artifact over 1 MiB, or a page whose first record exceeds 1 MiB | Pages (`--offset`, `--limit`) of a `records` artifact, or the file in the job directory |
-| `attempt_active` | Repair while the attempt's launcher or worker still holds its lock | Wait, then repeat |
+| `attempt_active` | Repair while the attempt's launcher or worker still holds its lock; `jobs execution` before the attempt has finished | Wait (`jobs wait`), then repeat |
 | `liveness_unknown` | Repair of an attempt whose locks are free, but whose process group still exists or whose detached unit may still start | Inspect it (`jobs get`, `systemctl --user`); an attempt recorded on an earlier boot counts as ended |
 | `systemd_unavailable` | `submit` without a systemd user manager | Foreground `run` |
 | `start_unknown` | `submit` could not confirm the unit start; repeating does not launch again | Inspect the unit |
@@ -341,7 +411,8 @@ error need not.
 has a schema version and SHA-256 checksum of the exact `payload_json` bytes.
 The common worker serializes appends and syncs them before reporting completion.
 `events.jsonl` records durable lifecycle transitions. Atomic JSON snapshots
-include `job.json`, `resolved.json`, `provenance.json` and final `run.json`.
+include `job.json`, `resolved.json`, `provenance.json`, final `run.json` and
+the additive terminal `.execution.json` record.
 `worker-process.json` records the process group for conservative liveness checks.
 
 The result schema is `optimization.result/0.2`
@@ -617,7 +688,7 @@ The server has fifteen tools:
 | Tool | Runner command | Answer |
 | --- | --- | --- |
 | `get_guide` | none (a copy of `ai-context.md` in the server) | The guide that chooses a solver and profile, whole or one section; call it first when none is chosen |
-| `describe_node` | `node doctor`, `workers list` | Capacity, launch mode, the host's CPUs and memory with warnings, the workers with their profiles and builds |
+| `describe_node` | `node doctor`, `workers list` | Capacity, launch mode, the host's CPUs and memory with warnings, execution capabilities, the workers with their profiles and builds |
 | `describe_worker` | `problems describe` | The worker's full description: profiles, models, options, claims, payload schemas and runnable examples |
 | `put_input` | none (the input store); `jobs get` for an artifact | `file`, `sha256`, `bytes` and `input_dir` of a stored input file |
 | `validate_job` | `validate` | The resolved job with its `task_count`, or `invalid_job` |

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:optimization-jobs:schema:execution.capabilities-0.1",
+  "title": "execution.capabilities/0.1",
+  "description": "Implemented runner capabilities, not node resource availability or a future-feature promise.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "runner_version",
+    "execution_kinds",
+    "job_schemas",
+    "worker_protocols",
+    "optimization_result_schema",
+    "execution_record_schema",
+    "execution_record_publication",
+    "command_jobs",
+    "generic_file_transfer",
+    "fleet",
+    "legacy_fcmaes_result_schema"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "execution.capabilities/0.1"
+    },
+    "runner_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_kinds": {
+      "const": [
+        "optimization"
+      ]
+    },
+    "job_schemas": {
+      "const": [
+        "optimization.job/0.1",
+        "fcmaes.job/0.1"
+      ]
+    },
+    "worker_protocols": {
+      "const": [
+        "optimization.worker/0.1",
+        "optimization.worker/0.2",
+        "fcmaes.worker/0.1"
+      ]
+    },
+    "optimization_result_schema": {
+      "const": "optimization.result/0.2"
+    },
+    "execution_record_schema": {
+      "const": "execution.record/0.1"
+    },
+    "execution_record_publication": {
+      "const": "terminal"
+    },
+    "command_jobs": {
+      "const": false
+    },
+    "generic_file_transfer": {
+      "const": false
+    },
+    "fleet": {
+      "const": false
+    },
+    "legacy_fcmaes_result_schema": {
+      "const": 1
+    }
+  }
+}

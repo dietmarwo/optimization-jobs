@@ -497,6 +497,7 @@ fn describe_node(server: &Server, ctx: &Ctx) -> Result<Value, Fail> {
         "systemd_user_manager": doctor["systemd_user_manager"],
         "host": doctor["host"],
         "warnings": doctor["warnings"],
+        "capabilities": doctor["capabilities"],
         "workers": workers,
     });
     if doctor["capacity"].is_null() {
