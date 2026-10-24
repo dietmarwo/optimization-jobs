@@ -5,6 +5,7 @@
 use crate::{
     Stop, admission, directory, install_stop_handlers, now, read, state_write, stop_request,
     supervision::{self, Budget, Observation, StopReason},
+    terminal,
 };
 use optimization_job_api::{
     Result, coded,
@@ -117,15 +118,37 @@ pub(crate) fn capabilities() -> Value {
     })
 }
 
+/// The record of a finished attempt. It is served only when `job.json` is
+/// terminal with the same state and finish time: the worker runs in the job
+/// directory, and a launcher lost between the record and `job.json` leaves a
+/// record that repair will replace.
 pub(crate) fn record(dir: &Path) -> Result<Value> {
+    let job = read(&dir.join("job.json"))?;
+    if !terminal(&job["state"]) {
+        return Err(coded(
+            "attempt_active",
+            "the attempt has not finished; wait for a terminal state (jobs wait), or repair it if its launcher was lost",
+        ));
+    }
+    let unavailable = || {
+        coded(
+            "execution_unavailable",
+            "this finished attempt has no execution record; it predates execution records",
+        )
+    };
     let bytes = fs::read(dir.join(RECORD_FILE)).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
-            coded("execution_unavailable", "no terminal execution record; this attempt is active or predates execution records")
-        } else { error.into() }
+            unavailable()
+        } else {
+            error.into()
+        }
     })?;
     let record: Record = serde_json::from_slice(&bytes)?;
     if record.schema_version != RECORD_SCHEMA {
         return Err("unsupported execution record schema".into());
+    }
+    if json!(record.state) != job["state"] || json!(record.finished_at) != job["finished_at"] {
+        return Err(unavailable());
     }
     Ok(serde_json::to_value(record)?)
 }

@@ -7,6 +7,17 @@ use tempfile::TempDir;
 struct Neutral {
     executable: &'static str,
     args: &'static [&'static str],
+    wall: Duration,
+}
+impl Neutral {
+    /// A wall time no fixture reaches, so only the deadline test times out.
+    fn run(executable: &'static str, args: &'static [&'static str]) -> Self {
+        Self {
+            executable,
+            args,
+            wall: Duration::from_secs(30),
+        }
+    }
 }
 impl Adapter for Neutral {
     type Outcome = State;
@@ -16,7 +27,7 @@ impl Adapter for Neutral {
     fn budget(&self) -> Budget {
         Budget {
             cpu_slots: 1,
-            wall: Duration::from_millis(80),
+            wall: self.wall,
             grace: Duration::ZERO,
         }
     }
@@ -91,13 +102,7 @@ fn no_mathematics(value: &Value) {
 fn neutral_adapter_uses_the_lifecycle_without_optimization_output() {
     for (executable, state, code) in [("/bin/true", "completed", 0), ("/bin/false", "failed", 1)] {
         let (root, dir) = node();
-        launch(root.path(), ID, |_| {
-            Ok(Neutral {
-                executable,
-                args: &[],
-            })
-        })
-        .unwrap();
+        launch(root.path(), ID, |_| Ok(Neutral::run(executable, &[]))).unwrap();
         let record = record(&dir).unwrap();
         assert_eq!(record["state"], state);
         assert_eq!(record["kind"], "fixture");
@@ -109,13 +114,7 @@ fn neutral_adapter_uses_the_lifecycle_without_optimization_output() {
         assert!(!dir.join("results.jsonl").exists());
         assert_eq!(read(&root.path().join("slots.json")).unwrap(), json!({}));
         assert_eq!(read(&dir.join("job.json")).unwrap()["state"], state);
-        assert!(
-            launch(root.path(), ID, |_| Ok(Neutral {
-                executable,
-                args: &[]
-            }))
-            .is_err()
-        );
+        assert!(launch(root.path(), ID, |_| Ok(Neutral::run(executable, &[]))).is_err());
     }
 }
 
@@ -124,8 +123,8 @@ fn neutral_deadline_stops_the_process_and_releases_capacity() {
     let (root, dir) = node();
     launch(root.path(), ID, |_| {
         Ok(Neutral {
-            executable: "/bin/sleep",
-            args: &["30"],
+            wall: Duration::from_millis(80),
+            ..Neutral::run("/bin/sleep", &["30"])
         })
     })
     .unwrap();
@@ -141,13 +140,7 @@ fn neutral_deadline_stops_the_process_and_releases_capacity() {
 fn queued_cancellation_does_not_create_a_process_or_native_result() {
     let (root, dir) = node();
     write_atomic_json(&dir.join("cancel.request"), &json!({"mode":"immediate"})).unwrap();
-    launch(root.path(), ID, |_| {
-        Ok(Neutral {
-            executable: "/bin/true",
-            args: &[],
-        })
-    })
-    .unwrap();
+    launch(root.path(), ID, |_| Ok(Neutral::run("/bin/true", &[]))).unwrap();
     let record = record(&dir).unwrap();
     assert_eq!(record["state"], "cancelled");
     assert_eq!(record["observation"]["containment"], "not_started");
@@ -162,10 +155,10 @@ fn queued_cancellation_does_not_create_a_process_or_native_result() {
 fn spawn_failure_is_recorded_without_inventing_an_exit_code() {
     let (root, dir) = node();
     assert!(
-        launch(root.path(), ID, |_| Ok(Neutral {
-            executable: "/missing/p1-fixture",
-            args: &[]
-        }))
+        launch(root.path(), ID, |_| Ok(Neutral::run(
+            "/missing/fixture",
+            &[]
+        )))
         .is_err()
     );
     let record = record(&dir).unwrap();
@@ -180,10 +173,12 @@ fn process_record_write_failure_still_stops_the_spawned_process() {
     let (root, dir) = node();
     fs::create_dir(dir.join("worker-process.json")).unwrap();
     assert!(
-        launch(root.path(), ID, |_| Ok(Neutral {
-            executable: "/bin/sleep",
-            args: &["30"]
-        }))
+        launch(root.path(), ID, |_| {
+            Ok(Neutral {
+                wall: Duration::from_millis(80),
+                ..Neutral::run("/bin/sleep", &["30"])
+            })
+        })
         .is_err()
     );
     let record = record(&dir).unwrap();
@@ -191,6 +186,33 @@ fn process_record_write_failure_still_stops_the_spawned_process() {
     assert_eq!(record["observation"]["containment"], "stopped");
     assert_eq!(record["observation"]["process"]["signal"], libc::SIGKILL);
     assert_eq!(read(&root.path().join("slots.json")).unwrap(), json!({}));
+}
+
+fn code(error: optimization_job_api::Error) -> &'static str {
+    optimization_job_api::error_code(&error)
+}
+
+#[test]
+fn records_are_served_only_for_matching_terminal_attempts() {
+    let (root, dir) = node();
+    // Active attempt: nothing to serve yet, even if the worker wrote the file.
+    write_atomic_json(
+        &dir.join(RECORD_FILE),
+        &json!({"schema_version": RECORD_SCHEMA}),
+    )
+    .unwrap();
+    assert_eq!(code(record(&dir).unwrap_err()), "attempt_active");
+    fs::remove_file(dir.join(RECORD_FILE)).unwrap();
+    launch(root.path(), ID, |_| Ok(Neutral::run("/bin/true", &[]))).unwrap();
+    let served = record(&dir).unwrap();
+    // A record that disagrees with the terminal job is not served.
+    let mut job = read(&dir.join("job.json")).unwrap();
+    job["finished_at"] = json!(served["finished_at"].as_f64().unwrap() + 1.0);
+    write_atomic_json(&dir.join("job.json"), &job).unwrap();
+    assert_eq!(code(record(&dir).unwrap_err()), "execution_unavailable");
+    // A finished attempt without a record predates records.
+    fs::remove_file(dir.join(RECORD_FILE)).unwrap();
+    assert_eq!(code(record(&dir).unwrap_err()), "execution_unavailable");
 }
 
 #[test]

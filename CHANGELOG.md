@@ -19,9 +19,14 @@ revision. 0.3.0 is the first version on crates.io.
   (`.execution.json` in the job directory): process exit code or signal,
   stop reason, containment, log references and the size and SHA-256 of the
   native `run.json`. Claims, objectives, feasibility and work stay in
-  `run.json`. A running job, or one finished by an earlier runner, returns
-  the new error `execution_unavailable`; nothing is backfilled. Both schemas
-  are published in `docs/job-api/schemas` and embedded in the runner.
+  `run.json`. The record is served only when `job.json` is terminal with the
+  same state and finish time: a job that has not finished returns the
+  retryable `attempt_active`, and a finished one without a matching record
+  (finished by an earlier runner) returns the new error
+  `execution_unavailable`; nothing is backfilled. Repair records
+  `not_started` containment for attempts that never reached `running`. Both
+  schemas are published in `docs/job-api/schemas` and embedded in the
+  runner.
 - Rust tests drive the lifecycle with a test-only adapter that produces no
   optimization output (success, failure, timeout, queued cancellation, spawn
   and process-record failures). The review harness checks the capabilities,

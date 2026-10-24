@@ -132,7 +132,9 @@ impl ExecutionAdapter for Adapter {
 
 /// Called only after the existing repair path proves liveness is gone and
 /// holds both locks. No observed exit code is invented after launcher loss.
-pub(crate) fn repair(dir: &Path, unadmitted: bool) -> Result<()> {
+/// `started` is whether `job.json` reached `running`, which the launcher
+/// writes before it spawns the worker.
+pub(crate) fn repair(dir: &Path, unadmitted: bool, started: bool) -> Result<()> {
     let adapter = Adapter::load(dir)?;
     let replayable = result::repair(dir, &adapter.request).is_ok();
     let (outcome, elapsed) = if unadmitted {
@@ -170,10 +172,10 @@ pub(crate) fn repair(dir: &Path, unadmitted: bool) -> Result<()> {
         outcome,
         elapsed,
         Observation {
-            containment: if unadmitted {
-                Containment::NotStarted
-            } else {
+            containment: if started {
                 Containment::Stopped
+            } else {
+                Containment::NotStarted
             },
             ..Observation::default()
         },

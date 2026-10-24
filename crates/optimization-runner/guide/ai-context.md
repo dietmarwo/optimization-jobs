@@ -412,8 +412,9 @@ A runner built from `main` after 0.3.0 also keeps an execution record of
 each finished job (`jobs execution JOB_ID`, `execution.record/0.1`): the
 worker's exit code or signal, the stop reason, whether its process group is
 verifiably stopped, and the size and SHA-256 of `run.json`. It holds no
-claim, objective or work; report those from the result manifest. A running
-job, or one finished by an older runner, returns `execution_unavailable`.
+claim, objective or work; report those from the result manifest. A job that
+has not finished returns `attempt_active` (wait, then ask again); one finished
+by an older runner returns `execution_unavailable`.
 `node capabilities` (and `capabilities` in `node doctor` and MCP
 `describe_node`) lists what the runner dispatches: optimization jobs only,
 with no command jobs, file transfer or fleet execution

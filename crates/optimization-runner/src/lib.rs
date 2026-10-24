@@ -969,7 +969,8 @@ fn main_result() -> Result<()> {
                     ledger.as_object_mut().ok_or("invalid ledger")?.remove(&id);
                     write_atomic_json(&root.join("slots.json"), &ledger)?;
                 }
-                optimization::repair(&dir, unadmitted)?;
+                let started = state["state"] == "running";
+                optimization::repair(&dir, unadmitted, started)?;
                 output(get(&root, &id)?)
             }
             Jobs::Artifact {

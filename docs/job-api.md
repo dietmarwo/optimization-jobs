@@ -352,10 +352,19 @@ manifest, or null if unknown. Old provenance without a content identity keeps
 `identity: null`; its attempt ID can come from `job.json`. Unknown containment
 retains slots, just as before extraction.
 
-Active attempts and old terminal attempts without a sidecar return the coded
-`execution_unavailable` error. Existing `jobs get`, result inspection and
-recovery continue to work; old terminal attempts are not backfilled or rerun.
-A corrupt sidecar returns `runner_error` and does not affect native inspection.
+`jobs execution` serves a record only when `job.json` is terminal with the
+same state and `finished_at`. An attempt that has not finished returns
+`attempt_active` (retryable: call again after `jobs wait`, or repair the
+attempt if its launcher was lost). A finished attempt without a matching record
+returns `execution_unavailable`: it was finished by a runner without records,
+or the file was not written by this attempt's finalization (the worker runs in
+the job directory). Existing `jobs get`, result inspection and recovery
+continue to work; old terminal attempts are not backfilled or rerun. A corrupt
+sidecar returns `runner_error` and does not affect native inspection.
+
+`source: "repair"` reports `containment: "not_started"` when the attempt never
+reached `running` (the launcher writes it before it spawns the worker), and
+`"stopped"` otherwise, since repair runs only after both locks are free.
 
 ### Errors
 
@@ -378,10 +387,10 @@ prints one JSON line on stderr (`--help` and `--version` print normally):
 | `node_not_initialized` | The root has no `node.json` | `node init --capacity N` |
 | `unknown_job` | No job with this ID on this root | Check the ID and root |
 | `already_terminal` | Cancel or repair of a job that has already ended | Nothing to do |
-| `execution_unavailable` | No terminal execution record: the attempt is active or predates records | Use `jobs get`; query the record after a new attempt finishes |
+| `execution_unavailable` | `jobs execution` of a finished attempt without a matching record (finished before records existed) | Use `jobs get` and the result |
 | `unknown_artifact` | The job has no artifact of that name, or its file does not exist yet | A name from `artifact_index` (`jobs get` or the result) |
 | `artifact_too_large` | A whole read of an artifact over 1 MiB, or a page whose first record exceeds 1 MiB | Pages (`--offset`, `--limit`) of a `records` artifact, or the file in the job directory |
-| `attempt_active` | Repair while the attempt's launcher or worker still holds its lock | Wait, then repeat |
+| `attempt_active` | Repair while the attempt's launcher or worker still holds its lock; `jobs execution` before the attempt has finished | Wait (`jobs wait`), then repeat |
 | `liveness_unknown` | Repair of an attempt whose locks are free, but whose process group still exists or whose detached unit may still start | Inspect it (`jobs get`, `systemctl --user`); an attempt recorded on an earlier boot counts as ended |
 | `systemd_unavailable` | `submit` without a systemd user manager | Foreground `run` |
 | `start_unknown` | `submit` could not confirm the unit start; repeating does not launch again | Inspect the unit |

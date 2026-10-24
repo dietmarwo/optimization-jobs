@@ -221,14 +221,13 @@ class Node(unittest.TestCase):
         except (FileNotFoundError, json.JSONDecodeError):
             return None
 
-class Execution(Node):
-    """The neutral record never stands in for the solver's native result."""
-
     def validate_record(self, name, value):
+        # Without jsonschema only the schema check is left out; the
+        # behavioral assertions of the calling test still run.
         if jsonschema is None:
             if os.environ.get("JOB_API_REQUIRE_SCHEMA") == "1":
                 self.fail("jsonschema is required")
-            self.skipTest("install jsonschema to validate execution schemas")
+            return
         schema = json.loads((SCHEMAS / name).read_text())
         validator = jsonschema.Draft202012Validator(schema)
         validator.check_schema(schema)
@@ -242,6 +241,10 @@ class Execution(Node):
         self.assertTrue(list(validator.iter_errors(invalid)))
         invalid = dict(value, schema_version="execution.future/9")
         self.assertTrue(list(validator.iter_errors(invalid)))
+
+
+class Execution(Node):
+    """The neutral record never stands in for the solver's native result."""
 
     def test_capabilities_are_available_without_node_initialization(self):
         missing = self.base / "not-initialized"
@@ -295,8 +298,9 @@ class Execution(Node):
     def test_active_and_preexisting_attempts_do_not_invent_execution_records(self):
         process, ident, directory = self.start(envelope("fake", {"mode": "sleep"}, wall=60))
         self.wait_for(lambda: (directory / "worker-process.json").exists())
+        # A running attempt has no record yet; the same call succeeds later.
         error = self.error("jobs", "execution", ident)
-        self.assertEqual((error["code"], error["retryable"]), ("execution_unavailable", False))
+        self.assertEqual((error["code"], error["retryable"]), ("attempt_active", True))
         self.call("jobs", "cancel", ident, "--now")
         process.communicate(timeout=10)
         value = self.call("jobs", "execution", ident)
@@ -352,6 +356,7 @@ class Review(Node):
         repaired = self.call("jobs", "repair", queued_id)
         self.assertEqual(repaired["state"], "interrupted")
         execution = self.call("jobs", "execution", queued_id)
+        self.validate_record("execution.record-0.1.schema.json", execution)
         self.assertEqual(execution["source"], "repair")
         self.assertEqual(execution["attempt_id"], queued_id)
         self.assertIsNone(execution["identity"])
@@ -556,6 +561,7 @@ class Review(Node):
             record.write_text(json.dumps(group))
         self.assertEqual(repaired["state"], "interrupted")
         execution = self.call("jobs", "execution", ident)
+        self.validate_record("execution.record-0.1.schema.json", execution)
         self.assertEqual(execution["source"], "repair")
         self.assertIsNone(execution["elapsed_seconds"])
         self.assertEqual(execution["observation"], {
