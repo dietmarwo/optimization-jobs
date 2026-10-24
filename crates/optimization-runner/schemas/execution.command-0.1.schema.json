@@ -168,5 +168,5 @@
     "inputs",
     "outputs"
   ],
-  "description": "Trusted commands only. Runtime additionally checks UTF-8 byte lengths, 64 KiB combined argv/environment values each, combined file count <=128, non-overlapping non-reserved relative paths, executable declarations, verified inputs and total declared bytes <=256 MiB. No implicit shell, automatic replay or filesystem isolation."
+  "description": "Trusted commands only. Runtime additionally checks UTF-8 byte lengths, 64 KiB combined argv/environment values each, combined file count <=128, non-overlapping relative paths, executable declarations, verified inputs and total declared bytes <=256 MiB. No implicit shell, automatic replay or filesystem isolation."
 }

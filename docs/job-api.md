@@ -349,9 +349,11 @@ A complete minimal request:
 
 Arguments are passed literally, with no implicit shell. To run a script, declare
 it as a hashed input and use an explicit interpreter, for example
-`["/usr/bin/python3", "scripts/run.py"]`. An absolute executable is canonicalized,
-hashed during staging, and checked again before launch. A relative executable
-must be `./path` naming a declared input with `executable: true`. Interpreter
+`["/usr/bin/python3", "scripts/run.py"]`. An absolute executable is resolved to
+its file (at most 1 GiB), hashed during staging and checked again before launch.
+It runs under the submitted `argv[0]`, so multi-call programs such as `unxz` and
+a virtual environment's `python` behave as when called by that name. A relative
+executable must be `./path` naming a declared input with `executable: true`. Interpreter
 libraries, compiler dependencies and other host files are **not** snapshotted.
 Changes between the final check and exec are outside the trusted-user model.
 
@@ -366,8 +368,9 @@ An input is `{"path":"data/model.bin","file":"model.bin","bytes":123,
 to the request file's directory; omit it to use a verified node blob. Copies go
 under the attempt's `work/`, which is the process working directory. Inputs are
 checked again before launch. Both source and work paths reject absolute paths,
-dot components, symlinks and reserved runtime names. Input/output paths cannot
-overlap. There are at most 128 declarations total, 64 MiB per file and 256 MiB of
+segments that are empty or start with a dot, and symlinks. Runtime files live
+beside `work/`, so names such as `worker/` or `run.json` are ordinary inside it.
+Input/output paths cannot overlap (one may not be a directory of another). There are at most 128 declarations total, 64 MiB per file and 256 MiB of
 input bytes plus declared output limits per job.
 
 An output is `{"name":"answer","path":"out/answer.bin","max_bytes":1024,

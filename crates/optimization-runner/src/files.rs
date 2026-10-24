@@ -27,27 +27,15 @@ pub(crate) fn relative(path: &str) -> Result<()> {
         || path.contains('\0')
         || path.len() > 512
         || path.contains('\\')
-        || path.split('/').any(|s| {
-            s.is_empty()
-                || s.starts_with('.')
-                || matches!(
-                    s,
-                    "job.json"
-                        | "resolved.json"
-                        | "submitted.json"
-                        | "provenance.json"
-                        | "run.json"
-                        | "command-result.json"
-                        | "worker"
-                        | "cancel.request"
-                )
-        })
+        // Runtime files live beside `work/`, never in it, so ordinary names
+        // such as `worker/` or `run.json` are allowed.
+        || path.split('/').any(|s| s.is_empty() || s.starts_with('.'))
         || !Path::new(path)
             .components()
             .all(|c| matches!(c, Component::Normal(_)))
     {
         return Err(fail(
-            "expected a relative path without dot components or runtime names",
+            "expected a relative path whose segments are not empty and do not start with a dot",
         ));
     }
     Ok(())
@@ -257,10 +245,13 @@ mod tests {
             "/out",
             "a/../out",
             "a//out",
-            "job.json",
             ".execution.json",
+            "a/.hidden",
         ] {
             assert!(relative(path).is_err());
+        }
+        for path in ["job.json", "src/worker/main.c", "results/run.json"] {
+            assert!(relative(path).is_ok());
         }
     }
 }

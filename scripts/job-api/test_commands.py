@@ -120,6 +120,10 @@ class Commands(Node):
                 self.assertEqual(result["outputs"],{})
         spec=command();spec["outputs"]=[{"name":"optional","path":"absent","max_bytes":0,"required":False}]
         self.assertEqual(self.run_command(spec)[2]["state"],"completed")
+        # A dangling symlink is not an absent optional output.
+        spec=self.script("import os; os.symlink('/nonexistent','data')")
+        spec["outputs"]=[{"name":"optional","path":"data","max_bytes":10,"required":False}]
+        self.assertEqual(self.run_command(spec)[2]["state"],"failed")
 
     def test_identity_and_no_replay(self):
         spec=self.script("print('once')")
@@ -136,12 +140,14 @@ class Commands(Node):
 
     def test_reject_unsafe_and_unknown_fields(self):
         cases=[]
-        for path in ["../outside","/outside","a/../outside","job.json",".execution.json"]:
+        for path in ["../outside","/outside","a/../outside","out/.hidden",".execution.json"]:
             spec=command();spec["outputs"]=[{"name":"out","path":path,"max_bytes":10,"required":True}];cases.append(spec)
         for field,value in [("replay","always"),("shell",True),("argv",["true"]),("resources",{"cpu_slots":0})]:
             spec=command();spec[field]=value;cases.append(spec)
         spec=command();spec["outputs"]=[{"name":"x","path":"x","max_bytes":67108865,"required":True}];cases.append(spec)
         spec=command();spec["outputs"]=[{"name":"x","path":"x","max_bytes":1,"required":True},{"name":"y","path":"x/y","max_bytes":1,"required":True}];cases.append(spec)
+        # Not neighbours once sorted: '.' sorts before '/'.
+        spec=command();spec["outputs"]=[{"name":n,"path":p,"max_bytes":1,"required":True} for n,p in [("a","a"),("b","a.txt"),("c","a/c")]];cases.append(spec)
         for spec in cases:
             with self.subTest(spec=spec):
                 path,_=self.write(spec);self.error("validate","--spec",path)
@@ -149,6 +155,18 @@ class Commands(Node):
         (self.base/"outside.py").write_text("print('outside')")
         spec=self.script("print('inside')");spec["inputs"][0]["file"]="link.py"
         path,_=self.write(spec);self.error("validate","--spec",path)
+        # Runtime files live beside work/, so their names are ordinary there.
+        spec=command();spec["outputs"]=[{"name":"out","path":"worker/run.json","max_bytes":10,"required":False}]
+        path,_=self.write(spec);self.call("validate","--spec",path)
+
+    def test_submitted_argv0_is_kept(self):
+        # The verified file runs under the submitted name, as a venv's python needs.
+        alias = self.base / "python-alias"
+        alias.symlink_to(sys.executable)
+        spec = command([str(alias), "-c", "import sys; print(sys.orig_argv[0])"])
+        _, job, result, _ = self.run_command(spec)
+        self.assertEqual(result["state"], "completed")
+        self.assertEqual((Path(job["directory"]) / "stdout.log").read_text().strip(), str(alias))
 
     def test_timeout_and_descendant_cancellation(self):
         code="""import os, signal, time
@@ -248,6 +266,15 @@ while True: time.sleep(.05)
         (exported/'run.json').write_text(json.dumps(result))
         self.assertEqual(self.call("result",exported),result)
         self.call("compare",exported,exported)
+
+    def test_bare_request_name_resolves_inputs_beside_it(self):
+        path, _ = self.write(self.script("print('beside')"))
+        for action in ["validate", "run"]:
+            with self.subTest(action=action):
+                result = subprocess.run([str(RUN), "--root", str(self.root), action, "--spec", path.name],
+                                        cwd=self.base, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["state"], "completed")
 
     def test_refused_in_runners_the_mcp_server_starts(self):
         refuse = dict(os.environ, OPTIMIZATION_RUN_REFUSE_COMMANDS="1")

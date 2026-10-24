@@ -11,8 +11,9 @@ revision. 0.3.0 is the first version on crates.io.
 ### Added
 
 - Explicitly enabled trusted command jobs (`execution.command/0.1`), sharing
-  admission, supervision, cancellation and repair with optimization. Literal argv,
-  explicit environment, checked input identity, declared outputs and no automatic
+  admission, supervision, cancellation and repair with optimization. Literal argv
+  (the verified executable runs under the submitted `argv[0]`), explicit
+  environment, checked input identity, declared outputs and no automatic
   replay; separate `execution.command.result/0.1` results carry no solver claims.
   They are CLI-only: MCP `validate_job` and `submit_job` refuse them with
   `unsupported_job_kind`, and so does every runner the MCP server starts.

@@ -14,15 +14,19 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    os::unix::fs::PermissionsExt,
+    os::unix::{fs::PermissionsExt, process::CommandExt},
     path::{Path, PathBuf},
     process::Command,
     time::Duration,
 };
 
 pub(crate) const SCHEMA: &str = "execution.command/0.1";
+/// Absolute executables are hashed in place, not copied, so they are not
+/// bound by the transfer limit.
+const MAX_EXECUTABLE: u64 = 1 << 30;
 const RESULT_SCHEMA: &str = "execution.command.result/0.1";
 const RESULT_FILE: &str = "command-result.json";
+const SEALED: &str = ".command-outputs";
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Resources {
@@ -148,9 +152,18 @@ fn validate(s: &Request) -> Result<()> {
     if total > files::MAX_TOTAL {
         return Err(invalid("declared inputs and output limits exceed 256 MiB"));
     }
-    paths.sort_unstable();
-    for pair in paths.windows(2) {
-        if pair[0] == pair[1] || pair[1].starts_with(&format!("{}/", pair[0])) {
+    // Every directory prefix: `a`, `a.txt` and `a/b` do not sort as neighbours.
+    let mut declared = BTreeSet::new();
+    for path in &paths {
+        if !declared.insert(*path) {
+            return Err(invalid("input/output paths must not overlap"));
+        }
+    }
+    for path in &paths {
+        if path
+            .match_indices('/')
+            .any(|(at, _)| declared.contains(&path[..at]))
+        {
             return Err(invalid("input/output paths must not overlap"));
         }
     }
@@ -171,10 +184,14 @@ fn executable(s: &Request) -> Result<Value> {
         ));
     }
     let path = fs::canonicalize(&s.argv[0])?;
-    if fs::metadata(&path)?.permissions().mode() & 0o111 == 0 {
+    let metadata = fs::metadata(&path)?;
+    if metadata.permissions().mode() & 0o111 == 0 {
         return Err(invalid("executable has no execute permission"));
     }
-    let (bytes, hash) = files::fingerprint(&path, files::MAX_FILE)?;
+    if metadata.len() > MAX_EXECUTABLE {
+        return Err(invalid("executable exceeds 1 GiB"));
+    }
+    let (bytes, hash) = files::fingerprint(&path, MAX_EXECUTABLE)?;
     Ok(json!({"path":path,"bytes":bytes,"sha256":hash}))
 }
 fn identity(s: &Request, executable: &Value) -> Result<String> {
@@ -221,13 +238,16 @@ fn staged(root: &Path, input: &Path) -> Result<(Request, Value, tempfile::TempDi
     }
     let submitted = serde_json::to_value(&s)?;
     let exe = executable(&s)?;
-    if let Some(path) = exe["path"].as_str() {
-        s.argv[0] = path.into();
-    }
+    // `file` is relative to the request's directory, also for `--spec NAME`.
+    let base = fs::canonicalize(
+        std::path::absolute(input)?
+            .parent()
+            .ok_or_else(|| invalid("request file has no directory"))?,
+    )?;
     let tmp = tempfile::tempdir_in(root)?;
     for i in &mut s.inputs {
         let source = match &i.file {
-            Some(file) => files::beneath(input.parent().unwrap_or(Path::new(".")), file)?,
+            Some(file) => files::beneath(&base, file)?,
             None => files::blob(root, &i.sha256)?,
         };
         let dest = files::beneath(tmp.path(), &i.path)?;
@@ -303,6 +323,7 @@ pub(crate) fn prepare(
         )?;
         fs::File::open(&dest)?.sync_all()?;
     }
+    fs::create_dir(stage.join(SEALED))?;
     for o in &s.outputs {
         fs::create_dir_all(
             files::beneath(&stage.join("work"), &o.path)?
@@ -385,8 +406,14 @@ impl execution::Adapter for Adapter {
         for i in &self.spec.inputs {
             files::verify(&files::beneath(&work, &i.path)?, i.bytes, &i.sha256)?;
         }
-        let mut command = Command::new(&self.spec.argv[0]);
+        // Run the verified file, but under the submitted argv[0]: multi-call
+        // programs such as unxz or clang++ choose their behavior by it.
+        let program = self.executable["path"]
+            .as_str()
+            .unwrap_or(&self.spec.argv[0]);
+        let mut command = Command::new(program);
         command
+            .arg0(&self.spec.argv[0])
             .args(&self.spec.argv[1..])
             .current_dir(work)
             .env_clear()
@@ -434,10 +461,21 @@ impl execution::Adapter for Adapter {
         let mut outputs = serde_json::Map::new();
         let mut errors = Vec::new();
         if outcome.collect {
-            let sealed = dir.join(".command-outputs");
-            fs::create_dir_all(&sealed)?;
+            // The command can reach this directory; a replaced one is an
+            // output error, never a finalization that fails on every repair.
+            let sealed = dir.join(SEALED);
+            let usable = match fs::symlink_metadata(&sealed) {
+                Ok(m) => m.is_dir(),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    fs::create_dir(&sealed).is_ok()
+                }
+                Err(_) => false,
+            };
             for o in &self.spec.outputs {
                 let snapshot = (|| -> Result<Option<Value>> {
+                    if !usable {
+                        return Err(files::fail("sealed output directory is not a directory"));
+                    }
                     let source = files::beneath(&dir.join("work"), &o.path)?;
                     if !o.required && !source.try_exists()? {
                         return Ok(None);
@@ -453,7 +491,7 @@ impl execution::Adapter for Adapter {
                         files::copy(&mut files::open(&source)?, &dest, o.max_bytes, None)?
                     };
                     Ok(Some(
-                        json!({"path":format!(".command-outputs/{}",o.name),"bytes":meta["bytes"],"sha256":meta["sha256"]}),
+                        json!({"path":format!("{SEALED}/{}",o.name),"bytes":meta["bytes"],"sha256":meta["sha256"]}),
                     ))
                 })();
                 match snapshot {
@@ -538,14 +576,14 @@ pub(crate) fn collect(dir: &Path, name: &str, dest: &Path) -> Result<Value> {
         || !name
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
-        || meta["path"] != format!(".command-outputs/{name}")
+        || meta["path"] != format!("{SEALED}/{name}")
     {
         return Err(invalid("invalid sealed output path"));
     }
     let bytes = meta["bytes"].as_u64().ok_or("missing output size")?;
     let hash = meta["sha256"].as_str().ok_or("missing output digest")?;
     files::copy(
-        &mut files::open(&files::beneath(&dir.join(".command-outputs"), name)?)?,
+        &mut files::open(&files::beneath(&dir.join(SEALED), name)?)?,
         dest,
         bytes,
         Some((bytes, hash)),
