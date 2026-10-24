@@ -168,6 +168,21 @@ class Commands(Node):
         self.assertEqual(result["state"], "completed")
         self.assertEqual((Path(job["directory"]) / "stdout.log").read_text().strip(), str(alias))
 
+    def test_a_process_that_left_the_group_does_not_hold_the_launcher(self):
+        spec = self.script("import subprocess\nfrom pathlib import Path\n"
+                           "p = subprocess.Popen(['/bin/sleep', '30'], start_new_session=True)\n"
+                           "Path('escaped').write_text(str(p.pid))")
+        start = time.monotonic()
+        _, job, result, record = self.run_command(spec)
+        pid = int((Path(job["directory"]) / "work/escaped").read_text())
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        self.assertLess(time.monotonic() - start, 15)
+        self.assertEqual((result["state"], record["observation"]["containment"]), ("completed", "stopped"))
+        self.assertEqual(json.loads((self.root / "slots.json").read_text()), {})
+
     def test_timeout_and_descendant_cancellation(self):
         code="""import os, signal, time
 from pathlib import Path
@@ -178,7 +193,7 @@ while True: time.sleep(.05)
 """
         for mode in ["timeout","graceful","immediate"]:
             with self.subTest(mode=mode):
-                spec=self.script(code, wall=1 if mode=="timeout" else 30, grace=.2)
+                spec=self.script(code, wall=3 if mode=="timeout" else 30, grace=.2)
                 process,ident,directory=self.start(spec)
                 self.wait_for(lambda:(directory/"work/child").exists())
                 pids=[int((directory/f"work/{name}").read_text()) for name in ["child","parent"]]
@@ -231,8 +246,12 @@ while True: time.sleep(.05)
         self.assertEqual(self.call("jobs","get",ident)["observed_state"],"launcher_lost")
         self.assertEqual(self.error("jobs","repair",ident)["code"],"liveness_unknown")
         os.killpg(json.loads((directory/"worker-process.json").read_text())["pgid"],signal.SIGKILL)
-        time.sleep(.1)
-        repaired=self.call("jobs","repair",ident)
+        # Repair succeeds once the killed group is verifiably gone.
+        deadline=time.monotonic()+10
+        while (attempt:=self.raw("jobs","repair",ident)).returncode!=0 and time.monotonic()<deadline:
+            self.assertIn("liveness_unknown",attempt.stderr);time.sleep(.05)
+        self.assertEqual(attempt.returncode,0,attempt.stderr)
+        repaired=json.loads(attempt.stdout)
         self.assertEqual(repaired["state"],"interrupted")
         result=self.call("result",directory)
         self.assertIsNone(result["process"]);self.assertIsNone(result["elapsed_seconds"])

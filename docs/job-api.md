@@ -423,7 +423,8 @@ Path checks protect materialization and collection; programs can still access
 other host files and create undeclared/unbounded working data. CPU slots are
 admission accounting, not kernel CPU/memory/disk enforcement. Descendants in the
 original process group are terminated; a process that deliberately changes
-session/group can escape it. Do not use this interface for hostile or daemonizing
+session/group can escape it. Its output is not waited for: two seconds after the
+group stopped, the launcher finishes the attempt. Do not use this interface for hostile or daemonizing
 programs. There is no remote transport or fleet scheduling in this interface.
 
 The MCP server is optimization-only: `validate_job` and `submit_job` refuse

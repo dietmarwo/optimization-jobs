@@ -13,11 +13,13 @@ use std::{
     fs,
     path::Path,
     process::{Command, ExitStatus, Stdio},
-    sync::atomic::Ordering,
+    sync::{atomic::Ordering, mpsc},
     thread,
     time::{Duration, Instant},
 };
 
+/// How long the logs are drained after the process group stopped.
+const DRAIN: Duration = Duration::from_secs(2);
 #[derive(Clone, Copy)]
 pub(crate) struct Budget {
     pub cpu_slots: usize,
@@ -118,8 +120,10 @@ pub(crate) fn execute(
     }
     let a = child.stdout.take().unwrap();
     let b = child.stderr.take().unwrap();
-    let ta = thread::spawn(move || drain_file(a, stdout, 1_048_576));
-    let tb = thread::spawn(move || drain_file(b, stderr, 1_048_576));
+    let (drained, ended) = mpsc::channel();
+    let also = drained.clone();
+    thread::spawn(move || drained.send(drain_file(a, stdout, 1_048_576)));
+    thread::spawn(move || also.send(drain_file(b, stderr, 1_048_576)));
     let hard_deadline = start + budget.wall + budget.grace;
     let mut reason = None;
     let mut immediate_deadline: Option<Instant> = None;
@@ -195,8 +199,17 @@ pub(crate) fn execute(
         }
     }
     observed.containment = Containment::Stopped;
-    ta.join().map_err(|_| "stdout drainer panic")??;
-    tb.join().map_err(|_| "stderr drainer panic")??;
+    // Both pipes end once the group is gone, unless a process that left it
+    // (setsid) still holds them. Its output is not waited for: the logs keep
+    // what arrived until this process exits.
+    let until = Instant::now() + DRAIN;
+    for _ in 0..2 {
+        match ended.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            Ok(drain) => drain?,
+            Err(mpsc::RecvTimeoutError::Timeout) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Err("log drainer panic".into()),
+        }
+    }
     polled?;
     Ok(())
 }

@@ -92,6 +92,10 @@ revision. 0.3.0 is the first version on crates.io.
   the worker was stopped. It now takes the path of a failed process record:
   the worker group is killed and reaped, and its slots stay reserved unless
   the group is verifiably gone.
+- A launcher waited until its worker's output pipes closed, so a process that
+  left the worker's process group (`setsid`) and kept them open held the job
+  in `running` with its slots reserved, and cancellation had no effect. Two
+  seconds after the group stopped, the launcher now finishes the attempt.
 
 ## [0.3.0] - 2026-10-22
 
