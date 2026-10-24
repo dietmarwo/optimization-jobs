@@ -888,6 +888,9 @@ fn wait_job(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
 /// the fields it shows, so an archive or a front of a few hundred MiB costs
 /// little more than its size in memory.
 pub fn read_manifest(job: &Value) -> Result<Vec<u8>, ToolError> {
+    if job["kind"] == "command" {
+        return Err(ToolError {code:"unsupported_job_kind".into(), message:"command results are available through optimization-run result; binary outputs through jobs collect".into(), retryable:false});
+    }
     let id = job["job_id"].as_str().unwrap_or_default();
     if !terminal(&job["state"]) {
         let mut message = format!(
@@ -1207,6 +1210,15 @@ pub fn repair(server: &Server, id: &str) -> Result<Value, Fail> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn command_results_are_never_summarized_as_optimization() {
+        let error = super::read_manifest(
+            &serde_json::json!({"kind":"command","state":"completed","directory":"/missing"}),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "unsupported_job_kind");
+    }
+
     /// The crate's copy of the job schema must equal the published one in
     /// docs/job-api/schemas (absent outside the repository, as in a package).
     #[test]

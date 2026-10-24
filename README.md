@@ -185,3 +185,12 @@ repository, with `JOB_API_TARGET` pointing at their own `target/release`
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Trusted local commands and binary files
+
+Source after 0.3.0 supports opt-in `execution.command/0.1` jobs and verified
+binary transfers on the same local admission budget. Commands are trusted
+programs under the runner user, not a sandbox. Read the
+[command and file guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#trusted-local-command-jobs-and-binary-files)
+for `node commands --enable`, request/result schemas, transfer limits and the
+build–run–collect example. MCP submission remains optimization-only.

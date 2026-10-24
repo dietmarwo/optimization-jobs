@@ -220,6 +220,18 @@ fn embedded_execution_schemas_match_the_published_files() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     for (name, embedded) in [
         (
+            "execution.command-0.1.schema.json",
+            include_str!("../../schemas/execution.command-0.1.schema.json"),
+        ),
+        (
+            "execution.command.result-0.1.schema.json",
+            include_str!("../../schemas/execution.command.result-0.1.schema.json"),
+        ),
+        (
+            "execution.capabilities-0.2.schema.json",
+            include_str!("../../schemas/execution.capabilities-0.2.schema.json"),
+        ),
+        (
             "execution.record-0.1.schema.json",
             include_str!("../../schemas/execution.record-0.1.schema.json"),
         ),

@@ -416,8 +416,15 @@ claim, objective or work; report those from the result manifest. A job that
 has not finished returns `attempt_active` (wait, then ask again); one finished
 by an older runner returns `execution_unavailable`.
 `node capabilities` (and `capabilities` in `node doctor` and MCP
-`describe_node`) lists what the runner dispatches: optimization jobs only,
-with no command jobs, file transfer or fleet execution
+`describe_node`) returns `execution.capabilities/0.2`: optimization jobs and
+opt-in trusted local commands, enabled kinds, binary file transfer limits and
+CLI-only command/file interfaces. Commands use `execution.command/0.1` with
+literal argv, explicit environment, hashed inputs, declared bounded outputs and
+no automatic replay; enable with `node commands --enable`. Use `files put/get`
+and `jobs collect` for binary transfer. Their separate `command-result.json`
+records process/output facts, never mathematical claims. MCP submission and
+result summaries remain optimization-only. Commands share admission/cancellation
+but are not a sandbox or kernel resource limits. Fleet execution is still absent
 ([guide](docs/job-api.md#execution-discovery-and-terminal-observations)).
 
 ### Results, claims and evidence

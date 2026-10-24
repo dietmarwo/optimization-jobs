@@ -85,6 +85,7 @@ pub(crate) fn execute(
     dir: &Path,
     budget: Budget,
     mut command: Command,
+    signal_on_stop: bool,
     start: Instant,
     observed: &mut Observation,
 ) -> Result<()> {
@@ -123,6 +124,7 @@ pub(crate) fn execute(
     let mut reason = None;
     let mut immediate_deadline: Option<Instant> = None;
     let mut signalled = 0;
+    let mut command_deadline = None;
     let polled = (|| -> Result<ExitStatus> {
         loop {
             if let Some(exit) = child.try_wait()? {
@@ -136,6 +138,14 @@ pub(crate) fn execute(
                     reason = Some(StopReason::TimedOut);
                     publish_stop(dir, json!({"mode":"graceful","reason":"timed_out"}))?;
                 }
+            }
+            if signal_on_stop && reason.is_some() && command_deadline.is_none() {
+                // Trusted commands have no worker cancel.request protocol.
+                // TERM the process group once, then enforce their own grace.
+                unsafe {
+                    libc::kill(-(pgid as i32), libc::SIGTERM);
+                }
+                command_deadline = Some(Instant::now() + budget.grace);
             }
             let from_signals = SIGNALS.load(Ordering::Relaxed);
             if from_signals > signalled {
@@ -153,7 +163,8 @@ pub(crate) fn execute(
             if request == Stop::Immediate && immediate_deadline.is_none() {
                 immediate_deadline = Some(Instant::now() + IMMEDIATE_GRACE);
             }
-            let deadline = immediate_deadline.map_or(hard_deadline, |d| d.min(hard_deadline));
+            let deadline = command_deadline.unwrap_or(hard_deadline).min(hard_deadline);
+            let deadline = immediate_deadline.map_or(deadline, |d| d.min(deadline));
             if Instant::now() >= deadline {
                 terminate_process_group(&mut child);
                 return Ok(child.wait()?);

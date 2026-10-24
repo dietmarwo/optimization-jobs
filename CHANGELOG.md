@@ -10,11 +10,17 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
-- `node capabilities` prints the runner's `execution.capabilities/0.1`: the
-  execution kinds it dispatches (only `optimization`), the job, worker and
-  result schemas it accepts, and `false` for command jobs, generic file
-  transfer and fleet execution. It needs no initialized node; `node doctor`
-  and MCP `describe_node` include the same object.
+- Explicitly enabled trusted command jobs (`execution.command/0.1`), sharing
+  admission, supervision, cancellation and repair with optimization. Literal argv,
+  explicit environment, checked input identity, declared outputs and no automatic
+  replay; separate `execution.command.result/0.1` results carry no solver claims.
+- Binary `files put/get/cleanup` and `jobs collect`: bounded streaming, exact
+  size/SHA-256 validation, atomic no-clobber publication and interrupted-upload
+  cleanup. A local build–run–collect example and command/transfer regressions.
+- `node capabilities` prints `execution.capabilities/0.2`: supported/enabled
+  execution kinds, contracts, CLI command/file interfaces and transfer limits.
+  It needs no initialized node and creates no root; `node doctor` and MCP
+  `describe_node` include the same object. Commands default off; fleet is false.
 - `jobs execution JOB_ID` prints a finished job's `execution.record/0.1`
   (`.execution.json` in the job directory): process exit code or signal,
   stop reason, containment, log references and the size and SHA-256 of the

@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:optimization-jobs:schema:execution.command.result-0.1",
+  "title": "execution.command.result/0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "execution.command.result/0.1"
+    },
+    "state": {
+      "enum": [
+        "completed",
+        "failed",
+        "cancelled",
+        "timed_out",
+        "interrupted"
+      ]
+    },
+    "process": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "signal": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "signal"
+          ]
+        }
+      ]
+    },
+    "elapsed_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "collection_attempted": {
+      "type": "boolean"
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^\\.command-outputs/[A-Za-z0-9_-]{1,100}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 67108864
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "path",
+          "bytes",
+          "sha256"
+        ]
+      }
+    },
+    "output_errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "message"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "state",
+    "process",
+    "elapsed_seconds",
+    "collection_attempted",
+    "outputs",
+    "output_errors"
+  ]
+}
