@@ -10,17 +10,24 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
-- P1: versioned `execution.capabilities/0.1` discovery through `node
-  capabilities`, `node doctor` and MCP `describe_node`; only optimization is
-  advertised. `jobs execution ID` reads an additive `execution.record/0.1`
-  terminal sidecar with process observations, containment, logs and a hashed
-  native result reference. Old attempts are not backfilled; missing records
-  return `execution_unavailable`. Published and embedded JSON schemas match.
-- A test-only neutral adapter covers success, failure, timeout, queued
-  cancellation and spawn/record-write failures without optimization output.
-  CLI regressions cover old-worker compatibility, zero exit without a native
-  result, signals, malformed journals, recovery and idempotent record reads.
-
+- `node capabilities` prints the runner's `execution.capabilities/0.1`: the
+  execution kinds it dispatches (only `optimization`), the job, worker and
+  result schemas it accepts, and `false` for command jobs, generic file
+  transfer and fleet execution. It needs no initialized node; `node doctor`
+  and MCP `describe_node` include the same object.
+- `jobs execution JOB_ID` prints a finished job's `execution.record/0.1`
+  (`.execution.json` in the job directory): process exit code or signal,
+  stop reason, containment, log references and the size and SHA-256 of the
+  native `run.json`. Claims, objectives, feasibility and work stay in
+  `run.json`. A running job, or one finished by an earlier runner, returns
+  the new error `execution_unavailable`; nothing is backfilled. Both schemas
+  are published in `docs/job-api/schemas` and embedded in the runner.
+- Rust tests drive the lifecycle with a test-only adapter that produces no
+  optimization output (success, failure, timeout, queued cancellation, spawn
+  and process-record failures). The review harness checks the capabilities,
+  records with real exit codes and signals, repair records without an
+  observed exit, records of old provenance and unchanged records on repeated
+  requests.
 
 - A [rail-traffic prompt tutorial](tutorials/agentic/rail-traffic/README.md) with synthetic timetable recovery, service-delay caps, queue-preserving alternatives, independent enumeration, stress replay and a CI execution entry. It reuses the existing LP/IP worker.
 
@@ -47,13 +54,12 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
-- P1: extracted admission, process supervision and the internal execution
-  lifecycle from the runner CLI. Optimization-specific result validation and
-  manifest generation stay in an adapter; scheduling locks, conservative
-  reservations, job/worker/result contracts and existing CLI/MCP tools remain.
-- Errors fetching the boot ID after a process spawn now run the same guarded
-  cleanup as process-record write errors, so the spawned child is reaped.
-
+- The runner's launch path is split into private modules: admission (the
+  slot ledger), supervision (process group, bounded logs, stop and deadline
+  handling) and the execution lifecycle, with worker invocation, result
+  validation and the native manifest in an optimization adapter. Locks,
+  conservative reservations, request identity, the job, worker and result
+  contracts and the CLI and MCP tools are unchanged.
 
 - The landing page catalog and `docs/discovery` record fcmaes-rust 0.2.1
   (PyPI and crates.io, 23 October 2026) after installing it from both
@@ -65,6 +71,13 @@ revision. 0.3.0 is the first version on crates.io.
   fcmaes-rust/`fcmaes-core` 0.2.0, lp-ip-craft 0.29.0 and sqp-craft 0.17.0
   (PyPI and crates.io), and these crates 0.3.0. The LP-IP-craft, SQP-craft
   and optimization-jobs cards link their registry pages.
+
+### Fixed
+
+- A failure to read the boot ID right after a worker started returned before
+  the worker was stopped. It now takes the path of a failed process record:
+  the worker group is killed and reaped, and its slots stay reserved unless
+  the group is verifiably gone.
 
 ## [0.3.0] - 2026-10-22
 

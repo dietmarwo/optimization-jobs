@@ -42,12 +42,13 @@ protocol 0.2, coded runner errors and the JSON Schemas to the 0.1.1
 synchronization. Solver dependencies remain in the individual worker crates;
 the runner never links all three engines.
 
-The P1 source iteration extracts internal `admission`, `supervision` and
-`execution` modules. An internal adapter supplies the command and interprets
-its outcome. `optimization` owns worker-result validation, mathematical
-accounting and native manifest construction. These are private implementation
-boundaries, not a public Rust plugin API. The only public execution kind is
-still `optimization`; a neutral adapter exists only in the Rust tests.
+Inside the runner, private modules separate admission (the slot ledger),
+supervision (process group, bounded logs, stop and deadline handling) and the
+execution lifecycle. An adapter supplies the command and interprets how it
+ended; the optimization adapter validates worker results, accounts for work
+and builds the native manifest. These are implementation boundaries, not a
+public Rust plugin API. The only execution kind is `optimization`; a neutral
+adapter exists only in the Rust tests.
 
 The runner accepts workers of protocol `optimization.worker/0.1` and `/0.2`.
 Every 0.1 result record is a valid 0.2 record, so a registered 0.1 worker keeps
@@ -307,9 +308,9 @@ decision, independent of a solver's termination reason.
 
 ### Execution discovery and terminal observations
 
-These additions require a source build containing P1; the published 0.3.0
-binaries do not yet expose them. Versions of existing job, worker and native
-result contracts are unchanged.
+These commands are not in 0.3.0: they need a runner built from `main`
+after that release (see `[Unreleased]` in the changelog). The versions of the
+job, worker and native result contracts are unchanged.
 
 ```sh
 optimization-run node capabilities

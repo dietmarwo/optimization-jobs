@@ -10,18 +10,6 @@ In another checkout, check `Cargo.toml`, the `describe_node`/`describe_worker`
 output and the linked guides before you rely on a command, option or claim.
 Over MCP, `get_guide` returns this file.
 
-P1 source addition (2026-10-24, after the 0.3.0 release): `node capabilities`
-and the `capabilities` member of `node doctor` / MCP `describe_node` report
-`execution.capabilities/0.1`. Only optimization jobs are dispatchable; command
-jobs, generic file transfer and fleet execution remain unsupported.
-`jobs execution JOB_ID` reads a neutral terminal `execution.record/0.1`
-observation with process exit/signal, containment, log references and a hashed
-native-result attachment. Mathematical claims and work remain in `run.json`.
-An active or older attempt without this sidecar returns `execution_unavailable`;
-use the existing `jobs get` and result tools. Recovery does not invent exit
-codes. See [execution discovery](docs/job-api.md#execution-discovery-and-terminal-observations).
-
-
 Start here when a user wants something optimized and no solver has been
 chosen yet, whether you will work through MCP, a shell or the user's own code.
 This file covers:
@@ -395,6 +383,7 @@ job validate --spec job.json             # the resolved job with task_count; run
 job run --spec job.json                  # blocks until the end, prints the final job
 job jobs list                            # newest first, with id, state, directory, artifact_index
 job jobs get JOB_ID                      # state and progress
+job jobs execution JOB_ID                # how the worker process ended (after 0.3.0)
 job jobs wait JOB_ID --timeout 60        # returns at the end or after the timeout
 job result JOB_DIRECTORY                 # the result manifest
 job jobs artifact JOB_ID results --offset 0 --limit 100   # a page of checked records
@@ -418,6 +407,17 @@ whether one is available). Lifecycle states:
 
 `completed` means the tasks returned normally, not that the solution is
 optimal; read the outcomes.
+
+A runner built from `main` after 0.3.0 also keeps an execution record of
+each finished job (`jobs execution JOB_ID`, `execution.record/0.1`): the
+worker's exit code or signal, the stop reason, whether its process group is
+verifiably stopped, and the size and SHA-256 of `run.json`. It holds no
+claim, objective or work; report those from the result manifest. A running
+job, or one finished by an older runner, returns `execution_unavailable`.
+`node capabilities` (and `capabilities` in `node doctor` and MCP
+`describe_node`) lists what the runner dispatches: optimization jobs only,
+with no command jobs, file transfer or fleet execution
+([guide](docs/job-api.md#execution-discovery-and-terminal-observations)).
 
 ### Results, claims and evidence
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:optimization-jobs:schema:execution.record-0.1",
   "title": "execution.record/0.1 terminal observation",
-  "description": "An additive terminal execution observation. Mathematical outcomes remain in the optional native result; no process exit code is inferred during repair. Only optimization is publicly dispatchable in P1.",
+  "description": "An additive terminal execution observation. Mathematical outcomes remain in the optional native result; no process exit code is inferred during repair. Only optimization jobs are dispatched in this version.",
   "type": "object",
   "additionalProperties": false,
   "required": [
