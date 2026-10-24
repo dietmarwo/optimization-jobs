@@ -130,7 +130,7 @@ payloads and runnable examples), store input files such as a new LP model
 results and artifacts, such as a running surrogate job's evaluation log in
 pages; with the MCP Tasks extension, a submitted job is a task that
 completes with the job's result. Jobs outlive the server. The server cannot
-register workers or change the node. See
+register workers, change the node or run command jobs. See
 [Agents and MCP](docs/job-api.md#agents-and-mcp).
 
 ## Depending on this repository
@@ -161,6 +161,17 @@ optimization-job-api = { path = "../optimization-jobs/crates/optimization-job-ap
 optimization-runner = { path = "../optimization-jobs/crates/optimization-runner" }
 ```
 
+## Trusted local commands and binary files
+
+After 0.3.0 the runner also runs opt-in command jobs (`execution.command/0.1`)
+and moves binary files with exact size and SHA-256 checks, on the same local
+admission budget as optimization jobs. Commands are trusted programs under the
+runner's user, not a sandbox, and they are off until the node owner runs
+`node commands --enable`. They are CLI-only: the MCP server refuses them. The
+[command and file guide](docs/job-api.md#trusted-local-command-jobs-and-binary-files)
+covers the request and result schemas, transfer limits and the
+build–run–collect example.
+
 ## Tests
 
 ```sh
@@ -169,6 +180,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --release --locked
 cargo build --release --locked -p optimization-runner
 python3 scripts/job-api/test_review.py            # with the fake worker
+python3 scripts/job-api/test_commands.py          # command jobs and file transfers
 python3 scripts/job-api/test_mcp.py               # the MCP server
 python3 scripts/job-api/test_integration.py \
   --fcmaes /path/to/fcmaes-job-worker \

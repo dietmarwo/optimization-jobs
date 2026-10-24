@@ -29,6 +29,9 @@ pub(crate) trait Adapter {
     type Outcome;
     fn kind(&self) -> &'static str;
     fn budget(&self) -> Budget;
+    fn signal_on_stop(&self) -> bool {
+        false
+    }
     fn command(&self, dir: &Path) -> Result<Command>;
     fn completed(&self, dir: &Path, observed: &Observation) -> Result<Self::Outcome>;
     fn cancelled_before_start(&self) -> Self::Outcome;
@@ -103,19 +106,27 @@ struct Record {
     native_result: Option<NativeResult>,
 }
 
-pub(crate) fn capabilities() -> Value {
-    json!({
-        "schema_version":"execution.capabilities/0.1",
+pub(crate) fn capabilities(root: &Path) -> Result<Value> {
+    let enabled = crate::command::enabled(root)?;
+    Ok(json!({
+        "schema_version":"execution.capabilities/0.2",
         "runner_version":env!("CARGO_PKG_VERSION"),
-        "execution_kinds":["optimization"],
-        "job_schemas":["optimization.job/0.1", "fcmaes.job/0.1"],
+        "execution_kinds":["optimization","command"],
+        "enabled_execution_kinds":if enabled {vec!["optimization","command"]} else {vec!["optimization"]},
+        "job_schemas":["optimization.job/0.1", "fcmaes.job/0.1", "execution.command/0.1"],
         "worker_protocols":["optimization.worker/0.1", "optimization.worker/0.2", "fcmaes.worker/0.1"],
         "optimization_result_schema":"optimization.result/0.2",
         "legacy_fcmaes_result_schema":1,
+        "command_result_schema":"execution.command.result/0.1",
         "execution_record_schema":RECORD_SCHEMA,
         "execution_record_publication":"terminal",
-        "command_jobs":false, "generic_file_transfer":false, "fleet":false
-    })
+        "command_jobs":enabled, "generic_file_transfer":true, "fleet":false,
+        "command_interface":"cli", "file_transfer_interface":"cli",
+        "command_isolation":"trusted_same_user_process_group",
+        "cpu_enforcement":"admission_only",
+        "max_file_bytes":crate::files::MAX_FILE,
+        "max_declared_job_bytes":crate::files::MAX_TOTAL
+    }))
 }
 
 /// The record of a finished attempt. It is served only when `job.json` is
@@ -251,7 +262,14 @@ pub(crate) fn launch<A: Adapter>(
     let mut observed = Observation::default();
     let outcome = (|| {
         let command = adapter.command(&dir)?;
-        supervision::execute(&dir, adapter.budget(), command, start, &mut observed)?;
+        supervision::execute(
+            &dir,
+            adapter.budget(),
+            command,
+            adapter.signal_on_stop(),
+            start,
+            &mut observed,
+        )?;
         adapter.completed(&dir, &observed)
     })();
     // Unknown containment always retains its reservation, including an error

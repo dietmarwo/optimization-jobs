@@ -43,6 +43,7 @@ jobs:
         run: |
           cargo build --release --locked -p optimization-runner
           python3 scripts/job-api/test_review.py
+          python3 scripts/job-api/test_commands.py
           python3 scripts/job-api/test_mcp.py
       # In a container whose /proc belongs to an enclosing PID namespace,
       # /proc directory names are not the PIDs this namespace uses; the tests

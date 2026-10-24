@@ -306,6 +306,145 @@ SQP can complete with a local restoration failure. A time/iteration limit can
 still retain a feasible candidate. Deadline classification is a lifecycle
 decision, independent of a solver's termination reason.
 
+### Trusted local command jobs and binary files
+
+These interfaces require source after 0.3.0. Command jobs use
+[`execution.command/0.1`](job-api/schemas/execution.command-0.1.schema.json),
+not an optimization envelope. Enable them explicitly on a node:
+
+```sh
+optimization-run --root NODE node init --capacity 8 --allow-commands
+# For an existing node:
+optimization-run --root NODE node commands --enable
+optimization-run --root NODE validate --spec command.json
+optimization-run --root NODE run --spec command.json
+optimization-run --root NODE jobs execution JOB_ID
+optimization-run --root NODE result JOB_DIRECTORY
+optimization-run --root NODE jobs collect JOB_ID OUTPUT_NAME --destination NEW_FILE
+```
+
+`submit --spec` also accepts commands when the systemd user manager is available.
+`node commands --disable` rejects new validation/submission; already accepted
+attempts can finish. Commands share the optimization admission ledger, queue,
+wall deadline, bounded logs, cancellation and conservative repair rules. They
+receive SIGTERM as a process group on cancellation or wall expiry, followed by
+SIGKILL after `grace_seconds` (`--now` caps the delay at one second). Optimizer
+workers retain their cooperative cancellation protocol.
+
+A complete minimal request:
+
+```json
+{
+  "schema_version": "execution.command/0.1",
+  "request_key": "inspect-001",
+  "argv": ["/usr/bin/printf", "%s\n", "literal $(text); *"],
+  "env": {},
+  "resources": {"cpu_slots": 1},
+  "limits": {"wall_seconds": 30, "grace_seconds": 1},
+  "replay": "never",
+  "inputs": [],
+  "outputs": []
+}
+```
+
+Arguments are passed literally, with no implicit shell. To run a script, declare
+it as a hashed input and use an explicit interpreter, for example
+`["/usr/bin/python3", "scripts/run.py"]`. An absolute executable is resolved to
+its file (at most 1 GiB), hashed during staging and checked again before launch.
+It runs under the submitted `argv[0]`, so multi-call programs such as `unxz` and
+a virtual environment's `python` behave as when called by that name. A relative
+executable must be `./path` naming a declared input with `executable: true`. Interpreter
+libraries, compiler dependencies and other host files are **not** snapshotted.
+Changes between the final check and exec are outside the trusted-user model.
+
+The environment is cleared, then initialized with `PATH=/usr/bin:/bin` and
+`OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1`; explicit `env` entries
+can override those defaults. No inherited HOME, secrets or interactive stdin is
+provided. Unknown request fields are rejected. `argv` and environment values
+are each limited to 64 KiB combined; an argument/value is at most 16 KiB.
+
+An input is `{"path":"data/model.bin","file":"model.bin","bytes":123,
+"sha256":"<64 lowercase hex digits>","executable":false}`. `file` is relative
+to the request file's directory; omit it to use a verified node blob. Copies go
+under the attempt's `work/`, which is the process working directory. Inputs are
+checked again before launch. Both source and work paths reject absolute paths,
+segments that are empty or start with a dot, and symlinks. Runtime files live
+beside `work/`, so names such as `worker/` or `run.json` are ordinary inside it.
+Input/output paths cannot overlap (one may not be a directory of another). There are at most 128 declarations total, 64 MiB per file and 256 MiB of
+input bytes plus declared output limits per job.
+
+An output is `{"name":"answer","path":"out/answer.bin","max_bytes":1024,
+"required":true}`. After the process group is confirmed stopped, declared
+regular files are copied into `.command-outputs/`. Missing required, oversized,
+symlink or non-regular outputs are errors; missing optional outputs are omitted.
+A zero exit plus valid required outputs means `completed`. Otherwise the result
+is `failed`, unless cancellation, timeout or interruption already applies.
+The separate
+[`execution.command.result/0.1`](job-api/schemas/execution.command.result-0.1.schema.json)
+attachment (`command-result.json`) records exit/signal, collected byte counts
+and SHA-256 values and collection errors. It has no objective, feasibility,
+claim or evaluation accounting. `result JOB_DIRECTORY` verifies the attachment
+against the terminal execution record; `jobs collect` verifies a sealed output
+before writing a new destination. Later changes to `work/` do not change a
+sealed output. Failed collection can be retried without re-executing the command.
+
+`replay: "never"` means no automatic execution retry. Repeating a request key
+with the same normalized spec, executable and input digests returns the same
+attempt, including a failed one. Moving a source file without changing its
+staged path/content does not change identity. Changed work requires a new key;
+command and optimizer keys share one namespace. A lost launcher requires
+`jobs repair` after liveness checks succeed. Command repair reports
+`interrupted`, never an invented successful exit or elapsed time; any verifiable
+outputs may still be collected. It never replays side effects.
+
+Generic binary staging is also available without command opt-in:
+
+```sh
+optimization-run --root NODE files put --source FILE --bytes N --sha256 SHA256
+# --source - reads raw binary stdin; no base64 or JSON wrapping.
+optimization-run --root NODE files get SHA256 --bytes N --destination NEW_FILE
+optimization-run --root NODE files cleanup
+```
+
+Transfers stream through private temporary files, check exact length and hash,
+fsync and publish without overwriting an existing destination. Re-uploading an
+already verified blob is idempotent and does not consume stdin. A truncated or
+corrupt transfer never publishes a verified blob. The node blob store has a
+1 GiB quota including upload partials; `files cleanup` takes its upload lock and
+removes only `.transfer-*` partials. Verified blobs, attempts and collected files
+are retained until the owner explicitly removes them. A process killed during
+a download/collection can leave `.transfer-*` beside the destination; after
+confirming no writer is active, remove that partial and retry. A killed staging
+process can similarly leave an unindexed `.command-*` directory; inspect it
+before manual cleanup. No automatic garbage collection deletes finished work.
+
+Commands are **trusted programs under the runner's Unix user**, not a sandbox.
+Path checks protect materialization and collection; programs can still access
+other host files and create undeclared/unbounded working data. CPU slots are
+admission accounting, not kernel CPU/memory/disk enforcement. Descendants in the
+original process group are terminated; a process that deliberately changes
+session/group can escape it. Its output is not waited for: two seconds after the
+group stopped, the launcher finishes the attempt. Do not use this interface for hostile or daemonizing
+programs. There is no remote transport or fleet scheduling in this interface.
+
+The MCP server is optimization-only: `validate_job` and `submit_job` refuse
+command requests with `unsupported_job_kind`. Every runner the server starts
+refuses them too (the server sets `OPTIMIZATION_RUN_REFUSE_COMMANDS`), so a
+`spec_path` that changes after the server read it cannot become a command.
+Discovery advertises command/file support as CLI-only; MCP result summaries
+reject command jobs with `unsupported_job_kind`. Use the CLI for command
+results and binary outputs.
+`compare` remains an optimization operation.
+
+The executable [build–run–collect example](../examples/commands/build_run_collect.py)
+compiles a declared C input, collects and uploads the resulting executable,
+stages it into a second command and verifies the three-byte binary answer:
+
+```sh
+python3 examples/commands/build_run_collect.py \
+  --runner target/release/optimization-run --output /tmp/command-example
+```
+
 ### Execution discovery and terminal observations
 
 These commands are not in 0.3.0: they need a runner built from `main`
@@ -318,17 +457,19 @@ optimization-run --root NODE jobs execution JOB_ID
 ```
 
 `node capabilities` works without creating or initializing a node. Its
-`execution.capabilities/0.1` object is also included as `capabilities` in
-`node doctor` and MCP `describe_node`. It lists accepted job/worker schemas,
-result/record schemas and the execution kinds the runner actually dispatches.
-Command jobs, generic file transfer and fleet execution are explicitly false.
-The [capability schema](job-api/schemas/execution.capabilities-0.1.schema.json)
-is separate from worker `describe`: solver profiles are still discovered
-from each worker.
+`execution.capabilities/0.2` object is also included as `capabilities` in
+`node doctor` and MCP `describe_node`. It lists supported kinds (`optimization`
+and `command`), enabled kinds, accepted job/worker schemas, result/record schemas,
+and byte limits. Commands are disabled by default; generic binary file transfer
+is implemented through the CLI. Fleet execution remains false. The
+[capability schema](job-api/schemas/execution.capabilities-0.2.schema.json) is
+separate from worker `describe`: solver profiles still come from each worker.
+The previous capability schema remains available for older runners.
 
 `jobs execution` reads the additive
 [`execution.record/0.1`](job-api/schemas/execution.record-0.1.schema.json)
-sidecar `.execution.json`. A normal finalization writes the native `run.json`,
+sidecar `.execution.json`. A normal finalization writes the native `run.json`
+(or `command-result.json` for commands),
 then the sidecar, then terminal `job.json`, all with atomic replacements.
 A crash between these writes still needs the existing conservative `repair`;
 reading a sidecar never authorizes a retry or frees a reservation.
@@ -378,6 +519,10 @@ prints one JSON line on stderr (`--help` and `--version` print normally):
 | Code | Meaning | What helps |
 | --- | --- | --- |
 | `invalid_job` | The specification is missing or not a valid envelope; an input is missing, escapes its directory or fails its hash; the worker rejected the payload; or the resolved job exceeds the 4 MiB validation output or 30 s | Fix the job |
+| `commands_disabled` | The node has not enabled trusted command jobs | Owner uses `node commands --enable` |
+| `invalid_command_spec` | Malformed command, changed staged identity/executable or invalid declaration | Correct the request; use a new key for changed work |
+| `file_transfer_failed` | Unsafe path, hash/size/quota failure, or destination already exists | Inspect inputs/partials and retry transfer to a new destination |
+| `unsupported_job_kind` | Optimization-only operation given a command, including any command request over MCP | Use the CLI: `run`, `result`, `jobs collect` |
 | `invalid_command` | The command line does not parse, asks for pages of an artifact that is not `records`, or a page `limit` outside 1–10,000 | See `--help` |
 | `unknown_worker` | No worker is registered under that ID | `workers add` |
 | `unsupported_profile` | The worker does not accept the `payload_schema` | Another worker or profile |

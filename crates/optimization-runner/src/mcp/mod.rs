@@ -762,6 +762,10 @@ pub fn main() {
         eprintln!("optimization-mcp: Linux is required");
         std::process::exit(2);
     }
+    // Every runner this server starts refuses command jobs, also when a
+    // spec_path changes after the server read it.
+    // SAFETY: no other thread exists yet.
+    unsafe { std::env::set_var(crate::command::REFUSE, "1") };
     let args = Args::parse();
     let fail = |message: String| -> ! {
         eprintln!("optimization-mcp: {message}");

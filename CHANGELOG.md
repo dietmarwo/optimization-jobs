@@ -10,11 +10,20 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
-- `node capabilities` prints the runner's `execution.capabilities/0.1`: the
-  execution kinds it dispatches (only `optimization`), the job, worker and
-  result schemas it accepts, and `false` for command jobs, generic file
-  transfer and fleet execution. It needs no initialized node; `node doctor`
-  and MCP `describe_node` include the same object.
+- Explicitly enabled trusted command jobs (`execution.command/0.1`), sharing
+  admission, supervision, cancellation and repair with optimization. Literal argv
+  (the verified executable runs under the submitted `argv[0]`), explicit
+  environment, checked input identity, declared outputs and no automatic
+  replay; separate `execution.command.result/0.1` results carry no solver claims.
+  They are CLI-only: MCP `validate_job` and `submit_job` refuse them with
+  `unsupported_job_kind`, and so does every runner the MCP server starts.
+- Binary `files put/get/cleanup` and `jobs collect`: bounded streaming, exact
+  size/SHA-256 validation, atomic no-clobber publication and interrupted-upload
+  cleanup. A local build–run–collect example and command/transfer regressions.
+- `node capabilities` prints `execution.capabilities/0.2`: supported/enabled
+  execution kinds, contracts, CLI command/file interfaces and transfer limits.
+  It needs no initialized node and creates no root; `node doctor` and MCP
+  `describe_node` include the same object. Commands default off; fleet is false.
 - `jobs execution JOB_ID` prints a finished job's `execution.record/0.1`
   (`.execution.json` in the job directory): process exit code or signal,
   stop reason, containment, log references and the size and SHA-256 of the
@@ -83,6 +92,10 @@ revision. 0.3.0 is the first version on crates.io.
   the worker was stopped. It now takes the path of a failed process record:
   the worker group is killed and reaped, and its slots stay reserved unless
   the group is verifiably gone.
+- A launcher waited until its worker's output pipes closed, so a process that
+  left the worker's process group (`setsid`) and kept them open held the job
+  in `running` with its slots reserved, and cancellation had no effect. Two
+  seconds after the group stopped, the launcher now finishes the attempt.
 
 ## [0.3.0] - 2026-10-22
 

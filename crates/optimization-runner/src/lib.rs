@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 mod admission;
+mod command;
 mod execution;
+mod files;
 mod host;
 mod optimization;
 mod supervision;
@@ -21,7 +23,7 @@ use std::{
 #[derive(Parser)]
 #[command(
     version,
-    about = "Durable optimization jobs: fcmaes, LP-IP and SQP (Linux)"
+    about = "Durable local jobs: optimization and opt-in commands (Linux)"
 )]
 struct Cli {
     #[arg(long, global = true, env = "OPTIMIZATION_RUN_ROOT")]
@@ -36,6 +38,10 @@ enum Cmd {
     Node {
         #[command(subcommand)]
         command: Node,
+    },
+    Files {
+        #[command(subcommand)]
+        command: Files,
     },
     Workers {
         #[command(subcommand)]
@@ -80,10 +86,42 @@ enum Node {
     Init {
         #[arg(long)]
         capacity: usize,
+        /// Allow trusted local command jobs (same Unix user, no sandbox).
+        #[arg(long)]
+        allow_commands: bool,
+    },
+    /// Change admission policy for new commands; accepted jobs may finish.
+    Commands {
+        #[arg(long, conflicts_with = "disable", required_unless_present = "disable")]
+        enable: bool,
+        #[arg(long)]
+        disable: bool,
     },
     Doctor,
     /// Versioned execution kinds and record schemas, independent of node setup.
     Capabilities,
+}
+#[derive(Subcommand)]
+enum Files {
+    /// Stage a verified binary file, or read bytes from stdin with --source -.
+    Put {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        sha256: String,
+        #[arg(long)]
+        bytes: u64,
+    },
+    /// Copy a verified blob to a new local file; never replace a destination.
+    Get {
+        sha256: String,
+        #[arg(long)]
+        bytes: u64,
+        #[arg(long)]
+        destination: PathBuf,
+    },
+    /// Remove interrupted upload partials; retain verified blobs.
+    Cleanup,
 }
 #[derive(Subcommand)]
 enum Workers {
@@ -102,6 +140,13 @@ enum Problems {
 }
 #[derive(Subcommand)]
 enum Jobs {
+    /// Collect a sealed binary command output into a new local file.
+    Collect {
+        id: String,
+        name: String,
+        #[arg(long)]
+        destination: PathBuf,
+    },
     List,
     Events {
         id: String,
@@ -489,6 +534,9 @@ fn prepare(
     dest: Option<PathBuf>,
     detached: bool,
 ) -> Result<(String, bool)> {
+    if read(input).map_err(invalid)?["schema_version"] == command::SCHEMA {
+        return command::prepare(root, input, dest, detached);
+    }
     let (mut resolved, w, bytes, tmp, submitted) = staged(root, input)?;
     let node = capacity(root)?;
     if resolved.slots() as u64 > node {
@@ -607,19 +655,28 @@ fn submit(root: &Path, id: &str) -> Result<()> {
     }
 }
 fn launch(root: &Path, id: &str) -> Result<()> {
-    execution::launch(root, id, optimization::Adapter::load)
+    if is_command(&directory(root, id)?)? {
+        execution::launch(root, id, command::Adapter::load)
+    } else {
+        execution::launch(root, id, optimization::Adapter::load)
+    }
+}
+fn is_command(dir: &Path) -> Result<bool> {
+    Ok(optional(&dir.join("job.json"))?["kind"] == "command")
 }
 fn get(root: &Path, id: &str) -> Result<Value> {
     let dir = directory(root, id)?;
     let mut v = read(&dir.join("job.json"))?;
     v["directory"] = json!(dir);
-    let s = spec(&dir.join("resolved.json"))?;
-    // A corrupt journal is an error here; `jobs list` reports it per job.
-    for (k, value) in result::progress(&dir, &s)?
-        .as_object()
-        .ok_or("bad progress")?
-    {
-        v[k] = value.clone();
+    if !is_command(&dir)? {
+        let s = spec(&dir.join("resolved.json"))?;
+        // A corrupt journal is an error here; `jobs list` reports it per job.
+        for (k, value) in result::progress(&dir, &s)?
+            .as_object()
+            .ok_or("bad progress")?
+        {
+            v[k] = value.clone();
+        }
     }
     if !terminal(&v["state"]) && v["boot_id"].as_str() != Some(&boot()?) {
         v["observed_state"] = json!("interrupted_after_reboot");
@@ -673,12 +730,6 @@ fn main_result() -> Result<()> {
         }
         Err(e) => return Err(coded("invalid_command", e.render().to_string())),
     };
-    if let Cmd::Node {
-        command: Node::Capabilities,
-    } = &cli.command
-    {
-        return output(execution::capabilities());
-    }
     let selected = cli
         .root
         .or_else(|| std::env::var_os("FCMAES_RUN_ROOT").map(PathBuf::from))
@@ -692,11 +743,21 @@ fn main_result() -> Result<()> {
                 ".optimization-jobs"
             })
         });
+    if let Cmd::Node {
+        command: Node::Capabilities,
+    } = &cli.command
+    {
+        return output(execution::capabilities(&selected)?);
+    }
     fs::create_dir_all(&selected)?;
     let root = fs::canonicalize(&selected)?;
     match cli.command {
         Cmd::Node {
-            command: Node::Init { capacity: c },
+            command:
+                Node::Init {
+                    capacity: c,
+                    allow_commands,
+                },
         } => {
             if c == 0 {
                 return Err("capacity must be positive".into());
@@ -705,24 +766,50 @@ fn main_result() -> Result<()> {
             if root.join("node.json").exists() {
                 return Err("node already initialized; keep its capacity stable".into());
             }
-            write_atomic_json(&root.join("node.json"), &json!({"capacity":c}))?;
+            write_atomic_json(
+                &root.join("node.json"),
+                &json!({"capacity":c,"allow_commands":allow_commands}),
+            )?;
             // The owner may mean a capacity beyond what this process can use
             // (another cgroup runs the jobs, say): a warning, not an error.
             let warnings = host::warnings(Some(c as u64), &host::host());
             output(json!({"capacity":c,"warnings":warnings}))
         }
         Cmd::Node {
+            command: Node::Commands { enable, disable: _ },
+        } => {
+            capacity(&root)?;
+            let _guard = lock(&root.join("slots.lock"))?;
+            let mut node = read(&root.join("node.json"))?;
+            node["allow_commands"] = json!(enable);
+            write_atomic_json(&root.join("node.json"), &node)?;
+            output(node)
+        }
+        Cmd::Files { command } => output(match command {
+            Files::Put {
+                source,
+                sha256,
+                bytes,
+            } => files::put(&root, &source, bytes, &sha256)?,
+            Files::Get {
+                sha256,
+                bytes,
+                destination,
+            } => files::get(&root, &sha256, bytes, &destination)?,
+            Files::Cleanup => files::cleanup(&root)?,
+        }),
+        Cmd::Node {
             command: Node::Doctor,
         } => {
             let host = host::host();
             let capacity = capacity(&root).ok();
             output(
-                json!({"systemd_user_manager":check_systemd().is_ok(),"boot_id":boot()?,"capacity":capacity,"logout_survival":"requires user manager lingering; verify on host","host":host,"warnings":host::warnings(capacity, &host),"capabilities":execution::capabilities()}),
+                json!({"systemd_user_manager":check_systemd().is_ok(),"boot_id":boot()?,"capacity":capacity,"logout_survival":"requires user manager lingering; verify on host","host":host,"warnings":host::warnings(capacity, &host),"capabilities":execution::capabilities(&root)?}),
             )
         }
         Cmd::Node {
             command: Node::Capabilities,
-        } => output(execution::capabilities()),
+        } => output(execution::capabilities(&root)?),
         Cmd::Workers {
             command: Workers::Add { id, executable },
         } => {
@@ -801,6 +888,11 @@ fn main_result() -> Result<()> {
                 )
             }
         }
+        Cmd::Validate { spec: p }
+            if read(&p).map_err(invalid)?["schema_version"] == command::SCHEMA =>
+        {
+            output(command::check(&root, &p)?)
+        }
         Cmd::Validate { spec: p } => match spec(&p).map_err(invalid)? {
             Request::Legacy(s) => output(
                 json!({"valid":true,"requested_evaluations":s.requested()?,"maximum_actual_evaluations":s.maximum_evaluations()?,"resolved":s}),
@@ -828,12 +920,23 @@ fn main_result() -> Result<()> {
             output(get(&root, &id)?)
         }
         Cmd::Launch { id } => launch(&root, &id),
+        Cmd::Result { path } if path.is_dir() && is_command(&path)? => {
+            output(command::result(&path)?)
+        }
         Cmd::Result { path } => output(read(&if path.is_dir() {
             path.join("run.json")
         } else {
             path
         })?),
         Cmd::Compare { paths } => {
+            for path in &paths {
+                if path.is_dir() && is_command(path)? {
+                    return Err(coded(
+                        "unsupported_job_kind",
+                        "compare accepts optimization results; command results have no mathematical claims",
+                    ));
+                }
+            }
             let runs = paths
                 .iter()
                 .map(|p| {
@@ -847,6 +950,15 @@ fn main_result() -> Result<()> {
             output(result::compare(&runs)?)
         }
         Cmd::Jobs { command } => match command {
+            Jobs::Collect {
+                id,
+                name,
+                destination,
+            } => output(command::collect(
+                &directory(&root, &id)?,
+                &name,
+                &destination,
+            )?),
             Jobs::Events { id } => {
                 let dir = directory(&root, &id)?;
                 output(json!(read_checked::<Value>(&dir.join("events.jsonl"), 1)?))
@@ -970,7 +1082,11 @@ fn main_result() -> Result<()> {
                     write_atomic_json(&root.join("slots.json"), &ledger)?;
                 }
                 let started = state["state"] == "running";
-                optimization::repair(&dir, unadmitted, started)?;
+                if is_command(&dir)? {
+                    command::repair(&dir, started)?;
+                } else {
+                    optimization::repair(&dir, unadmitted, started)?;
+                }
                 output(get(&root, &id)?)
             }
             Jobs::Artifact {
@@ -980,6 +1096,12 @@ fn main_result() -> Result<()> {
                 limit,
             } => {
                 let dir = directory(&root, &id)?;
+                if is_command(&dir)? {
+                    return Err(coded(
+                        "unsupported_job_kind",
+                        "use jobs collect for binary command outputs",
+                    ));
+                }
                 let unknown = |why: &[String]| {
                     coded(
                         "unknown_artifact",

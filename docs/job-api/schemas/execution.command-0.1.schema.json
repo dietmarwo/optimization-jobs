@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:optimization-jobs:schema:execution.command-0.1",
+  "title": "execution.command/0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "execution.command/0.1"
+    },
+    "request_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000]+$"
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "prefixItems": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384,
+          "pattern": "^(?:/|\\./)[^\\u0000]+$"
+        }
+      ],
+      "items": {
+        "type": "string",
+        "maxLength": 16384,
+        "pattern": "^[^\\u0000]*$"
+      }
+    },
+    "env": {
+      "type": "object",
+      "maxProperties": 128,
+      "propertyNames": {
+        "type": "string",
+        "maxLength": 128,
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 16384,
+        "pattern": "^[^\\u0000]*$"
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu_slots": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        }
+      },
+      "required": [
+        "cpu_slots"
+      ]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "wall_seconds": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 604800
+        },
+        "grace_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3600
+        }
+      },
+      "required": [
+        "wall_seconds",
+        "grace_seconds"
+      ]
+    },
+    "replay": {
+      "const": "never"
+    },
+    "inputs": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.)(?!.*//)(?!.*\\\\)(?!.*\\u0000).+[^/]$|^[A-Za-z0-9_-]$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 67108864
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.)(?!.*//)(?!.*\\\\)(?!.*\\u0000).+[^/]$|^[A-Za-z0-9_-]$"
+          },
+          "executable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "bytes"
+        ]
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,100}$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.)(?!.*//)(?!.*\\\\)(?!.*\\u0000).+[^/]$|^[A-Za-z0-9_-]$"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 67108864
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "max_bytes",
+          "required"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_key",
+    "argv",
+    "env",
+    "resources",
+    "limits",
+    "replay",
+    "inputs",
+    "outputs"
+  ],
+  "description": "Trusted commands only. Runtime additionally checks UTF-8 byte lengths, 64 KiB combined argv/environment values each, combined file count <=128, non-overlapping relative paths, executable declarations, verified inputs and total declared bytes <=256 MiB. No implicit shell, automatic replay or filesystem isolation."
+}
