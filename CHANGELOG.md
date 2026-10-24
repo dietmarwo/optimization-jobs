@@ -14,6 +14,8 @@ revision. 0.3.0 is the first version on crates.io.
   admission, supervision, cancellation and repair with optimization. Literal argv,
   explicit environment, checked input identity, declared outputs and no automatic
   replay; separate `execution.command.result/0.1` results carry no solver claims.
+  They are CLI-only: MCP `validate_job` and `submit_job` refuse them with
+  `unsupported_job_kind`, and so does every runner the MCP server starts.
 - Binary `files put/get/cleanup` and `jobs collect`: bounded streaming, exact
   size/SHA-256 validation, atomic no-clobber publication and interrupted-upload
   cleanup. A local build–run–collect example and command/transfer regressions.

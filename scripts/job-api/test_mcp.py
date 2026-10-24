@@ -21,6 +21,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -984,6 +985,37 @@ class Review(Server):
         error = self.client.response(ident)["error"]
         self.assertEqual(error["code"], -32022)
         self.assertIn("initialize", error["message"])
+
+
+class Commands(Server):
+    """Command jobs stay CLI-only, also on a node that enables them."""
+
+    def test_command_jobs_are_refused(self):
+        self.call("node", "commands", "--enable")
+        marker = self.base / "marker"
+        job = {"schema_version": "execution.command/0.1", "request_key": "mcp-command",
+               "argv": [shutil.which("touch"), str(marker)], "env": {},
+               "resources": {"cpu_slots": 1}, "limits": {"wall_seconds": 30, "grace_seconds": 1},
+               "replay": "never", "inputs": [], "outputs": []}
+        spec = self.base / "command.json"
+        spec.write_text(json.dumps(job))
+        for name in ["validate_job", "submit_job"]:
+            for arguments in [{"job": job}, {"spec_path": str(spec)}]:
+                with self.subTest(name=name, arguments=sorted(arguments)):
+                    self.assertEqual(self.client.error(name, arguments)["code"], "unsupported_job_kind")
+        self.assertTrue(self.client.tool("submit_job", {"job": job}, tasks=True)["isError"])
+        time.sleep(0.5)
+        self.assertFalse(marker.exists())
+        self.assertFalse((self.root / "jobs" / job_id("mcp-command")).exists())
+
+    def test_runners_started_by_the_server_refuse_commands(self):
+        # The runner checks again, so a spec_path that changes after the
+        # server read it cannot become a command.
+        ident = self.client.ok("submit_job", {"job": fake("refusing", {"mode": "sleep", "seconds": 30})})["job_id"]
+        self.running(ident)
+        environment = (proc_entry(launcher(self.root)) / "environ").read_bytes().split(b"\0")
+        self.assertIn(b"OPTIMIZATION_RUN_REFUSE_COMMANDS=1", environment)
+        self.client.ok("kill_job", {"job_id": ident})
 
 
 class Limits(Server):

@@ -182,7 +182,20 @@ fn identity(s: &Request, executable: &Value) -> Result<String> {
         &json!({"spec":s,"executable":executable}),
     )?))
 }
+/// Set in processes started by the MCP server, whose submissions stay
+/// optimization-only whatever file reaches the runner.
+pub(crate) const REFUSE: &str = "OPTIMIZATION_RUN_REFUSE_COMMANDS";
+pub(crate) fn refused() -> Result<()> {
+    if std::env::var_os(REFUSE).is_some() {
+        return Err(coded(
+            "unsupported_job_kind",
+            "command jobs are CLI-only; the MCP server does not validate or submit them",
+        ));
+    }
+    Ok(())
+}
 fn staged(root: &Path, input: &Path) -> Result<(Request, Value, tempfile::TempDir, Value)> {
+    refused()?;
     capacity(root)?;
     if !enabled(root)? {
         return Err(coded(

@@ -130,7 +130,7 @@ payloads and runnable examples), store input files such as a new LP model
 results and artifacts, such as a running surrogate job's evaluation log in
 pages; with the MCP Tasks extension, a submitted job is a task that
 completes with the job's result. Jobs outlive the server. The server cannot
-register workers or change the node. See
+register workers, change the node or run command jobs. See
 [Agents and MCP](docs/job-api.md#agents-and-mcp).
 
 ## Depending on this repository

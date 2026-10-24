@@ -423,9 +423,13 @@ original process group are terminated; a process that deliberately changes
 session/group can escape it. Do not use this interface for hostile or daemonizing
 programs. There is no remote transport or fleet scheduling in this interface.
 
-MCP submission remains optimization-only. Discovery advertises command/file
-support as CLI-only; MCP result summaries reject command jobs with
-`unsupported_job_kind`. Use the CLI for command results and binary outputs.
+The MCP server is optimization-only: `validate_job` and `submit_job` refuse
+command requests with `unsupported_job_kind`. Every runner the server starts
+refuses them too (the server sets `OPTIMIZATION_RUN_REFUSE_COMMANDS`), so a
+`spec_path` that changes after the server read it cannot become a command.
+Discovery advertises command/file support as CLI-only; MCP result summaries
+reject command jobs with `unsupported_job_kind`. Use the CLI for command
+results and binary outputs.
 `compare` remains an optimization operation.
 
 The executable [build–run–collect example](../examples/commands/build_run_collect.py)
@@ -514,7 +518,7 @@ prints one JSON line on stderr (`--help` and `--version` print normally):
 | `commands_disabled` | The node has not enabled trusted command jobs | Owner uses `node commands --enable` |
 | `invalid_command_spec` | Malformed command, changed staged identity/executable or invalid declaration | Correct the request; use a new key for changed work |
 | `file_transfer_failed` | Unsafe path, hash/size/quota failure, or destination already exists | Inspect inputs/partials and retry transfer to a new destination |
-| `unsupported_job_kind` | Optimization-only operation given a command | Use CLI `result` or `jobs collect` |
+| `unsupported_job_kind` | Optimization-only operation given a command, including any command request over MCP | Use the CLI: `run`, `result`, `jobs collect` |
 | `invalid_command` | The command line does not parse, asks for pages of an artifact that is not `records`, or a page `limit` outside 1–10,000 | See `--help` |
 | `unknown_worker` | No worker is registered under that ID | `workers add` |
 | `unsupported_profile` | The worker does not accept the `payload_schema` | Another worker or profile |

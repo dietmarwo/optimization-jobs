@@ -249,6 +249,19 @@ while True: time.sleep(.05)
         self.assertEqual(self.call("result",exported),result)
         self.call("compare",exported,exported)
 
+    def test_refused_in_runners_the_mcp_server_starts(self):
+        refuse = dict(os.environ, OPTIMIZATION_RUN_REFUSE_COMMANDS="1")
+        path, key = self.write(self.script("from pathlib import Path; Path('ran').write_text('')"))
+        for action in ["validate", "run", "submit"]:
+            with self.subTest(action=action):
+                result = self.raw(action, "--spec", path, env=refuse)
+                self.assertEqual(result.returncode, 2, result.stdout)
+                error = json.loads(result.stderr.strip().splitlines()[-1])["error"]
+                self.assertEqual(error["code"], "unsupported_job_kind")
+        self.assertFalse((self.root / "jobs" / job_id(key)).exists())
+        path, _ = self.write(envelope("fake", {"mode": "complete"}))
+        self.assertEqual(self.call("run", "--spec", path, env=refuse)["state"], "completed")
+
     def test_blob_roundtrip_input_and_interrupted_upload(self):
         data=bytes(range(256));source=self.base/'source';source.write_bytes(data);hash_=sha(data)
         self.call('files','put','--source',source,'--bytes',len(data),'--sha256',hash_)

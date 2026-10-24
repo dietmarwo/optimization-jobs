@@ -581,6 +581,12 @@ fn stage(server: &Server, args: &Value) -> Result<Staged, Fail> {
             ));
         }
     };
+    if staged.job["schema_version"] == crate::command::SCHEMA {
+        return Err(fail(
+            "unsupported_job_kind",
+            "command jobs are CLI-only: the node owner runs them with optimization-run",
+        ));
+    }
     let request_key = staged.job["request_key"]
         .as_str()
         .filter(|k| !k.is_empty())
