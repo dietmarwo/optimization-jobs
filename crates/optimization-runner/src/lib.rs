@@ -1,5 +1,11 @@
 #![doc = include_str!("../README.md")]
+mod admission;
+mod execution;
 mod host;
+mod optimization;
+mod supervision;
+
+use admission::reconcile_ledger;
 pub mod mcp;
 
 use clap::{Parser, Subcommand};
@@ -8,7 +14,6 @@ use serde_json::{Value, json};
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -77,6 +82,8 @@ enum Node {
         capacity: usize,
     },
     Doctor,
+    /// Versioned execution kinds and record schemas, independent of node setup.
+    Capabilities,
 }
 #[derive(Subcommand)]
 enum Workers {
@@ -100,6 +107,10 @@ enum Jobs {
         id: String,
     },
     Get {
+        id: String,
+    },
+    /// Read the neutral terminal execution record (new attempts or repaired ones).
+    Execution {
         id: String,
     },
     Wait {
@@ -595,296 +606,8 @@ fn submit(root: &Path, id: &str) -> Result<()> {
         )),
     }
 }
-/// Drop reservations whose holders are provably gone: a previous boot, an
-/// inactive systemd unit with an empty cgroup, or an attempt whose launcher
-/// and worker locks are both free. Unknown liveness keeps the reservation.
-fn reconcile_ledger(root: &Path, ledger: &mut Value) -> Result<()> {
-    let current_boot = boot()?;
-    let keys: Vec<String> = ledger
-        .as_object()
-        .ok_or("invalid ledger")?
-        .keys()
-        .cloned()
-        .collect();
-    for id in keys {
-        let r = &ledger[&id];
-        let old_boot = r["boot_id"].as_str().is_some_and(|b| b != current_boot);
-        // A running service owns its reservation. A missing/unknown manager state is not proof of death.
-        let stopped = if let Some(unit) = r["unit"].as_str() {
-            let args = vec![
-                "systemctl".into(),
-                "--user".into(),
-                "show".into(),
-                unit.into(),
-                "--property=ActiveState,ControlGroup".into(),
-            ];
-            match bounded_command(&args, vec![], Duration::from_secs(5), 16384) {
-                Ok((s, out, _)) if s.success() => {
-                    let v = String::from_utf8_lossy(&out);
-                    let inactive = v
-                        .lines()
-                        .any(|x| x == "ActiveState=inactive" || x == "ActiveState=failed");
-                    let cg = v.lines().find_map(|x| x.strip_prefix("ControlGroup="));
-                    // Only accept manager-empty cgroup, or an explicitly unpopulated cgroup.events.
-                    let empty = match cg {
-                        Some("") => true,
-                        Some(c) if c.starts_with('/') && !c.contains("..") => {
-                            fs::read_to_string(format!("/sys/fs/cgroup{c}/cgroup.events"))
-                                .map(|s| s.lines().any(|x| x == "populated 0"))
-                                .unwrap_or(false)
-                        }
-                        _ => false,
-                    };
-                    inactive && empty
-                }
-                _ => false,
-            }
-        } else {
-            false
-        };
-        // Foreground jobs have no unit; a launcher killed by SIGKILL (or a
-        // closed terminal) would otherwise hold its slots until reboot.
-        let gone = directory(root, &id)
-            .map(|dir| attempt_processes_gone(&dir))
-            .unwrap_or(false);
-        if old_boot || stopped || gone {
-            ledger.as_object_mut().unwrap().remove(&id);
-        }
-    }
-    Ok(())
-}
-fn admit(root: &Path, id: &str, dir: &Path, slots: usize) -> Result<bool> {
-    if stop_request(dir) != Stop::None {
-        return Ok(false);
-    }
-    let _guard = lock(&root.join("slots.lock"))?;
-    let mut ledger = optional(&root.join("slots.json"))?;
-    reconcile_ledger(root, &mut ledger)?;
-    let used = ledger
-        .as_object()
-        .ok_or("bad ledger")?
-        .values()
-        .try_fold(0u64, |s, v| {
-            s.checked_add(v["slots"].as_u64().ok_or("bad slots")?)
-                .ok_or("slots overflow")
-        })?;
-    if ledger.get(id).is_some() {
-        return Err("attempt already reserved; refusing duplicate launch".into());
-    }
-    let accepted = used
-        .checked_add(slots as u64)
-        .is_some_and(|n| n <= capacity(root).unwrap_or(0));
-    if accepted {
-        let p = read(&dir.join("provenance.json"))?;
-        ledger[id] = json!({"slots":slots,"boot_id":boot()?,"unit":p["unit"],"launcher_pid":std::process::id()});
-    }
-    write_atomic_json(&root.join("slots.json"), &ledger)?;
-    Ok(accepted)
-}
-fn release(root: &Path, id: &str) -> Result<()> {
-    let _g = lock(&root.join("slots.lock"))?;
-    let mut l = optional(&root.join("slots.json"))?;
-    l.as_object_mut().ok_or("invalid ledger")?.remove(id);
-    write_atomic_json(&root.join("slots.json"), &l)?;
-    Ok(())
-}
-fn finish(dir: &Path, spec: &Request, status: &str, exact: bool, elapsed: f64) -> Result<()> {
-    let p = read(&dir.join("provenance.json"))?;
-    let worker_digest = p["worker_digest"].as_str().ok_or("missing worker digest")?;
-    // A journal that cannot be replayed (for example a worker that wrote an
-    // invalid record) still ends the attempt: `failed`, with no trusted
-    // results or work totals, instead of a job left `running` forever.
-    let (status, mut run) = match result::manifest(dir, spec, status, exact, elapsed, worker_digest)
-    {
-        Ok(run) => (status, run),
-        Err(e) => (
-            "failed",
-            result::unreadable_manifest(spec, elapsed, worker_digest, &e.to_string()),
-        ),
-    };
-    run["runner"]["attempt_id"] = p["attempt_id"].clone();
-    run["runner"]["build"] = p["build"].clone();
-    write_atomic_json(&dir.join("run.json"), &run)?;
-    let mut state = read(&dir.join("job.json"))?;
-    state["state"] = json!(status);
-    state["finished_at"] = json!(now());
-    state_write(&dir.join("job.json"), &state)?;
-    Ok(())
-}
 fn launch(root: &Path, id: &str) -> Result<()> {
-    let dir = directory(root, id)?;
-    let _owner = lock(&dir.join("job.lock"))?;
-    let mut state = read(&dir.join("job.json"))?;
-    if !matches!(state["state"].as_str(), Some("submitted" | "starting")) {
-        return Err("attempt already started; no implicit restart".into());
-    }
-    let s = spec(&dir.join("resolved.json"))?;
-    install_stop_handlers();
-    state["state"] = json!("waiting");
-    state_write(&dir.join("job.json"), &state)?;
-    let queue = Instant::now();
-    loop {
-        if stop_request(&dir) != Stop::None {
-            finish(&dir, &s, "cancelled", true, 0.0)?;
-            return Ok(());
-        }
-        if admit(root, id, &dir, s.slots())? {
-            break;
-        }
-        thread::sleep(Duration::from_millis(200));
-    }
-    let start = Instant::now();
-    state["state"] = json!("running");
-    state["started_at"] = json!(now());
-    state["queue_seconds"] = json!(queue.elapsed().as_secs_f64());
-    if let Err(e) = state_write(&dir.join("job.json"), &state) {
-        release(root, id)?;
-        return Err(e);
-    }
-    let mut safely_stopped = true;
-    let outcome = execute_worker(&dir, &s, start, &mut safely_stopped);
-    // execute_worker always reaps/cleans the group once spawn succeeds.
-    if safely_stopped {
-        release(root, id)?;
-    }
-    match outcome {
-        Ok((status, exact)) => finish(&dir, &s, &status, exact, start.elapsed().as_secs_f64()),
-        Err(e) => {
-            let _ = finish(&dir, &s, "failed", false, start.elapsed().as_secs_f64());
-            Err(e)
-        }
-    }
-}
-fn execute_worker(
-    dir: &Path,
-    s: &Request,
-    start: Instant,
-    safely_stopped: &mut bool,
-) -> Result<(String, bool)> {
-    let p = read(&dir.join("provenance.json"))?;
-    if json!(digest(&fs::read(dir.join("worker"))?)) != p["worker_digest"] {
-        return Err("staged worker digest mismatch".into());
-    }
-    let stdout = fs::File::create(dir.join("stdout.log"))?;
-    let stderr = fs::File::create(dir.join("stderr.log"))?;
-    let mut cmd = Command::new(dir.join("worker"));
-    cmd.arg("execute")
-        .arg(dir)
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .env("OMP_NUM_THREADS", "1")
-        .env("OPENBLAS_NUM_THREADS", "1")
-        .env("MKL_NUM_THREADS", "1");
-    group(&mut cmd);
-    let mut child = cmd.spawn()?;
-    let pgid = child.id();
-    *safely_stopped = false;
-    if let Err(e) = write_atomic_json(
-        &dir.join("worker-process.json"),
-        &json!({"pgid":pgid,"boot_id":boot()?}),
-    ) {
-        terminate_process_group(&mut child);
-        let _ = child.wait();
-        *safely_stopped = group_stopped(pgid).unwrap_or(false);
-        return Err(e.into());
-    }
-    let a = child.stdout.take().unwrap();
-    let b = child.stderr.take().unwrap();
-    let ta = thread::spawn(move || drain_file(a, stdout, 1_048_576));
-    let tb = thread::spawn(move || drain_file(b, stderr, 1_048_576));
-    // The worker checks `cancel.request` between retry waves. A graceful stop
-    // lets the active wave finish; the wall-time deadline plus the declared
-    // grace, or an immediate stop, kills the worker group.
-    let wall = Duration::from_secs_f64(s.wall());
-    let hard_deadline = start + wall + Duration::from_secs_f64(s.grace());
-    let mut reason = None;
-    let mut immediate_deadline: Option<Instant> = None;
-    let mut signalled = 0;
-    let polled = (|| -> Result<std::process::ExitStatus> {
-        loop {
-            if let Some(exit) = child.try_wait()? {
-                return Ok(exit);
-            }
-            let request = stop_request(dir);
-            if reason.is_none() {
-                if request != Stop::None {
-                    reason = Some("cancelled");
-                } else if start.elapsed() >= wall {
-                    reason = Some("timed_out");
-                    // A cancellation published since the request was read
-                    // stays: the marker never replaces a stronger one.
-                    publish_stop(dir, json!({"mode":"graceful","reason":"timed_out"}))?;
-                }
-            }
-            // A signal-only request must still reach the worker; one already
-            // published at that strength or above stays as it is.
-            let from_signals = SIGNALS.load(Ordering::Relaxed);
-            if from_signals > signalled {
-                signalled = from_signals;
-                let mode = if from_signals > 1 {
-                    "immediate"
-                } else {
-                    "graceful"
-                };
-                publish_stop(
-                    dir,
-                    json!({"mode":mode,"reason":"signal","requested_at":now()}),
-                )?;
-            }
-            if request == Stop::Immediate && immediate_deadline.is_none() {
-                immediate_deadline = Some(Instant::now() + IMMEDIATE_GRACE);
-            }
-            let deadline = immediate_deadline.map_or(hard_deadline, |d| d.min(hard_deadline));
-            if Instant::now() >= deadline {
-                terminate_process_group(&mut child);
-                return Ok(child.wait()?);
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-    })();
-    terminate_process_group(&mut child);
-    let _ = child.wait();
-    let verify = Instant::now();
-    loop {
-        match group_stopped(pgid) {
-            Ok(true) => break,
-            _ if verify.elapsed() < Duration::from_secs(2) => {
-                thread::sleep(Duration::from_millis(10))
-            }
-            _ => {
-                write_atomic_json(
-                    &dir.join("containment.unknown"),
-                    &json!({"pgid":pgid,"reason":"group liveness unknown; slots retained"}),
-                )?;
-                return Err("worker group termination unverified; reservation retained".into());
-            }
-        }
-    }
-    *safely_stopped = true;
-    ta.join().map_err(|_| "stdout drainer panic")??;
-    tb.join().map_err(|_| "stderr drainer panic")??;
-    let exit = polled?;
-    let worker = if exit.success() {
-        worker_outcome(dir, s)?
-    } else {
-        None
-    };
-    let normal = worker.is_some();
-    let status = match (reason, worker) {
-        (Some(reason), _) => reason.to_string(),
-        (None, Some((status, _))) => status,
-        (None, None) => "failed".into(),
-    };
-    Ok((status, normal))
-}
-/// The worker's own `run.json`, if it is a complete manifest consistent with
-/// the journal: returns its status and elapsed time.
-fn worker_outcome(dir: &Path, s: &Request) -> Result<Option<(String, f64)>> {
-    result::worker_outcome(dir, s)
+    execution::launch(root, id, optimization::Adapter::load)
 }
 fn get(root: &Path, id: &str) -> Result<Value> {
     let dir = directory(root, id)?;
@@ -950,6 +673,12 @@ fn main_result() -> Result<()> {
         }
         Err(e) => return Err(coded("invalid_command", e.render().to_string())),
     };
+    if let Cmd::Node {
+        command: Node::Capabilities,
+    } = &cli.command
+    {
+        return output(execution::capabilities());
+    }
     let selected = cli
         .root
         .or_else(|| std::env::var_os("FCMAES_RUN_ROOT").map(PathBuf::from))
@@ -988,9 +717,12 @@ fn main_result() -> Result<()> {
             let host = host::host();
             let capacity = capacity(&root).ok();
             output(
-                json!({"systemd_user_manager":check_systemd().is_ok(),"boot_id":boot()?,"capacity":capacity,"logout_survival":"requires user manager lingering; verify on host","host":host,"warnings":host::warnings(capacity, &host)}),
+                json!({"systemd_user_manager":check_systemd().is_ok(),"boot_id":boot()?,"capacity":capacity,"logout_survival":"requires user manager lingering; verify on host","host":host,"warnings":host::warnings(capacity, &host),"capabilities":execution::capabilities()}),
             )
         }
+        Cmd::Node {
+            command: Node::Capabilities,
+        } => output(execution::capabilities()),
         Cmd::Workers {
             command: Workers::Add { id, executable },
         } => {
@@ -1130,6 +862,7 @@ fn main_result() -> Result<()> {
                 output(json!(jobs))
             }
             Jobs::Get { id } => output(get(&root, &id)?),
+            Jobs::Execution { id } => output(execution::record(&directory(&root, &id)?)?),
             Jobs::Wait { id, timeout } => {
                 if !timeout.is_finite() || timeout <= 0.0 {
                     return Err("positive finite timeout required".into());
@@ -1236,28 +969,7 @@ fn main_result() -> Result<()> {
                     ledger.as_object_mut().ok_or("invalid ledger")?.remove(&id);
                     write_atomic_json(&root.join("slots.json"), &ledger)?;
                 }
-                let s = spec(&dir.join("resolved.json"))?;
-                // A journal corrupt before its final line is not repaired; no
-                // record of it is trusted and `finish` seals the attempt failed.
-                let replayable = result::repair(&dir, &s).is_ok();
-                // An orphaned worker may have finished on its own after the
-                // launcher died; keep its exact result.
-                if unadmitted {
-                    // No worker ever ran: the attempt did provably zero work.
-                    finish(&dir, &s, "interrupted", true, 0.0)?;
-                } else if let Some((status, elapsed)) = replayable
-                    .then(|| worker_outcome(&dir, &s))
-                    .transpose()?
-                    .flatten()
-                {
-                    finish(&dir, &s, &status, true, elapsed)?;
-                } else {
-                    finish(&dir, &s, "interrupted", false, 0.0)?;
-                    // The execution duration is unknown after launcher loss.
-                    let mut r = read(&dir.join("run.json"))?;
-                    r["elapsed_seconds"] = Value::Null;
-                    write_atomic_json(&dir.join("run.json"), &r)?;
-                }
+                optimization::repair(&dir, unadmitted)?;
                 output(get(&root, &id)?)
             }
             Jobs::Artifact {

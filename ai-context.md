@@ -10,6 +10,18 @@ In another checkout, check `Cargo.toml`, the `describe_node`/`describe_worker`
 output and the linked guides before you rely on a command, option or claim.
 Over MCP, `get_guide` returns this file.
 
+P1 source addition (2026-10-24, after the 0.3.0 release): `node capabilities`
+and the `capabilities` member of `node doctor` / MCP `describe_node` report
+`execution.capabilities/0.1`. Only optimization jobs are dispatchable; command
+jobs, generic file transfer and fleet execution remain unsupported.
+`jobs execution JOB_ID` reads a neutral terminal `execution.record/0.1`
+observation with process exit/signal, containment, log references and a hashed
+native-result attachment. Mathematical claims and work remain in `run.json`.
+An active or older attempt without this sidecar returns `execution_unavailable`;
+use the existing `jobs get` and result tools. Recovery does not invent exit
+codes. See [execution discovery](docs/job-api.md#execution-discovery-and-terminal-observations).
+
+
 Start here when a user wants something optimized and no solver has been
 chosen yet, whether you will work through MCP, a shell or the user's own code.
 This file covers:

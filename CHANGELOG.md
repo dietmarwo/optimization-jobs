@@ -10,6 +10,18 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
+- P1: versioned `execution.capabilities/0.1` discovery through `node
+  capabilities`, `node doctor` and MCP `describe_node`; only optimization is
+  advertised. `jobs execution ID` reads an additive `execution.record/0.1`
+  terminal sidecar with process observations, containment, logs and a hashed
+  native result reference. Old attempts are not backfilled; missing records
+  return `execution_unavailable`. Published and embedded JSON schemas match.
+- A test-only neutral adapter covers success, failure, timeout, queued
+  cancellation and spawn/record-write failures without optimization output.
+  CLI regressions cover old-worker compatibility, zero exit without a native
+  result, signals, malformed journals, recovery and idempotent record reads.
+
+
 - A [rail-traffic prompt tutorial](tutorials/agentic/rail-traffic/README.md) with synthetic timetable recovery, service-delay caps, queue-preserving alternatives, independent enumeration, stress replay and a CI execution entry. It reuses the existing LP/IP worker.
 
 - Three further [prompt tutorials](tutorials/agentic/README.md): surrogate observation reuse and oscillator calibration, LP/IP relaxation and binary choices, and SQP multistart/backend checks. The driver verifies artifacts and independent numerical checks, with an explicit exception for the deliberately uncertified infeasibility claim. `build --chapter` selects the needed workers. A CI matrix builds and executes all three with real workers on current stable Rust, preserving plain diagnostic output and result artifacts.
@@ -34,6 +46,14 @@ revision. 0.3.0 is the first version on crates.io.
   index, the landing page and `llms.txt` (catalog key `comparison`).
 
 ### Changed
+
+- P1: extracted admission, process supervision and the internal execution
+  lifecycle from the runner CLI. Optimization-specific result validation and
+  manifest generation stay in an adapter; scheduling locks, conservative
+  reservations, job/worker/result contracts and existing CLI/MCP tools remain.
+- Errors fetching the boot ID after a process spawn now run the same guarded
+  cleanup as process-record write errors, so the spawned child is reaped.
+
 
 - The landing page catalog and `docs/discovery` record fcmaes-rust 0.2.1
   (PyPI and crates.io, 23 October 2026) after installing it from both

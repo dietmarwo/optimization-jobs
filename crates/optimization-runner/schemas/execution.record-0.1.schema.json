@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:optimization-jobs:schema:execution.record-0.1",
+  "title": "execution.record/0.1 terminal observation",
+  "description": "An additive terminal execution observation. Mathematical outcomes remain in the optional native result; no process exit code is inferred during repair. Only optimization is publicly dispatchable in P1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "attempt_id",
+    "identity",
+    "kind",
+    "state",
+    "source",
+    "cpu_slots",
+    "started_at",
+    "finished_at",
+    "elapsed_seconds",
+    "observation",
+    "logs",
+    "native_result"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "execution.record/0.1"
+    },
+    "attempt_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "identity": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "kind": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,80}$"
+    },
+    "state": {
+      "enum": [
+        "completed",
+        "failed",
+        "cancelled",
+        "timed_out",
+        "interrupted"
+      ]
+    },
+    "source": {
+      "enum": [
+        "launcher",
+        "repair"
+      ]
+    },
+    "cpu_slots": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "started_at": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "finished_at": {
+      "type": "number",
+      "minimum": 0
+    },
+    "elapsed_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "process",
+        "stop_reason",
+        "containment"
+      ],
+      "properties": {
+        "process": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "code",
+                "signal"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "signal": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1
+                }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "signal": {
+                      "type": "null"
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "type": "null"
+                    },
+                    "signal": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "stop_reason": {
+          "enum": [
+            "cancelled",
+            "timed_out",
+            null
+          ]
+        },
+        "containment": {
+          "enum": [
+            "not_started",
+            "stopped",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "logs": {
+      "type": "object",
+      "required": [
+        "stdout",
+        "stderr"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stdout": {
+          "enum": [
+            "stdout.log",
+            null
+          ]
+        },
+        "stderr": {
+          "enum": [
+            "stderr.log",
+            null
+          ]
+        }
+      }
+    },
+    "native_result": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "file",
+            "schema_version",
+            "bytes",
+            "sha256"
+          ],
+          "properties": {
+            "file": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            "schema_version": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              ]
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

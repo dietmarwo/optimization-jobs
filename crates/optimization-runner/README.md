@@ -24,6 +24,13 @@ optimization-run --root /tmp/node workers add --id fcmaes --executable /path/to/
 optimization-run --root /tmp/node run --spec JOB.json
 ```
 
+The P1 source iteration also provides `optimization-run node capabilities`
+and `optimization-run --root NODE jobs execution JOB_ID`. Capability discovery
+advertises only optimization; the neutral terminal record references the
+native result without interpreting mathematical claims. The internal adapter
+boundary is private. Command jobs and fleet execution remain future work;
+these additions are not in the published 0.3.0 binaries.
+
 Workers come from their own repositories:
 [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust),
 [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) and

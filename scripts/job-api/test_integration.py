@@ -161,6 +161,13 @@ else:
         for name in WORKERS:
             p,s,j,d,r=self.run_spec(self.fixture(name))
             self.assertEqual(j['state'],'completed');self.assertTrue(r['runner']['accounting_complete']);self.assertEqual(r['completed_tasks'],16)
+            execution = self.call('jobs', 'execution', j['id'])
+            self.assertEqual(execution['state'], 'completed')
+            self.assertEqual(execution['kind'], 'optimization')
+            self.assertEqual(execution['observation'], {
+                'process': {'code': 0, 'signal': None}, 'stop_reason': None, 'containment': 'stopped'})
+            self.assertEqual(execution['native_result']['sha256'], hashlib.sha256((d/'run.json').read_bytes()).hexdigest())
+            self.assertEqual(execution['native_result']['schema_version'], 'optimization.result/0.2')
             for rec in r['results']:
                 o=rec['outcome'];self.assertTrue(o['feasible']);self.assertIsNotNone(o['objective']);self.assertEqual(o['evidence']['level'],'rechecked',o)
                 if name=='lp-ip':self.assertAlmostEqual(o['objective'],7.);self.assertEqual(o['claim'],'numerical_optimum');self.assertAlmostEqual(o['details']['best_bound'],7.,places=10);self.assertLessEqual(o['details']['best_bound'],7.)
