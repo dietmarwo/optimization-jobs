@@ -30,6 +30,7 @@ cargo test --release --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 python3 -m pip install "jsonschema>=4.18,<5"
 JOB_API_REQUIRE_SCHEMA=1 python3 scripts/job-api/test_review.py   # runner regressions, fake worker
+JOB_API_REQUIRE_SCHEMA=1 python3 scripts/job-api/test_commands.py # command jobs and file transfers
 python3 scripts/job-api/test_mcp.py                               # MCP server
 ```
 

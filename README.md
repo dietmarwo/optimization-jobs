@@ -161,6 +161,17 @@ optimization-job-api = { path = "../optimization-jobs/crates/optimization-job-ap
 optimization-runner = { path = "../optimization-jobs/crates/optimization-runner" }
 ```
 
+## Trusted local commands and binary files
+
+After 0.3.0 the runner also runs opt-in command jobs (`execution.command/0.1`)
+and moves binary files with exact size and SHA-256 checks, on the same local
+admission budget as optimization jobs. Commands are trusted programs under the
+runner's user, not a sandbox, and they are off until the node owner runs
+`node commands --enable`. They are CLI-only: the MCP server refuses them. The
+[command and file guide](docs/job-api.md#trusted-local-command-jobs-and-binary-files)
+covers the request and result schemas, transfer limits and the
+build–run–collect example.
+
 ## Tests
 
 ```sh
@@ -169,6 +180,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --release --locked
 cargo build --release --locked -p optimization-runner
 python3 scripts/job-api/test_review.py            # with the fake worker
+python3 scripts/job-api/test_commands.py          # command jobs and file transfers
 python3 scripts/job-api/test_mcp.py               # the MCP server
 python3 scripts/job-api/test_integration.py \
   --fcmaes /path/to/fcmaes-job-worker \
@@ -185,12 +197,3 @@ repository, with `JOB_API_TARGET` pointing at their own `target/release`
 ## License
 
 MIT, see [LICENSE](LICENSE).
-
-## Trusted local commands and binary files
-
-Source after 0.3.0 supports opt-in `execution.command/0.1` jobs and verified
-binary transfers on the same local admission budget. Commands are trusted
-programs under the runner user, not a sandbox. Read the
-[command and file guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#trusted-local-command-jobs-and-binary-files)
-for `node commands --enable`, request/result schemas, transfer limits and the
-build–run–collect example. MCP submission remains optimization-only.
