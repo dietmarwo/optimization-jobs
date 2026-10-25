@@ -141,6 +141,35 @@ pub(crate) fn blob(root: &Path, hash: &str) -> Result<PathBuf> {
     Ok(root.join("blobs").join(hash))
 }
 pub(crate) fn put(root: &Path, source: &Path, bytes: u64, hash: &str) -> Result<Value> {
+    put_using(root, bytes, hash, |dest| {
+        if source == Path::new("-") {
+            copy(
+                &mut std::io::stdin().lock(),
+                dest,
+                bytes,
+                Some((bytes, hash)),
+            )
+        } else {
+            copy(&mut open(source)?, dest, bytes, Some((bytes, hash)))
+        }
+    })
+}
+pub(crate) fn put_stream(
+    root: &Path,
+    source: &mut impl Read,
+    bytes: u64,
+    hash: &str,
+) -> Result<Value> {
+    put_using(root, bytes, hash, |dest| {
+        copy(source, dest, bytes, Some((bytes, hash)))
+    })
+}
+fn put_using(
+    root: &Path,
+    bytes: u64,
+    hash: &str,
+    write: impl FnOnce(&Path) -> Result<Value>,
+) -> Result<Value> {
     crate::capacity(root)?;
     if bytes > MAX_FILE {
         return Err(fail("file exceeds 64 MiB"));
@@ -162,17 +191,7 @@ pub(crate) fn put(root: &Path, source: &Path, bytes: u64, hash: &str) -> Result<
             "blob store quota exceeded (1 GiB); remove unused retained blobs explicitly",
         ));
     }
-    let result = if source == Path::new("-") {
-        copy(
-            &mut std::io::stdin().lock(),
-            &dest,
-            bytes,
-            Some((bytes, hash)),
-        )?
-    } else {
-        copy(&mut open(source)?, &dest, bytes, Some((bytes, hash)))?
-    };
-    Ok(result)
+    write(&dest)
 }
 pub(crate) fn get(root: &Path, hash: &str, bytes: u64, dest: &Path) -> Result<Value> {
     crate::capacity(root)?;
@@ -229,6 +248,23 @@ mod tests {
         }
         assert!(copy(&mut Broken, &dest, 3, None).is_err());
         assert!(!dest.exists());
+    }
+    #[test]
+    fn blob_quota_counts_retained_bytes_before_streaming() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::write_atomic_json(&dir.path().join("node.json"), &json!({"capacity":1})).unwrap();
+        fs::create_dir(dir.path().join("blobs")).unwrap();
+        let retained = dir.path().join("blobs").join("a".repeat(64));
+        File::create(&retained)
+            .unwrap()
+            .set_len(STORE_LIMIT)
+            .unwrap();
+        let hash = optimization_job_api::storage::digest(b"x");
+        assert!(put_stream(dir.path(), &mut b"x".as_slice(), 1, &hash).is_err());
+        assert!(!blob(dir.path(), &hash).unwrap().exists());
+        fs::remove_file(retained).unwrap();
+        put_stream(dir.path(), &mut b"x".as_slice(), 1, &hash).unwrap();
+        verify(&blob(dir.path(), &hash).unwrap(), 1, &hash).unwrap();
     }
     #[test]
     fn never_clobbers_or_follows_links() {

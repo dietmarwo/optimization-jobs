@@ -253,13 +253,15 @@ class Execution(Node):
         self.assertEqual(result.returncode, 0, result.stderr)
         caps = json.loads(result.stdout)
         self.assertFalse(missing.exists())
-        self.validate_record("execution.capabilities-0.2.schema.json", caps)
+        self.validate_record("execution.capabilities-0.3.schema.json", caps)
         self.assertEqual(caps, self.call("node", "doctor")["capabilities"])
         self.assertEqual(caps["execution_kinds"], ["optimization", "command"])
         self.assertTrue(caps["generic_file_transfer"])
+        self.assertEqual(caps["fleet_placement"],"explicit")
+        self.assertTrue(caps["fleet"])
         path, _ = self.write({"schema_version": "execution.command/0.1", "argv": ["/bin/true"]})
         self.assertEqual(self.error("validate", "--spec", path)["code"], "commands_disabled")
-        for unsupported in ("command_jobs", "fleet"):
+        for unsupported in ("command_jobs",):
             self.assertFalse(caps[unsupported])
 
     def test_observed_exit_is_separate_from_the_native_optimization_outcome(self):

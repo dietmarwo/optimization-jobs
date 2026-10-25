@@ -416,7 +416,7 @@ claim, objective or work; report those from the result manifest. A job that
 has not finished returns `attempt_active` (wait, then ask again); one finished
 by an older runner returns `execution_unavailable`.
 `node capabilities` (and `capabilities` in `node doctor` and MCP
-`describe_node`) returns `execution.capabilities/0.2`: optimization jobs and
+`describe_node`) returns `execution.capabilities/0.3`: optimization jobs and
 opt-in trusted local commands, enabled kinds, binary file transfer limits and
 CLI-only command/file interfaces. Commands use `execution.command/0.1` with
 literal argv, explicit environment, hashed inputs, declared bounded outputs and
@@ -424,8 +424,17 @@ no automatic replay; enable with `node commands --enable`. Use `files put/get`
 and `jobs collect` for binary transfer. Their separate `command-result.json`
 records process/output facts, never mathematical claims. MCP submission and
 result summaries remain optimization-only. Commands share admission/cancellation
-but are not a sandbox or kernel resource limits. Fleet execution is still absent
+but are not a sandbox or kernel resource limits
 ([guide](docs/job-api.md#execution-discovery-and-terminal-observations)).
+On a coordinator, `fleet nodes add` pins an SSH node's endpoint and identity,
+`fleet submit --node NAME --spec FILE` places one optimization or command job
+there, and `fleet reconcile`, `cancel`, `repair` and `collect` follow it. A
+fixed helper receives every request as JSON on stdin, and remote launch
+requires a systemd user manager with lingering. Staging can resume, but an
+uncertain start is never moved or started again. Placement is explicit and
+CLI-only, not available over MCP; real-host service, logout and reboot
+behavior must be commissioned by the node's owner
+([SSH guide](docs/job-api.md#explicit-ssh-placement-and-recovery)).
 
 ### Results, claims and evidence
 

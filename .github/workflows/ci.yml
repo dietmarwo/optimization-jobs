@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python3 -m pip install "jsonschema>=4.18,<5"
+      - run: python3 -m pip install "jsonschema>=4.18,<5" "asyncssh>=2.24,<3"
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --release --locked
@@ -44,6 +44,7 @@ jobs:
           cargo build --release --locked -p optimization-runner
           python3 scripts/job-api/test_review.py
           python3 scripts/job-api/test_commands.py
+          python3 scripts/job-api/test_remote.py
           python3 scripts/job-api/test_mcp.py
       # In a container whose /proc belongs to an enclosing PID namespace,
       # /proc directory names are not the PIDs this namespace uses; the tests
@@ -95,7 +96,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python3 -m pip install "jsonschema>=4.18,<5"
+      - run: python3 -m pip install "jsonschema>=4.18,<5" "asyncssh>=2.24,<3"
       - name: Build this runner and the three workers
         env:
           SDK: ${{ matrix.sdk }}
@@ -141,3 +142,16 @@ jobs:
               Jobs.test_a_real_worker_reports_claims_and_evidence \
               Jobs.test_a_real_worker_runs_its_examples_over_mcp_only
           done
+
+      - name: Explicit remote placement over OpenSSH (simulated user manager)
+        env:
+          JOB_API_REQUIRE_WORKER: "1"
+        run: |
+          bins="$RUNNER_TEMP/remote-bin"
+          mkdir -p "$bins"
+          ln -s "$PWD/target/release/optimization-run" "$PWD/target/release/optimization-mcp" "$bins/"
+          for item in fcmaes-rust:fcmaes-job-worker LP-IP-craft:lp-ip-job-worker SQP-craft:sqp-job-worker; do
+            repo=${item%%:*} binary=${item#*:}
+            ln -s "$RUNNER_TEMP/$repo/target/release/$binary" "$bins/$binary"
+          done
+          JOB_API_TARGET="$bins" python3 scripts/job-api/test_remote_ssh.py -v

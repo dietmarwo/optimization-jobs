@@ -172,6 +172,20 @@ runner's user, not a sandbox, and they are off until the node owner runs
 covers the request and result schemas, transfer limits and the
 build–run–collect example.
 
+## Explicit remote execution
+
+After 0.3.0 the runner can also place a job on a registered SSH node:
+`fleet nodes add/probe` pins a node's endpoint and identity, `fleet submit
+--node NAME` sends one optimization or command job there, and
+`fleet reconcile/resume/cancel/repair/collect` follow it. A fixed helper,
+`optimization-run remote serve`, receives every request as JSON on stdin, and
+persisted dispatch and launch intent keep uncertain work on its node: nothing
+is started twice or moved. Remote launch requires a systemd user manager with
+lingering on the node. Placement is explicit and CLI-only. The
+[SSH guide](docs/job-api.md#explicit-ssh-placement-and-recovery) covers
+provisioning, transfer limits, recovery rules and what the tests do not
+establish.
+
 ## Tests
 
 ```sh
@@ -181,6 +195,9 @@ cargo test --release --locked
 cargo build --release --locked -p optimization-runner
 python3 scripts/job-api/test_review.py            # with the fake worker
 python3 scripts/job-api/test_commands.py          # command jobs and file transfers
+python3 scripts/job-api/test_remote.py            # helper/dispatch fault tests; simulated manager
+# With all three worker binaries in JOB_API_TARGET:
+python3 scripts/job-api/test_remote_ssh.py        # real OpenSSH; simulated manager
 python3 scripts/job-api/test_mcp.py               # the MCP server
 python3 scripts/job-api/test_integration.py \
   --fcmaes /path/to/fcmaes-job-worker \
@@ -188,7 +205,9 @@ python3 scripts/job-api/test_integration.py \
 ```
 
 The schema checks need `pip install "jsonschema>=4.18,<5"`; CI sets
-`JOB_API_REQUIRE_SCHEMA=1` so they cannot be skipped. CI also builds the three
+`JOB_API_REQUIRE_SCHEMA=1` so they cannot be skipped. `test_remote_ssh.py`
+also needs `pip install "asyncssh>=2.24,<3"` and the OpenSSH client (`ssh`,
+`ssh-keygen`). CI also builds the three
 workers from their repositories' `main` and runs the harness on a mixed node.
 Worker repositories run the same scripts from Cargo's checkout of this
 repository, with `JOB_API_TARGET` pointing at their own `target/release`

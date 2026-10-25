@@ -54,3 +54,13 @@ programs under the runner user, not a sandbox. Read the
 [command and file guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#trusted-local-command-jobs-and-binary-files)
 for `node commands --enable`, request/result schemas, transfer limits and the
 build–run–collect example. MCP submission remains optimization-only.
+
+## Explicit remote execution
+
+Source after 0.3.0 adds `fleet nodes add/probe`, `fleet submit --node`,
+`fleet reconcile/resume/cancel/repair` and verified terminal `fleet collect`.
+A fixed SSH helper, pinned node identity and persisted dispatch/launch intent
+keep uncertain work on the selected node. Remote launch requires a responding
+systemd user manager and lingering. Read the
+[SSH guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#explicit-ssh-placement-and-recovery)
+for provisioning, bounded transfers, recovery rules and validation limits.
