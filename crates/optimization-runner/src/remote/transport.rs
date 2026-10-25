@@ -1,6 +1,6 @@
 //! Single-threaded nonblocking pipes bound control/transfer time even when a
 //! descendant keeps a pipe open. Output is spooled to disk, not a binary Vec.
-use super::{Endpoint, MAX_CONTROL, PROTOCOL, Request, Response, frame};
+use super::{Endpoint, Failure, MAX_CONTROL, PROTOCOL, Request, Response, frame};
 use optimization_job_api::{
     Result, coded,
     process::{group, terminate_process_group},
@@ -68,12 +68,70 @@ fn drain(
         }
     }
 }
+/// Runner codes a node's error keeps on the coordinator; any other code is
+/// reported as `remote_rejected`.
+const NODE_CODES: &[&str] = &[
+    "already_terminal",
+    "attempt_active",
+    "capacity_exceeded",
+    "commands_disabled",
+    "durable_launcher_unavailable",
+    "execution_unavailable",
+    "file_transfer_failed",
+    "invalid_command_spec",
+    "invalid_job",
+    "invalid_remote_node",
+    "liveness_unknown",
+    "node_identity_mismatch",
+    "node_identity_unavailable",
+    "node_not_initialized",
+    "remote_dispatch_unknown",
+    "remote_protocol",
+    "remote_worker_changed",
+    "request_key_conflict",
+    "systemd_unavailable",
+    "unknown_artifact",
+    "unknown_worker",
+    "unsupported_job_kind",
+    "unsupported_profile",
+    "worker_changed",
+];
+/// The error a node answered with, under its own code where it has one.
+pub(crate) fn refusal(failure: &Failure) -> optimization_job_api::Error {
+    let code = NODE_CODES
+        .iter()
+        .copied()
+        .find(|c| *c == failure.code)
+        .unwrap_or("remote_rejected");
+    let message = if code == failure.code {
+        format!("node: {}", failure.message)
+    } else {
+        format!("node: {}: {}", failure.code, failure.message)
+    };
+    coded(code, message)
+}
 pub(crate) fn call(
     endpoint: &Endpoint,
     node_id: Option<&str>,
     operation: super::Operation,
     input: Option<File>,
 ) -> Result<Reply> {
+    match exchange(endpoint, node_id, operation, input, &mut || Ok(()))? {
+        Ok(reply) => Ok(reply),
+        Err(failure) => Err(refusal(&failure)),
+    }
+}
+/// One request and its answer: the node's result, or the error it answered
+/// with (`Ok(Err)`), which means the helper ran to its end. `sent` runs after
+/// SSH started and before any request byte is written; when it fails, or when
+/// an error occurs before it, nothing reached the node.
+pub(crate) fn exchange(
+    endpoint: &Endpoint,
+    node_id: Option<&str>,
+    operation: super::Operation,
+    input: Option<File>,
+    sent: &mut dyn FnMut() -> Result<()>,
+) -> Result<std::result::Result<Reply, Failure>> {
     endpoint.validate()?;
     let req = Request {
         schema_version: PROTOCOL.into(),
@@ -105,6 +163,9 @@ pub(crate) fn call(
         "-oKnownHostsCommand=none",
         "-oUpdateHostKeys=no",
         "-oConnectionAttempts=1",
+        "-oVerifyHostKeyDNS=no",
+        "-oCheckHostIP=no",
+        "-oTunnel=no",
         "-oServerAliveInterval=5",
         "-oServerAliveCountMax=2",
     ])
@@ -134,6 +195,11 @@ pub(crate) fn call(
     let mut child = cmd
         .spawn()
         .map_err(|e| coded("remote_transport", format!("cannot start SSH: {e}")))?;
+    if let Err(error) = sent() {
+        terminate_process_group(&mut child);
+        let _ = child.wait();
+        return Err(error);
+    }
     let result = (|| -> Result<_> {
         let mut stdin = Some(child.stdin.take().unwrap());
         let mut stdout = child.stdout.take().unwrap();
@@ -224,27 +290,23 @@ pub(crate) fn call(
         if response.schema_version != PROTOCOL {
             return Err(coded("remote_protocol", "unsupported remote protocol"));
         }
-        if node_id.is_some() && response.node_id.as_deref() != node_id {
-            return Err(coded(
-                "node_identity_mismatch",
-                "remote node identity differs from the pinned identity",
-            ));
-        }
         if response.result.is_some() && response.error.is_some() {
             return Err(coded(
                 "remote_protocol",
                 "response has both success and error",
             ));
         }
-        if let Some(error) = response.error {
+        // An error raised before the helper read its identity has none; that
+        // error, not a mismatch, is the answer.
+        let identified = response.error.is_none() || response.node_id.is_some();
+        if node_id.is_some() && identified && response.node_id.as_deref() != node_id {
             return Err(coded(
-                if error.code == "attempt_active" {
-                    "attempt_active"
-                } else {
-                    "remote_rejected"
-                },
-                format!("{}: {}", error.code, error.message),
+                "node_identity_mismatch",
+                "remote node identity differs from the pinned identity",
             ));
+        }
+        if let Some(error) = response.error {
+            return Ok(Err(error));
         }
         let actual = response.node_id.clone();
         let value = response
@@ -259,11 +321,11 @@ pub(crate) fn call(
                 "discovery identity disagrees with response envelope",
             ));
         }
-        Ok(Reply {
+        Ok(Ok(Reply {
             value,
             body: reader,
             _spool: out,
-        })
+        }))
     })();
     if result.is_err() {
         terminate_process_group(&mut child);

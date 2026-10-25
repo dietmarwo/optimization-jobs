@@ -11,10 +11,14 @@ revision. 0.3.0 is the first version on crates.io.
 ### Added
 
 - Explicit SSH `fleet` placement and a fixed `remote serve` JSON/binary helper:
-  persistent node IDs, checked input snapshots, bounded transfer, strict SSH host
-  keys, worker pin checks and a systemd-user/lingering prerequisite. Dispatch
-  intent and the remote launch barrier preserve one selected node/attempt after
-  lost replies; staging and collection recover independently of execution.
+  persistent node IDs (`node init`; `node identity --init` for an existing
+  node), checked input snapshots, bounded transfer, strict SSH host keys, worker
+  pin checks and a systemd-user/lingering prerequisite. Dispatch intent and the
+  remote launch barrier preserve one selected node/attempt after lost replies;
+  staging and collection recover independently of execution. A node's refusal
+  is recorded there, is final for the request key and keeps its error code; a
+  request that never left the coordinator leaves the job staging, and a
+  repeated `fleet submit` continues or observes it.
 - Fleet observation, cancellation, guarded repair, terminal execution records and
   native/output/artifact collection. Capabilities 0.3 and published node, remote
   protocol and fleet-record schemas. Fault tests cover coordinator loss, lost

@@ -1,4 +1,4 @@
-use super::{Blob, Endpoint, Operation, Selection, node, transport};
+use super::{Blob, Endpoint, Failure, Operation, Selection, node, transport};
 use crate::{command, files, now, optional, read};
 use clap::{Subcommand, ValueEnum};
 use optimization_job_api::{
@@ -158,7 +158,8 @@ fn observe(state: &mut Value, answer: Value) -> Result<()> {
         ));
     }
     let key = format!("remote:{}", dispatch_id(state)?);
-    if r["job_id"] != digest(key.as_bytes())[..32] {
+    // A refused dispatch has no local job.
+    if !r["job_id"].is_null() && r["job_id"] != digest(key.as_bytes())[..32] {
         return Err(coded(
             "remote_protocol",
             "unexpected remote local-job mapping",
@@ -177,7 +178,7 @@ fn observe(state: &mut Value, answer: Value) -> Result<()> {
     let job = &answer["job"];
     let phase = if crate::terminal(&job["state"]) {
         "finished"
-    } else if r["phase"] == "prepare_failed" {
+    } else if matches!(r["phase"].as_str(), Some("prepare_failed" | "rejected")) {
         "rejected"
     } else if r["phase"] == "accepted"
         || r["phase"] == "observed_existing"
@@ -210,9 +211,53 @@ fn reconcile(dir: &Path, state: &mut Value) -> Result<()> {
     }
     save(dir, state)
 }
+fn start_unknown(state: &Value, cause: impl std::fmt::Display) -> optimization_job_api::Error {
+    let id = state["id"].as_str().unwrap_or("");
+    coded(
+        "start_unknown",
+        format!(
+            "fleet job {id} has an uncertain dispatch on its pinned node: {cause}; use fleet reconcile {id}"
+        ),
+    )
+}
+/// After a request may have reached the node: the dispatch is uncertain.
+fn uncertain(dir: &Path, state: &mut Value, cause: impl std::fmt::Display) -> Result<()> {
+    state["phase"] = json!("unknown");
+    state["last_error"] = json!(cause.to_string());
+    save(dir, state)?;
+    Err(start_unknown(state, cause))
+}
+/// The caller's view of a saved dispatch: a refused dispatch fails with the
+/// node's code, an uncertain one with `start_unknown`.
+fn settled(state: &Value) -> Result<()> {
+    match state["phase"].as_str() {
+        Some("rejected") => {
+            let error = &state["remote"]["dispatch"]["error"];
+            Err(transport::refusal(&Failure {
+                code: error["code"].as_str().unwrap_or("runner_error").into(),
+                message: error["message"]
+                    .as_str()
+                    .unwrap_or("the node refused this dispatch")
+                    .into(),
+                retryable: false,
+            }))
+        }
+        Some("unknown") => Err(start_unknown(state, "the node has not confirmed a start")),
+        _ => Ok(()),
+    }
+}
 fn send(dir: &Path, state: &mut Value) -> Result<()> {
     if state["phase"] != "staging" {
-        return reconcile(dir, state);
+        reconcile(dir, state)?;
+        return settled(state);
+    }
+    if state["spec"]["schema_version"] == command::SCHEMA
+        && std::env::var_os(command::REFUSE).is_some()
+    {
+        return Err(coded(
+            "unsupported_job_kind",
+            "this caller refuses command jobs",
+        ));
     }
     let e = endpoint(state)?;
     let id = bound_node(state)?.to_owned();
@@ -243,36 +288,64 @@ fn send(dir: &Path, state: &mut Value) -> Result<()> {
             ));
         }
     }
-    state["phase"] = json!("dispatching");
-    save(dir, state)?;
-    let result = json_call(
-        &e,
-        Some(&id),
-        Operation::Submit {
-            dispatch_id: dispatch_id(state)?.into(),
-            identity: state["identity"].as_str().ok_or("missing identity")?.into(),
-            spec: state["spec"].clone(),
-            inputs: blobs,
-            worker: state["worker"].as_object().map(|_| state["worker"].clone()),
-        },
-    );
-    match result {
-        Ok(value) => {
-            observe(state, value)?;
-            save(dir, state)
-        }
-        Err(error) => {
-            state["phase"] = json!("unknown");
+    let dispatch = dispatch_id(state)?.to_owned();
+    let operation = Operation::Submit {
+        dispatch_id: dispatch.clone(),
+        identity: state["identity"].as_str().ok_or("missing identity")?.into(),
+        spec: state["spec"].clone(),
+        inputs: blobs,
+        worker: state["worker"].as_object().map(|_| state["worker"].clone()),
+    };
+    // The intent is saved after SSH started and before the request is written:
+    // an error before that point leaves the job staging, with nothing sent.
+    let mut sent = false;
+    let answer = transport::exchange(&e, Some(&id), operation, None, &mut || {
+        state["phase"] = json!("dispatching");
+        save(dir, state)?;
+        sent = true;
+        Ok(())
+    });
+    match answer {
+        Err(error) if !sent => {
             state["last_error"] = json!(error.to_string());
             save(dir, state)?;
-            Err(coded(
-                "start_unknown",
-                format!(
-                    "fleet job {} has an uncertain dispatch on its pinned node: {error}; use fleet reconcile {}",
-                    state["id"].as_str().unwrap_or(""),
-                    state["id"].as_str().unwrap_or("")
-                ),
-            ))
+            Err(error)
+        }
+        Err(error) => uncertain(dir, state, error),
+        Ok(Ok(mut reply)) => {
+            let mut byte = [0];
+            if reply.body.read(&mut byte)? != 0 {
+                return uncertain(dir, state, "unexpected bytes after control response");
+            }
+            observe(state, reply.value)?;
+            save(dir, state)?;
+            settled(state)
+        }
+        Ok(Err(failure)) => {
+            // The helper answered, so it has finished, and its dispatch record,
+            // if it wrote one, is final for this request.
+            let refusal = transport::refusal(&failure);
+            match json_call(
+                &e,
+                Some(&id),
+                Operation::Lookup {
+                    dispatch_id: dispatch,
+                },
+            ) {
+                Ok(answer) if answer["found"] == false => {
+                    state["phase"] = json!("staging");
+                    state["last_error"] = json!(refusal.to_string());
+                    save(dir, state)?;
+                    Err(refusal)
+                }
+                Ok(answer) => {
+                    observe(state, answer)?;
+                    save(dir, state)?;
+                    settled(state)?;
+                    Err(refusal)
+                }
+                Err(error) => uncertain(dir, state, format!("{refusal}; lookup: {error}")),
+            }
         }
     }
 }
@@ -289,7 +362,7 @@ fn submit(root: &Path, name: &str, input: &Path) -> Result<Value> {
     let mut spec: Value = serde_json::from_slice(&bytes)?;
     match spec["schema_version"].as_str() {
         Some(command::SCHEMA) => {
-            if std::env::var_os("OPTIMIZATION_RUN_REFUSE_COMMANDS").is_some() {
+            if std::env::var_os(command::REFUSE).is_some() {
                 return Err(coded(
                     "unsupported_job_kind",
                     "this caller refuses command jobs",
@@ -319,6 +392,28 @@ fn submit(root: &Path, name: &str, input: &Path) -> Result<Value> {
     let id = digest(key.as_bytes())[..32].to_owned();
     let target = dir(root, &id)?;
     let _guard = lock(&root.join("fleet").join(format!("{id}.lock")))?;
+    if target.exists() {
+        // The same request again continues or observes the persisted job; it
+        // needs neither the node's current state nor the original input files.
+        let mut state = read(&target.join("dispatch.json"))?;
+        let mut normalized = spec.clone();
+        for (index, input) in normalized["inputs"]
+            .as_array_mut()
+            .ok_or("inputs must be an array")?
+            .iter_mut()
+            .enumerate()
+        {
+            input["file"] = json!(format!("remote-input-{index}"));
+        }
+        if state["spec"] != normalized || state["node_name"] != name {
+            return Err(coded(
+                "request_key_conflict",
+                "fleet key already binds different work or placement; an uncertain attempt cannot move to another node",
+            ));
+        }
+        send(&target, &mut state)?;
+        return Ok(state);
+    }
     let node = registered(root, name)?;
     let e: Endpoint = serde_json::from_value(node["endpoint"].clone())?;
     let discovery = json_call(&e, node["node_id"].as_str(), Operation::Describe)?;
@@ -394,17 +489,6 @@ fn submit(root: &Path, name: &str, input: &Path) -> Result<Value> {
     let identity = digest(&serde_json::to_vec(
         &json!({"spec":spec,"inputs":blobs,"node":node,"worker":worker}),
     )?);
-    if target.exists() {
-        let mut state = read(&target.join("dispatch.json"))?;
-        if state["identity"] != identity {
-            return Err(coded(
-                "request_key_conflict",
-                "fleet key already binds different work or placement; an uncertain attempt cannot move to another node",
-            ));
-        }
-        reconcile(&target, &mut state)?;
-        return Ok(state);
-    }
     if discovery["durable_launcher"]["available"] != true {
         return Err(coded(
             "durable_launcher_unavailable",

@@ -102,8 +102,9 @@ class Remote(unittest.TestCase):
         self.assertEqual(len(self.units()),1)
     def test_launch_failure_stays_uncertain_and_does_not_replay(self):
         spec=command();spec['resources']['cpu_slots']=1;path,id=self.write(spec)
-        state=self.call('fleet','submit','--node','a','--spec',path,env=dict(self.env,REMOTE_FAIL_START='1'))
-        self.assertEqual(state['phase'],'unknown');self.call('fleet','resume',id);self.call('fleet','reconcile',id)
+        self.assertEqual(self.error('fleet','submit','--node','a','--spec',path,env=dict(self.env,REMOTE_FAIL_START='1'))['code'],'start_unknown')
+        self.assertEqual(self.error('fleet','resume',id)['code'],'start_unknown')
+        self.assertEqual(self.call('fleet','reconcile',id)['phase'],'unknown')
         self.assertFalse(self.units())
         self.assertEqual(self.error('fleet','submit','--node','b','--spec',path)['code'],'request_key_conflict')
     def test_coordinator_death_during_dispatch(self):
@@ -167,5 +168,70 @@ class Remote(unittest.TestCase):
         self.assertEqual(self.error('fleet','submit','--node','a','--spec',path)['code'],'commands_disabled')
         self.call('node','commands','--enable',root=self.nodes[0]);spec['resources']['cpu_slots']=3;path,_=self.write(spec)
         self.assertEqual(self.error('fleet','submit','--node','a','--spec',path)['code'],'capacity_exceeded')
+
+    def staged(self,spec):
+        """A fleet job left staging: its coordinator died during the input upload."""
+        path,id=self.write(spec);pause=self.base/'pause-put'
+        process=subprocess.Popen([str(RUN),'--root',str(self.root),'fleet','submit','--node','a','--spec',str(path)],env=dict(self.env,REMOTE_PAUSE_PUT=str(pause)),stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        self.children.append(process);self.wait(pause.exists);process.kill();process.communicate(timeout=3)
+        pause.with_suffix('.go').touch();self.assertEqual(self.call('fleet','get',id)['phase'],'staging')
+        return path,id
+    def submits(self):
+        log=self.base/'calls.jsonl'
+        return [row for row in map(json.loads,log.read_text().splitlines()) if row['operation']=='submit'] if log.exists() else []
+
+    def test_a_node_refusal_is_final_and_keeps_its_code(self):
+        from test_review import envelope
+        spec=envelope('fake',{'mode':'complete'});spec['resources']={'cpu_slots':1,'outer_workers':1,'inner_threads':1}
+        data=b'model';(self.base/'model').write_bytes(data);spec['inputs']=[{'name':'model','file':'model','sha256':digest(data)}]
+        path,id=self.staged(spec)
+        changed=self.base/'fake_changed.py';changed.write_text(Path(FAKE).read_text()+'\n# another build\n');changed.chmod(0o755)
+        self.call('workers','add','--id','fake','--executable',changed,root=self.nodes[0])
+        self.assertEqual(self.error('fleet','resume',id)['code'],'remote_worker_changed')
+        state=self.call('fleet','reconcile',id);self.assertEqual(state['phase'],'rejected')
+        self.assertEqual(state['remote']['dispatch']['error']['code'],'remote_worker_changed')
+        self.assertEqual(self.error('fleet','submit','--node','a','--spec',path)['code'],'remote_worker_changed')
+        self.assertEqual(self.error('fleet','cancel',id)['code'],'remote_dispatch_unknown')
+        self.assertFalse(self.units());self.assertEqual(len(self.submits()),1)
+
+    def test_a_request_that_never_left_stays_staging(self):
+        from test_review import envelope
+        # Just under the 4 MiB request limit, so the Submit frame is just over it.
+        spec=envelope('fake',{'mode':'complete','padding':''})
+        spec['resources']={'cpu_slots':1,'outer_workers':1,'inner_threads':1};path,id=self.write(spec)
+        spec=json.loads(path.read_text());spec['payload']['padding']='x'*(4*1024*1024-10-path.stat().st_size);path.write_text(json.dumps(spec))
+        for _ in range(2):
+            self.assertEqual(self.error('fleet','submit','--node','a','--spec',path)['code'],'remote_protocol')
+            self.assertEqual(self.call('fleet','get',id)['phase'],'staging')
+        self.assertFalse(self.submits());self.assertFalse(self.units())
+
+    def test_an_interrupted_preparation_is_settled_by_lookup(self):
+        from test_review import envelope
+        # The node's 6 s validation outlasts the 3 s control deadline, so the
+        # client stops the helper after the dispatch record, before the barrier.
+        spec=envelope('fake',{'mode':'complete','validate_sleep':6});spec['resources']={'cpu_slots':1,'outer_workers':1,'inner_threads':1}
+        path,id=self.write(spec)
+        self.assertEqual(self.error('fleet','submit','--node','a','--spec',path)['code'],'start_unknown')
+        state=self.call('fleet','reconcile',id);self.assertEqual(state['phase'],'rejected')
+        self.assertEqual(state['remote']['dispatch']['error']['code'],'interrupted')
+        self.assertEqual(self.error('fleet','resume',id)['code'],'remote_rejected')
+        self.assertFalse(self.units())
+
+    def test_staging_resumes_by_repeating_the_request_and_refuses_commands_for_mcp(self):
+        data=b'payload';(self.base/'data').write_bytes(data)
+        spec=command([sys.executable,'-c',"from pathlib import Path; assert Path('data').read_bytes()==b'payload'"]);spec['resources']['cpu_slots']=1
+        spec['inputs']=[{'path':'data','file':'data','sha256':digest(data),'bytes':len(data)}]
+        path,id=self.staged(spec)
+        refuse=dict(self.env,OPTIMIZATION_RUN_REFUSE_COMMANDS='1')
+        self.assertEqual(self.error('fleet','resume',id,env=refuse)['code'],'unsupported_job_kind')
+        self.assertEqual(self.call('fleet','get',id)['phase'],'staging');self.assertFalse(self.submits())
+        (self.base/'data').unlink();self.call('fleet','submit','--node','a','--spec',path)
+        self.finished(id);self.assertEqual(len(self.units()),1);self.assertEqual(len(self.submits()),1)
+        changed=json.loads(path.read_text());changed['env']={'CHANGED':'1'};path.write_text(json.dumps(changed))
+        self.assertEqual(self.error('fleet','submit','--node','a','--spec',path)['code'],'request_key_conflict')
+
+    def test_early_node_errors_are_not_identity_mismatches(self):
+        node=json.loads((self.nodes[0]/'node.json').read_text());del node['node_id'];(self.nodes[0]/'node.json').write_text(json.dumps(node))
+        self.assertEqual(self.error('fleet','nodes','probe','a')['code'],'node_identity_unavailable')
 
 if __name__=='__main__':unittest.main()

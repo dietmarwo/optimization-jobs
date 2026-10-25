@@ -46,6 +46,8 @@ impl Endpoint {
             || self.port == 0
             || !self.root.is_absolute()
             || self.root.to_string_lossy().len() > 4096
+            // systemd-run would expand `$` in the launcher's --root argument.
+            || self.root.to_string_lossy().contains('$')
             || !self.helper.starts_with('/')
             || !word(&self.helper, b"/._-", 4096)
             || self.helper.split('/').any(|s| s == ".." || s == ".")
@@ -62,7 +64,7 @@ impl Endpoint {
         {
             return Err(coded(
                 "invalid_remote_node",
-                "invalid host/user/port, absolute root/helper/key paths or timeout (1..300 seconds)",
+                "invalid host/user/port, absolute root (without `$`), helper or key paths, or timeout (1..300 seconds)",
             ));
         }
         Ok(())
@@ -194,6 +196,9 @@ mod tests {
             timeout_seconds: 30,
         };
         assert!(e.validate().is_ok());
+        e.root = "/srv/$HOME/jobs".into();
+        assert!(e.validate().is_err());
+        e.root = "/srv/jobs with spaces".into();
         for helper in [
             "runner",
             "/bin/runner;touch /tmp/pwned",

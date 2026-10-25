@@ -494,12 +494,16 @@ refuses to overwrite a name bound to another endpoint/identity; use another name
 for a deliberate change. Root/key/helper paths are absolute. The helper and
 known-hosts path use ASCII letters/digits and `/._-`, without spaces or shell
 syntax; the helper also rejects dot traversal. Remote roots and request values
-travel as JSON and may contain spaces. SSH uses batch authentication, strict
-host-key checking, one connection attempt, no TTY, and no forwarding. Each call
-disables connection multiplexing and host-key updates, and uses the selected
-known-hosts file without global/dynamic alternatives. It never accepts a host
-key automatically. The remote non-interactive shell must keep protocol stdout
-free of login banners. Private key bytes stay on the client.
+travel as JSON and may contain spaces and shell syntax, but a remote root may
+not contain `$`, which `systemd-run` would expand. SSH uses batch
+authentication, strict host-key checking, one connection attempt, no TTY, and
+no forwarding. Each call disables connection multiplexing, host-key updates,
+DNS host keys and IP checks, and uses the selected known-hosts file without
+global/dynamic alternatives. It never accepts a host key automatically. The
+coordinator runs `ssh` from its `PATH` and reads the owner's SSH configuration
+(for a `ProxyJump`, say); these options override it. The remote non-interactive
+shell must keep protocol stdout free of login banners. Private key bytes stay
+on the client.
 
 Submit an existing shared optimization or command request with explicit
 placement:
@@ -544,14 +548,27 @@ uncertain attempt to another endpoint. A node identity or worker-digest mismatch
 refuses new work. SSH/control timeout (1–300 seconds) is distinct from the
 execution wall limit; a timed-out control request does not cancel the job.
 
+`submit` and `resume` succeed when the node accepted or already finished the
+job. A refusal by the node (a changed worker, disabled commands, an invalid
+request) is recorded on the node and is final for the request key; the caller
+gets the node's code. An uncertain start returns `start_unknown`. A request that
+never left the coordinator, such as one too large for a control frame, leaves
+the job staging. Repeating the same `fleet submit` continues a staging job or
+observes its dispatch, without the node's current state or the original input
+files; different work or another node under the same key is
+`request_key_conflict`.
+
 `get` reads local persisted state. `reconcile` observes the same remote dispatch
 and does not launch. `resume` may continue only a staging intent for which no
 launch request was issued; it uses retained snapshots, so original client inputs
-are unnecessary. Once a request was issued, resume also only observes. A crash
-between the node's launch barrier and the actual launcher call can leave an
-indefinitely uncertain start. Inspect the recorded local job/unit and use the
-existing guarded `repair` operation when liveness can be proved gone. There is
-no automatic replay, failover, repair or invented successful exit.
+are unnecessary. Once a request was issued, resume also only observes. If the
+helper stopped after recording the dispatch but before the launch barrier, the
+next observation records the dispatch as failed (`interrupted`): nothing was
+launched. If the launcher call itself failed after the barrier, the start stays
+uncertain: a transient unit could still exist, so the existing guarded
+`repair` answers `liveness_unknown` until the node has rebooted. Inspect the
+recorded unit with `systemctl --user` meanwhile. There is no automatic replay,
+failover, repair or invented successful exit.
 
 Retrieve verified terminal data independently from execution:
 
@@ -582,16 +599,21 @@ Coordinator snapshots, dispatch records and verified blobs are retained until
 explicit owner cleanup. Ordinary errors remove transfer temporary files. A
 SIGKILL can leave `.fleet-stage-*` directories or `.optimization-ssh-*` spools;
 after confirming no writer is active, inspect/remove those uncommitted partials.
-Node upload partials use `files cleanup`. No cleanup operation silently deletes
-verified inputs or completed work.
+Node upload partials use `files cleanup`. On a node, a helper stopped during
+preparation can leave `.tmp*` or `.staging-*` directories in the node root and
+a prepared local job that was never launched. No cleanup operation silently
+deletes verified inputs or completed work.
 
 The fixed helper is `ABSOLUTE_HELPER remote serve`. Its
 [`execution.remote/0.1`](job-api/schemas/execution.remote-0.1.schema.json)
 request/response is one bounded JSON line; put/download append raw binary data.
 Roots, argument arrays, environment and model data never become remote shell
-text. Each mutation names the pinned node identity. The helper bounds stalled
-stdin/stdout I/O to five minutes; the client enforces the configured shorter
-control/transfer deadline and a two-second post-exit pipe drain. Discovery is
+text. Each mutation names the pinned node identity. The helper gives up on its
+stdin and stdout after 300 seconds in total; the client enforces the configured
+control/transfer deadline and a two-second post-exit pipe drain. A node's own
+error keeps its runner code on the coordinator (`invalid_job`,
+`remote_worker_changed`, `attempt_active`, `liveness_unknown`, …), with a
+message that starts with `node:`. Discovery is
 [`execution.node/0.1`](job-api/schemas/execution.node-0.1.schema.json).
 This is a trusted single-user SSH interface, not a multi-tenant sandbox.
 
@@ -685,9 +707,9 @@ prints one JSON line on stderr (`--help` and `--version` print normally):
 | `durable_launcher_unavailable` | Systemd user manager/lingering requirement is unmet | Commission the host; no detached fallback |
 | `remote_transport` | SSH authentication, connectivity, byte/drain or control deadline failure | For a possible launch, reconcile the existing dispatch |
 | `remote_protocol` | Unsupported/malformed frame or changed binding | Inspect peer/helper versions and persisted handles |
-| `remote_rejected` | Peer returned a coded error (code retained in the message; `attempt_active` retains its code and retryability) | Correct the reported condition; do not replay an uncertain launch |
+| `remote_rejected` | The node failed without a runner error code, or a dispatch was interrupted before its launch barrier (the node's code is in the message); a node's runner codes are returned as they are | Correct the reported condition; do not replay an uncertain launch |
 | `remote_worker_changed` | Worker digest changed since explicit placement | Review the worker and use a new request key |
-| `remote_dispatch_unknown` | No local node handle has been published | Reconcile/inspect the original dispatch |
+| `remote_dispatch_unknown` | The node has no dispatch with this ID, or the dispatch created no local job (it was refused or interrupted) | `fleet reconcile` shows the dispatch's phase |
 | `commands_disabled` | The node has not enabled trusted command jobs | Owner uses `node commands --enable` |
 | `invalid_command_spec` | Malformed command, changed staged identity/executable or invalid declaration | Correct the request; use a new key for changed work |
 | `file_transfer_failed` | Unsafe path, hash/size/quota failure, or destination already exists | Inspect inputs/partials and retry transfer to a new destination |
@@ -707,7 +729,7 @@ prints one JSON line on stderr (`--help` and `--version` print normally):
 | `attempt_active` | Repair while the attempt's launcher or worker still holds its lock; `jobs execution` before the attempt has finished | Wait (`jobs wait`), then repeat |
 | `liveness_unknown` | Repair of an attempt whose locks are free, but whose process group still exists or whose detached unit may still start | Inspect it (`jobs get`, `systemctl --user`); an attempt recorded on an earlier boot counts as ended |
 | `systemd_unavailable` | `submit` without a systemd user manager | Foreground `run` |
-| `start_unknown` | `submit` could not confirm the unit start; repeating does not launch again | Inspect the unit |
+| `start_unknown` | `submit`, or `fleet submit`/`resume`, could not confirm the start; repeating does not launch again | Inspect the unit; `fleet reconcile` for a fleet job |
 | `runner_error` | Anything else (I/O, a corrupt node file, a worker protocol violation) | Read the message |
 
 `retryable` is true only for `attempt_active`: a live process holds the

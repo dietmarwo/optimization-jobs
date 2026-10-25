@@ -14,8 +14,9 @@ pub(crate) fn fresh_id() -> Result<String> {
 }
 pub(crate) fn identity(root: &Path, initialize: bool) -> Result<Value> {
     capacity(root)?;
+    // node init and node commands change node.json under slots.lock too.
     let _guard = if initialize {
-        Some(lock(&root.join("registry.lock"))?)
+        Some(lock(&root.join("slots.lock"))?)
     } else {
         None
     };

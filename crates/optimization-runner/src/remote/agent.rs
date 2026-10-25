@@ -92,26 +92,66 @@ fn entry(root: &Path, id: &str) -> Result<PathBuf> {
     valid_id(id)?;
     Ok(root.join("remote-dispatch").join(format!("{id}.json")))
 }
+fn dispatch_lock(root: &Path, id: &str) -> PathBuf {
+    root.join("remote-dispatch").join(format!("{id}.lock"))
+}
+/// A `preparing` record whose dispatch lock is free belongs to a helper that
+/// stopped before the launch barrier: that dispatch launched nothing and never
+/// will. Call only while holding the dispatch lock.
+fn settle_interrupted(path: &Path) -> Result<()> {
+    let mut record = read(path)?;
+    if record["phase"] == "preparing" {
+        record["phase"] = json!("prepare_failed");
+        record["error"] = json!({"code":"interrupted","message":"the helper stopped before the launch barrier; nothing was launched"});
+        write_atomic_json(path, &record)?;
+    }
+    Ok(())
+}
 fn lookup(root: &Path, id: &str) -> Result<Value> {
     let path = entry(root, id)?;
     if !path.exists() {
         return Ok(json!({"found":false,"dispatch_id":id}));
     }
+    if read(&path)?["phase"] == "preparing" {
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(dispatch_lock(root, id))?;
+        // A held lock is a helper still preparing: the record stays as it is.
+        if fs2::FileExt::try_lock_exclusive(&file).is_ok() {
+            settle_interrupted(&path)?;
+        }
+    }
     let record = read(&path)?;
     let job = record["job_id"].as_str().and_then(|id| get(root, id).ok());
     Ok(json!({"found":true,"dispatch":record,"job":job}))
 }
+/// The local job of a dispatch, `remote_dispatch_unknown` when the node has no
+/// dispatch with this ID or created no job for it.
+fn local_job(root: &Path, id: &str) -> Result<String> {
+    let path = entry(root, id)?;
+    if !path.exists() {
+        return Err(coded(
+            "remote_dispatch_unknown",
+            "this node has no dispatch with this ID",
+        ));
+    }
+    let record = read(&path)?;
+    match record["job_id"].as_str() {
+        Some(job) if directory(root, job).is_ok() => Ok(job.to_owned()),
+        _ => Err(coded(
+            "remote_dispatch_unknown",
+            format!(
+                "dispatch {} created no local job (phase {})",
+                id, record["phase"]
+            ),
+        )),
+    }
+}
 fn job_dir(root: &Path, id: &str) -> Result<PathBuf> {
-    let record = read(&entry(root, id)?)?;
-    directory(
-        root,
-        record["job_id"].as_str().ok_or_else(|| {
-            coded(
-                "remote_dispatch_unknown",
-                "no local job handle was published",
-            )
-        })?,
-    )
+    directory(root, &local_job(root, id)?)
 }
 fn handle(root: &Path, op: Operation, input: &mut impl Read) -> Result<(Value, Option<fs::File>)> {
     let value = match op {
@@ -141,11 +181,7 @@ fn handle(root: &Path, op: Operation, input: &mut impl Read) -> Result<(Value, O
         }
         Operation::Execution { dispatch_id } => execution::record(&job_dir(root, &dispatch_id)?)?,
         Operation::Repair { dispatch_id } => {
-            let record = read(&entry(root, &dispatch_id)?)?;
-            crate::repair(
-                root,
-                record["job_id"].as_str().ok_or("missing local handle")?,
-            )?;
+            crate::repair(root, &local_job(root, &dispatch_id)?)?;
             lookup(root, &dispatch_id)?
         }
         Operation::Inspect {
@@ -181,7 +217,7 @@ fn dispatch(
     valid_id(identity)?;
     let path = entry(root, id)?;
     fs::create_dir_all(root.join("remote-dispatch"))?;
-    let _guard = lock(&root.join("remote-dispatch").join(format!("{id}.lock")))?;
+    let _guard = lock(&dispatch_lock(root, id))?;
     let binding = digest(&serde_json::to_vec(
         &json!({"identity":identity,"spec":spec,"inputs":inputs,"worker":worker}),
     )?);
@@ -193,41 +229,65 @@ fn dispatch(
                 "dispatch id already binds different content",
             ));
         }
+        settle_interrupted(&path)?;
         return lookup(root, id);
     }
-    if node::durable()["available"] != true {
-        return Err(coded(
-            "durable_launcher_unavailable",
-            "remote dispatch requires a responding systemd user manager and Linger=yes",
-        ));
-    }
-    let schema = spec["schema_version"].as_str().unwrap_or_default();
-    if !matches!(schema, "optimization.job/0.1" | command::SCHEMA) {
-        return Err(coded(
-            "unsupported_job_kind",
-            "remote execution accepts shared optimization jobs or opt-in command jobs",
-        ));
-    }
-    if schema == command::SCHEMA && std::env::var_os("OPTIMIZATION_RUN_REFUSE_COMMANDS").is_some() {
-        return Err(coded(
-            "unsupported_job_kind",
-            "this caller refuses command execution",
-        ));
-    }
-    if schema == "optimization.job/0.1" {
-        let expected = worker.ok_or_else(|| {
-            coded(
-                "remote_protocol",
-                "optimization dispatch needs a pinned worker identity",
-            )
-        })?;
-        let registered = crate::worker(root, spec["worker"].as_str().ok_or("missing worker")?)?;
-        if registered["digest"] != expected["digest"] {
+    // A refusal is recorded under the lock, so that a lookup after a lost
+    // answer proves that this dispatch launched nothing.
+    let refused = (|| -> Result<()> {
+        if node::durable()["available"] != true {
             return Err(coded(
-                "remote_worker_changed",
-                "worker registration changed after placement",
+                "durable_launcher_unavailable",
+                "remote dispatch requires a responding systemd user manager and Linger=yes",
             ));
         }
+        for path in [root.to_path_buf(), std::env::current_exe()?] {
+            if path.to_string_lossy().contains('$') {
+                return Err(coded(
+                    "invalid_remote_node",
+                    format!(
+                        "systemd-run would expand `$` in {}; use a node root and helper path without `$`",
+                        path.display()
+                    ),
+                ));
+            }
+        }
+        let schema = spec["schema_version"].as_str().unwrap_or_default();
+        if !matches!(schema, "optimization.job/0.1" | command::SCHEMA) {
+            return Err(coded(
+                "unsupported_job_kind",
+                "remote execution accepts shared optimization jobs or opt-in command jobs",
+            ));
+        }
+        if schema == command::SCHEMA && std::env::var_os(command::REFUSE).is_some() {
+            return Err(coded(
+                "unsupported_job_kind",
+                "this caller refuses command execution",
+            ));
+        }
+        if schema == "optimization.job/0.1" {
+            let expected = worker.as_ref().ok_or_else(|| {
+                coded(
+                    "remote_protocol",
+                    "optimization dispatch needs a pinned worker identity",
+                )
+            })?;
+            let registered = crate::worker(root, spec["worker"].as_str().ok_or("missing worker")?)?;
+            if registered["digest"] != expected["digest"] {
+                return Err(coded(
+                    "remote_worker_changed",
+                    "worker registration changed after placement",
+                ));
+            }
+        }
+        Ok(())
+    })();
+    if let Err(error) = refused {
+        write_atomic_json(
+            &path,
+            &json!({"schema_version":"execution.remote.dispatch/0.1","dispatch_id":id,"identity":identity,"binding":binding,"node_id":node::identity(root,false)?["node_id"],"phase":"rejected","created_at":now(),"job_id":null,"error":{"code":error_code(&error),"message":error.to_string()}}),
+        )?;
+        return lookup(root, id);
     }
     let key = format!("remote:{id}");
     spec["request_key"] = json!(key);

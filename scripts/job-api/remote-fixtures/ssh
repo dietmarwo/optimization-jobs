@@ -14,7 +14,11 @@ for op,var in [('submit','REMOTE_PAUSE_SUBMIT'),('download','REMOTE_PAUSE_DOWNLO
             with marker.open('x') as f:f.write(str(os.getpid()))
         except FileExistsError:pass
         else:
-            while not marker.with_suffix('.go').exists():time.sleep(.01)
+            # Give up once the test that paused this call is gone.
+            deadline=time.monotonic()+60
+            while not marker.with_suffix('.go').exists():
+                if not marker.parent.exists() or time.monotonic()>deadline:raise SystemExit(255)
+                time.sleep(.01)
 if os.environ.get('REMOTE_STALL')=='1':time.sleep(30)
 command=sys.argv[-1].split()
 assert command[-2:]==['remote','serve']
