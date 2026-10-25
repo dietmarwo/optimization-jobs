@@ -48,7 +48,8 @@ execution lifecycle. An adapter supplies the command and interprets how it
 ended; the optimization adapter validates worker results, accounts for work
 and builds the native manifest. These are implementation boundaries, not a
 public Rust plugin API. Production adapters handle optimization and opt-in
-trusted commands; the worker SDK and mathematical results remain optimization-specific.
+trusted commands; the worker SDK and mathematical results remain
+optimization-specific.
 
 The runner accepts workers of protocol `optimization.worker/0.1` and `/0.2`.
 Every 0.1 result record is a valid 0.2 record, so a registered 0.1 worker keeps
@@ -424,8 +425,9 @@ other host files and create undeclared/unbounded working data. CPU slots are
 admission accounting, not kernel CPU/memory/disk enforcement. Descendants in the
 original process group are terminated; a process that deliberately changes
 session/group can escape it. Its output is not waited for: two seconds after the
-group stopped, the launcher finishes the attempt. Do not use this interface for hostile or daemonizing
-programs. The local command API is also used by the explicit SSH interface below; automatic fleet scheduling is not implemented.
+group stopped, the launcher finishes the attempt. Do not use this interface for
+hostile or daemonizing programs. The explicit SSH placement below runs the same
+command jobs on a node; automatic fleet scheduling is not implemented.
 
 The MCP server is optimization-only: `validate_job` and `submit_job` refuse
 command requests with `unsupported_job_kind`. Every runner the server starts
@@ -450,7 +452,7 @@ python3 examples/commands/build_run_collect.py \
 These interfaces need source after 0.3.0. The Rust runner owns remote dispatch,
 file transport and reconciliation. `fleet` operations are CLI-only. Placement
 always names a registered node; there is no automatic host selection or global
-slot allocator. A main desktop is never discovered or added automatically.
+slot allocator, and nodes are never discovered or added automatically.
 
 On each worker host, install the same source-compatible `optimization-run`,
 register its optimization workers, and initialize its node directory:
@@ -463,15 +465,15 @@ optimization-run --root /srv/research/jobs node identity
 ```
 
 Command opt-in is optional for optimization-only nodes. The persistent random
-node ID identifies a node root; SSH host-key verification authenticates the host.
-Do not clone `node.json` into a distinct worker root while retaining its ID.
-A restored node with uncertain old work must be reconciled before reuse.
+node ID identifies a node root; SSH host-key verification authenticates the
+host. Do not clone `node.json` into a distinct worker root while retaining its
+ID. A restored node with uncertain old work must be reconciled before reuse.
 
 A remote dispatch requires a responding systemd user manager and `Linger=yes`
 for the remote Unix user. `fleet nodes probe` reports those observations.
 An owner must configure and verify their user-manager/lingering policy on the
 actual host. There is no foreground or nohup fallback. Successful service,
-logout/reboot and cgroup behaviour require host commissioning; the preflight
+logout/reboot and cgroup behavior require host commissioning; the preflight
 checks do not prove resource enforcement or future availability.
 
 Prepare a trusted known-hosts file and SSH authentication by the owner's normal
@@ -487,16 +489,20 @@ optimization-run --root /srv/research/coordinator fleet nodes list
 optimization-run --root /srv/research/coordinator fleet nodes probe worker-1
 ```
 
-Registration performs authenticated read-only discovery and pins the node ID.
-It refuses to overwrite a name bound to another endpoint/identity; use another
-name for a deliberate change. Root/key/helper paths are absolute. The helper
-and known-hosts path use ASCII letters/digits and `/._-`, without spaces or
-shell syntax; the helper also rejects dot traversal. Remote roots and request
-values travel as JSON and may contain spaces. SSH uses batch authentication,
-strict host-key checking, one connection attempt, no TTY, and no forwarding.
-Each call disables connection multiplexing and host-key updates, and uses the selected known-hosts file without global/dynamic alternatives. It never accepts a host key automatically. The remote non-interactive shell must keep protocol stdout free of login banners. Private key bytes stay on the client.
+Registration performs authenticated read-only discovery and pins the node ID. It
+refuses to overwrite a name bound to another endpoint/identity; use another name
+for a deliberate change. Root/key/helper paths are absolute. The helper and
+known-hosts path use ASCII letters/digits and `/._-`, without spaces or shell
+syntax; the helper also rejects dot traversal. Remote roots and request values
+travel as JSON and may contain spaces. SSH uses batch authentication, strict
+host-key checking, one connection attempt, no TTY, and no forwarding. Each call
+disables connection multiplexing and host-key updates, and uses the selected
+known-hosts file without global/dynamic alternatives. It never accepts a host
+key automatically. The remote non-interactive shell must keep protocol stdout
+free of login banners. Private key bytes stay on the client.
 
-Submit an existing shared optimization or command request with explicit placement:
+Submit an existing shared optimization or command request with explicit
+placement:
 
 ```sh
 optimization-run --root /srv/research/coordinator fleet submit \
@@ -509,8 +515,8 @@ optimization-run --root /srv/research/coordinator fleet repair GLOBAL_ID
 optimization-run --root /srv/research/coordinator fleet execution GLOBAL_ID
 ```
 
-The global ID is the SHA-256 of `request_key`, shortened to 32 hex digits, in the
-coordinator's separate fleet namespace. The
+The global ID is the SHA-256 of `request_key`, shortened to 32 hex digits, in
+the coordinator's separate fleet namespace. The
 [`execution.fleet.job/0.1`](job-api/schemas/execution.fleet.job-0.1.schema.json)
 record persists the coordinator ID, immutable selected endpoint/node, normalized
 request identity, input snapshots/digests, remote dispatch ID, local job ID and
@@ -524,18 +530,19 @@ blob when `file` is omitted. Remote input paths follow the command transfer's
 no-dot-segment/no-symlink policy, including optimization inputs. Logical names,
 script executable declarations and native solver input semantics are retained.
 Shared optimization requests (`optimization.job/0.1`) and command requests are
-supported remotely; legacy fcmaes requests remain a local interface. The selected
-node's command opt-in, worker digest, capacity and local admission rules apply.
-A remote input upload reuses the same checked blob store and its 1 GiB quota.
+supported remotely; legacy fcmaes requests remain a local interface. The
+selected node's command opt-in, worker digest, capacity and local admission
+rules apply. A remote input upload reuses the same checked blob store and its 1
+GiB quota.
 
 The coordinator commits staging intent before uploads and dispatch intent before
 issuing a launch request. A node commits a dispatch record before preparation
-and a `launching` barrier before calling the existing durable launcher. Once that
-barrier is recorded, the same dispatch ID never invokes another launch, even if
-its acknowledgement was lost. The same global key cannot move an uncertain
-attempt to another endpoint. A node identity or worker-digest mismatch refuses
-new work. SSH/control timeout (1–300 seconds) is distinct from the execution wall
-limit; a timed-out control request does not cancel the job.
+and a `launching` barrier before calling the existing durable launcher. Once
+that barrier is recorded, the same dispatch ID never invokes another launch,
+even if its acknowledgement was lost. The same global key cannot move an
+uncertain attempt to another endpoint. A node identity or worker-digest mismatch
+refuses new work. SSH/control timeout (1–300 seconds) is distinct from the
+execution wall limit; a timed-out control request does not cancel the job.
 
 `get` reads local persisted state. `reconcile` observes the same remote dispatch
 and does not launch. `resume` may continue only a staging intent for which no
@@ -611,7 +618,9 @@ optimization-run --root NODE jobs execution JOB_ID
 `node doctor` and MCP `describe_node`. It lists supported kinds (`optimization`
 and `command`), enabled kinds, accepted job/worker schemas, result/record schemas,
 and byte limits. Commands are disabled by default; generic binary file transfer
-is implemented through the CLI. Fleet execution advertises explicit placement through the CLI, with a versioned remote helper and a systemd-user/lingering requirement. The
+is implemented through the CLI. Fleet execution is explicit placement through
+the CLI, with a versioned remote helper and a systemd user manager with
+lingering on the node. The
 [capability schema](job-api/schemas/execution.capabilities-0.3.schema.json) is
 separate from worker `describe`: solver profiles still come from each worker.
 The previous capability schemas remain available for older runners.

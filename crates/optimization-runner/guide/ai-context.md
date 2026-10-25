@@ -424,13 +424,17 @@ no automatic replay; enable with `node commands --enable`. Use `files put/get`
 and `jobs collect` for binary transfer. Their separate `command-result.json`
 records process/output facts, never mathematical claims. MCP submission and
 result summaries remain optimization-only. Commands share admission/cancellation
-but are not a sandbox or kernel resource limits. Explicit `fleet submit --node NAME --spec FILE` and `fleet reconcile/collect`
-use a fixed SSH helper and persistent node/dispatch identities. Registration pins
-the SSH endpoint and node ID; remote launch requires a systemd user manager and
-lingering. Staging can resume, but uncertain starts never move or automatically
-relaunch. Binary collection is independent. Automatic placement remains future
-work; actual host service/logout/reboot behaviour must be commissioned
+but are not a sandbox or kernel resource limits
 ([guide](docs/job-api.md#execution-discovery-and-terminal-observations)).
+On a coordinator, `fleet nodes add` pins an SSH node's endpoint and identity,
+`fleet submit --node NAME --spec FILE` places one optimization or command job
+there, and `fleet reconcile`, `cancel`, `repair` and `collect` follow it. A
+fixed helper receives every request as JSON on stdin, and remote launch
+requires a systemd user manager with lingering. Staging can resume, but an
+uncertain start is never moved or started again. Placement is explicit and
+CLI-only, not available over MCP; real-host service, logout and reboot
+behavior must be commissioned by the node's owner
+([SSH guide](docs/job-api.md#explicit-ssh-placement-and-recovery)).
 
 ### Results, claims and evidence
 

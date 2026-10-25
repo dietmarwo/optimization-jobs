@@ -34,7 +34,8 @@ revision. 0.3.0 is the first version on crates.io.
 - `node capabilities` prints `execution.capabilities/0.3`: supported/enabled
   execution kinds, contracts, CLI command/file interfaces and transfer limits.
   It needs no initialized node and creates no root; `node doctor` and MCP
-  `describe_node` include the same object. Commands default off; fleet placement is explicit and CLI-only.
+  `describe_node` include the same object. Commands default off; fleet
+  placement is explicit and CLI-only.
 - `jobs execution JOB_ID` prints a finished job's `execution.record/0.1`
   (`.execution.json` in the job directory): process exit code or signal,
   stop reason, containment, log references and the size and SHA-256 of the

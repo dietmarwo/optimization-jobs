@@ -172,6 +172,20 @@ runner's user, not a sandbox, and they are off until the node owner runs
 covers the request and result schemas, transfer limits and the
 build–run–collect example.
 
+## Explicit remote execution
+
+After 0.3.0 the runner can also place a job on a registered SSH node:
+`fleet nodes add/probe` pins a node's endpoint and identity, `fleet submit
+--node NAME` sends one optimization or command job there, and
+`fleet reconcile/resume/cancel/repair/collect` follow it. A fixed helper,
+`optimization-run remote serve`, receives every request as JSON on stdin, and
+persisted dispatch and launch intent keep uncertain work on its node: nothing
+is started twice or moved. Remote launch requires a systemd user manager with
+lingering on the node. Placement is explicit and CLI-only. The
+[SSH guide](docs/job-api.md#explicit-ssh-placement-and-recovery) covers
+provisioning, transfer limits, recovery rules and what the tests do not
+establish.
+
 ## Tests
 
 ```sh
@@ -190,8 +204,10 @@ python3 scripts/job-api/test_integration.py \
   --lp-ip /path/to/lp-ip-job-worker --sqp /path/to/sqp-job-worker
 ```
 
-The schema checks need `pip install "jsonschema>=4.18,<5" "asyncssh>=2.24,<3"`; CI sets
-`JOB_API_REQUIRE_SCHEMA=1` so they cannot be skipped. CI also builds the three
+The schema checks need `pip install "jsonschema>=4.18,<5"`; CI sets
+`JOB_API_REQUIRE_SCHEMA=1` so they cannot be skipped. `test_remote_ssh.py`
+also needs `pip install "asyncssh>=2.24,<3"` and the OpenSSH client (`ssh`,
+`ssh-keygen`). CI also builds the three
 workers from their repositories' `main` and runs the harness on a mixed node.
 Worker repositories run the same scripts from Cargo's checkout of this
 repository, with `JOB_API_TARGET` pointing at their own `target/release`
@@ -200,13 +216,3 @@ repository, with `JOB_API_TARGET` pointing at their own `target/release`
 ## License
 
 MIT, see [LICENSE](LICENSE).
-
-## Explicit remote execution
-
-Source after 0.3.0 adds `fleet nodes add/probe`, `fleet submit --node`,
-`fleet reconcile/resume/cancel/repair` and verified terminal `fleet collect`.
-A fixed SSH helper, pinned node identity and persisted dispatch/launch intent
-keep uncertain work on the selected node. Remote launch requires a responding
-systemd user manager and lingering. Read the
-[SSH guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#explicit-ssh-placement-and-recovery)
-for provisioning, bounded transfers, recovery rules and validation limits.
