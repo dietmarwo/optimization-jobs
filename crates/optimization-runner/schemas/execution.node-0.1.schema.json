@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:optimization-jobs:schema:execution.node-0.1",
+  "title": "execution.node/0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "execution.node/0.1"
+    },
+    "protocol": {
+      "const": "execution.remote/0.1"
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "root": {
+      "type": "string",
+      "pattern": "^/[^\\u0000]*$",
+      "maxLength": 4096
+    },
+    "boot_id": {
+      "type": "string"
+    },
+    "capacity": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "capabilities": {
+      "type": "object"
+    },
+    "workers": {
+      "type": "object"
+    },
+    "durable_launcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "const": "systemd_user"
+        },
+        "manager_available": {
+          "type": "boolean"
+        },
+        "linger": {
+          "type": "boolean"
+        },
+        "available": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "backend",
+        "manager_available",
+        "linger",
+        "available"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "protocol",
+    "node_id",
+    "root",
+    "boot_id",
+    "capacity",
+    "capabilities",
+    "workers",
+    "durable_launcher"
+  ]
+}

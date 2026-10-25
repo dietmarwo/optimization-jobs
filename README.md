@@ -181,13 +181,16 @@ cargo test --release --locked
 cargo build --release --locked -p optimization-runner
 python3 scripts/job-api/test_review.py            # with the fake worker
 python3 scripts/job-api/test_commands.py          # command jobs and file transfers
+python3 scripts/job-api/test_remote.py            # helper/dispatch fault tests; simulated manager
+# With all three worker binaries in JOB_API_TARGET:
+python3 scripts/job-api/test_remote_ssh.py        # real OpenSSH; simulated manager
 python3 scripts/job-api/test_mcp.py               # the MCP server
 python3 scripts/job-api/test_integration.py \
   --fcmaes /path/to/fcmaes-job-worker \
   --lp-ip /path/to/lp-ip-job-worker --sqp /path/to/sqp-job-worker
 ```
 
-The schema checks need `pip install "jsonschema>=4.18,<5"`; CI sets
+The schema checks need `pip install "jsonschema>=4.18,<5" "asyncssh>=2.24,<3"`; CI sets
 `JOB_API_REQUIRE_SCHEMA=1` so they cannot be skipped. CI also builds the three
 workers from their repositories' `main` and runs the harness on a mixed node.
 Worker repositories run the same scripts from Cargo's checkout of this
@@ -197,3 +200,13 @@ repository, with `JOB_API_TARGET` pointing at their own `target/release`
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Explicit remote execution
+
+Source after 0.3.0 adds `fleet nodes add/probe`, `fleet submit --node`,
+`fleet reconcile/resume/cancel/repair` and verified terminal `fleet collect`.
+A fixed SSH helper, pinned node identity and persisted dispatch/launch intent
+keep uncertain work on the selected node. Remote launch requires a responding
+systemd user manager and lingering. Read the
+[SSH guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#explicit-ssh-placement-and-recovery)
+for provisioning, bounded transfers, recovery rules and validation limits.

@@ -76,7 +76,7 @@ fn invalid(message: impl Into<String>) -> optimization_job_api::Error {
 pub(crate) fn enabled(root: &Path) -> Result<bool> {
     Ok(optional(&root.join("node.json"))?["allow_commands"] == true)
 }
-fn validate(s: &Request) -> Result<()> {
+pub(crate) fn validate(s: &Request) -> Result<()> {
     if s.schema_version != SCHEMA || s.replay != "never" {
         return Err(invalid("expected execution.command/0.1 with replay=never"));
     }

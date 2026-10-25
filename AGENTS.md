@@ -28,10 +28,13 @@ cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --release --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
-python3 -m pip install "jsonschema>=4.18,<5"
+python3 -m pip install "jsonschema>=4.18,<5" "asyncssh>=2.24,<3"
 JOB_API_REQUIRE_SCHEMA=1 python3 scripts/job-api/test_review.py   # runner regressions, fake worker
 JOB_API_REQUIRE_SCHEMA=1 python3 scripts/job-api/test_commands.py # command jobs and file transfers
 python3 scripts/job-api/test_mcp.py                               # MCP server
+python3 scripts/job-api/test_remote.py                            # simulated transport/manager
+# All three real worker binaries in JOB_API_TARGET:
+python3 scripts/job-api/test_remote_ssh.py                        # OpenSSH loopback, simulated manager
 ```
 
 `scripts/job-api/test_integration.py` runs the shared harness against the

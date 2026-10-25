@@ -10,6 +10,17 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
+- Explicit SSH `fleet` placement and a fixed `remote serve` JSON/binary helper:
+  persistent node IDs, checked input snapshots, bounded transfer, strict SSH host
+  keys, worker pin checks and a systemd-user/lingering prerequisite. Dispatch
+  intent and the remote launch barrier preserve one selected node/attempt after
+  lost replies; staging and collection recover independently of execution.
+- Fleet observation, cancellation, guarded repair, terminal execution records and
+  native/output/artifact collection. Capabilities 0.3 and published node, remote
+  protocol and fleet-record schemas. Fault tests cover coordinator loss, lost
+  launch replies and interrupted collection; loopback OpenSSH tests use actual
+  Rust workers with an explicitly simulated service manager.
+
 - Explicitly enabled trusted command jobs (`execution.command/0.1`), sharing
   admission, supervision, cancellation and repair with optimization. Literal argv
   (the verified executable runs under the submitted `argv[0]`), explicit
@@ -20,10 +31,10 @@ revision. 0.3.0 is the first version on crates.io.
 - Binary `files put/get/cleanup` and `jobs collect`: bounded streaming, exact
   size/SHA-256 validation, atomic no-clobber publication and interrupted-upload
   cleanup. A local build–run–collect example and command/transfer regressions.
-- `node capabilities` prints `execution.capabilities/0.2`: supported/enabled
+- `node capabilities` prints `execution.capabilities/0.3`: supported/enabled
   execution kinds, contracts, CLI command/file interfaces and transfer limits.
   It needs no initialized node and creates no root; `node doctor` and MCP
-  `describe_node` include the same object. Commands default off; fleet is false.
+  `describe_node` include the same object. Commands default off; fleet placement is explicit and CLI-only.
 - `jobs execution JOB_ID` prints a finished job's `execution.record/0.1`
   (`.execution.json` in the job directory): process exit code or signal,
   stop reason, containment, log references and the size and SHA-256 of the

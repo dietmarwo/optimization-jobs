@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Simulated user manager; used only on the explicit fixture PATH."""
+import os,sys
+if any('Version' in a for a in sys.argv):print('Version=255');raise SystemExit(0 if os.environ.get('REMOTE_NO_MANAGER')!='1' else 1)
+print('ActiveState=active')

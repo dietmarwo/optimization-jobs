@@ -56,7 +56,7 @@ class Commands(Node):
     def test_opt_in_discovery_and_disable(self):
         self.call("node", "commands", "--disable")
         caps = self.call("node", "capabilities")
-        self.validate_record("execution.capabilities-0.2.schema.json", caps)
+        self.validate_record("execution.capabilities-0.3.schema.json", caps)
         self.assertFalse(caps["command_jobs"])
         path, _ = self.write(command())
         self.assertEqual(self.error("run", "--spec", path)["code"], "commands_disabled")
@@ -195,7 +195,12 @@ while True: time.sleep(.05)
             with self.subTest(mode=mode):
                 spec=self.script(code, wall=3 if mode=="timeout" else 30, grace=.2)
                 process,ident,directory=self.start(spec)
-                self.wait_for(lambda:(directory/"work/child").exists())
+                def ready():
+                    try:
+                        return all((directory/f"work/{name}").read_text().isdigit() for name in ["child","parent"])
+                    except FileNotFoundError:
+                        return False
+                self.wait_for(ready)
                 pids=[int((directory/f"work/{name}").read_text()) for name in ["child","parent"]]
                 if mode!="timeout": self.call("jobs","cancel",ident,*(["--now"] if mode=="immediate" else []))
                 _,err=process.communicate(timeout=8);self.assertEqual(process.returncode,0,err)

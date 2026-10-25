@@ -109,7 +109,7 @@ struct Record {
 pub(crate) fn capabilities(root: &Path) -> Result<Value> {
     let enabled = crate::command::enabled(root)?;
     Ok(json!({
-        "schema_version":"execution.capabilities/0.2",
+        "schema_version":"execution.capabilities/0.3",
         "runner_version":env!("CARGO_PKG_VERSION"),
         "execution_kinds":["optimization","command"],
         "enabled_execution_kinds":if enabled {vec!["optimization","command"]} else {vec!["optimization"]},
@@ -120,10 +120,13 @@ pub(crate) fn capabilities(root: &Path) -> Result<Value> {
         "command_result_schema":"execution.command.result/0.1",
         "execution_record_schema":RECORD_SCHEMA,
         "execution_record_publication":"terminal",
-        "command_jobs":enabled, "generic_file_transfer":true, "fleet":false,
+        "command_jobs":enabled, "generic_file_transfer":true, "fleet":true,
         "command_interface":"cli", "file_transfer_interface":"cli",
         "command_isolation":"trusted_same_user_process_group",
         "cpu_enforcement":"admission_only",
+        "fleet_interface":"cli", "fleet_placement":"explicit",
+        "remote_protocol":crate::remote::PROTOCOL,
+        "remote_launcher":"systemd_user_linger",
         "max_file_bytes":crate::files::MAX_FILE,
         "max_declared_job_bytes":crate::files::MAX_TOTAL
     }))

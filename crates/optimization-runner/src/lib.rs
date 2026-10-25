@@ -5,6 +5,7 @@ mod execution;
 mod files;
 mod host;
 mod optimization;
+mod remote;
 mod supervision;
 
 use admission::reconcile_ledger;
@@ -35,6 +36,16 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Cmd {
+    /// Explicit placement on a registered SSH node.
+    Fleet {
+        #[command(subcommand)]
+        command: remote::fleet::Cli,
+    },
+    /// Fixed remote helper; requests and data use stdin/stdout.
+    Remote {
+        #[command(subcommand)]
+        command: Remote,
+    },
     Node {
         #[command(subcommand)]
         command: Node,
@@ -82,7 +93,16 @@ enum Cmd {
     },
 }
 #[derive(Subcommand)]
+enum Remote {
+    Serve,
+}
+#[derive(Subcommand)]
 enum Node {
+    /// Read an identity; --init adds one to a node made by an older runner.
+    Identity {
+        #[arg(long)]
+        init: bool,
+    },
     Init {
         #[arg(long)]
         capacity: usize,
@@ -713,6 +733,75 @@ fn get(root: &Path, id: &str) -> Result<Value> {
     }
     Ok(v)
 }
+fn repair(root: &Path, id: &str) -> Result<Value> {
+    let dir = directory(root, id)?;
+    if terminal(&read(&dir.join("job.json"))?["state"]) {
+        return Err(coded(
+            "already_terminal",
+            "attempt already finalized; repair is for interrupted attempts",
+        ));
+    }
+    // Decided before the reservation is touched below.
+    let unadmitted = never_admitted(root, id, &dir)?;
+    if !attempt_processes_gone(&dir) {
+        // A held lock is a live launcher or worker: waiting helps.
+        // Without one, liveness stays unknown (a process group
+        // that still exists, or a detached unit that may yet
+        // start); waiting alone may never settle it.
+        if matches!(lock_is_free(&dir.join("worker.lock")), Ok(false)) {
+            return Err(coded("attempt_active", "worker still owns this attempt"));
+        }
+        if matches!(lock_is_free(&dir.join("job.lock")), Ok(false)) {
+            return Err(coded("attempt_active", "launcher still owns this attempt"));
+        }
+        return Err(coded(
+            "liveness_unknown",
+            "no process holds this attempt, but its process group still exists or its detached unit may still start; inspect it (jobs get, systemctl --user) before repairing",
+        ));
+    }
+    let owner = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(dir.join("job.lock"))?;
+    fs2::FileExt::try_lock_exclusive(&owner)
+        .map_err(|_| coded("attempt_active", "launcher still owns this attempt"))?;
+    let worker = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(dir.join("worker.lock"))?;
+    fs2::FileExt::try_lock_exclusive(&worker)
+        .map_err(|_| coded("attempt_active", "worker still owns this attempt"))?;
+    let state = read(&dir.join("job.json"))?;
+    if matches!(
+        state["state"].as_str(),
+        Some("completed" | "failed" | "cancelled" | "timed_out" | "interrupted")
+    ) {
+        return Err(coded(
+            "already_terminal",
+            "attempt already finalized; repair is for interrupted attempts",
+        ));
+    }
+    // Holding both locks proves the launcher and worker are gone, so
+    // this attempt's reservation can be released.
+    {
+        let _g = lock(&root.join("slots.lock"))?;
+        let mut ledger = optional(&root.join("slots.json"))?;
+        reconcile_ledger(root, &mut ledger)?;
+        ledger.as_object_mut().ok_or("invalid ledger")?.remove(id);
+        write_atomic_json(&root.join("slots.json"), &ledger)?;
+    }
+    let started = state["state"] == "running";
+    if is_command(&dir)? {
+        command::repair(&dir, started)?;
+    } else {
+        optimization::repair(&dir, unadmitted, started)?;
+    }
+    get(root, id)
+}
 fn main_result() -> Result<()> {
     // Usage errors are coded like every other error; help and version print
     // normally.
@@ -730,6 +819,14 @@ fn main_result() -> Result<()> {
         }
         Err(e) => return Err(coded("invalid_command", e.render().to_string())),
     };
+    if matches!(
+        &cli.command,
+        Cmd::Remote {
+            command: Remote::Serve
+        }
+    ) {
+        return remote::serve();
+    }
     let selected = cli
         .root
         .or_else(|| std::env::var_os("FCMAES_RUN_ROOT").map(PathBuf::from))
@@ -752,6 +849,11 @@ fn main_result() -> Result<()> {
     fs::create_dir_all(&selected)?;
     let root = fs::canonicalize(&selected)?;
     match cli.command {
+        Cmd::Remote { .. } => unreachable!(),
+        Cmd::Fleet { command } => output(remote::fleet::run(&root, command)?),
+        Cmd::Node {
+            command: Node::Identity { init },
+        } => output(remote::node::identity(&root, init)?),
         Cmd::Node {
             command:
                 Node::Init {
@@ -768,7 +870,7 @@ fn main_result() -> Result<()> {
             }
             write_atomic_json(
                 &root.join("node.json"),
-                &json!({"capacity":c,"allow_commands":allow_commands}),
+                &json!({"capacity":c,"allow_commands":allow_commands,"node_id":remote::node::fresh_id()?}),
             )?;
             // The owner may mean a capacity beyond what this process can use
             // (another cgroup runs the jobs, say): a warning, not an error.
@@ -1020,75 +1122,7 @@ fn main_result() -> Result<()> {
                 write_atomic_json(&root.join("slots.json"), &l)?;
                 output(l)
             }
-            Jobs::Repair { id } => {
-                let dir = directory(&root, &id)?;
-                if terminal(&read(&dir.join("job.json"))?["state"]) {
-                    return Err(coded(
-                        "already_terminal",
-                        "attempt already finalized; repair is for interrupted attempts",
-                    ));
-                }
-                // Decided before the reservation is touched below.
-                let unadmitted = never_admitted(&root, &id, &dir)?;
-                if !attempt_processes_gone(&dir) {
-                    // A held lock is a live launcher or worker: waiting helps.
-                    // Without one, liveness stays unknown (a process group
-                    // that still exists, or a detached unit that may yet
-                    // start); waiting alone may never settle it.
-                    if matches!(lock_is_free(&dir.join("worker.lock")), Ok(false)) {
-                        return Err(coded("attempt_active", "worker still owns this attempt"));
-                    }
-                    if matches!(lock_is_free(&dir.join("job.lock")), Ok(false)) {
-                        return Err(coded("attempt_active", "launcher still owns this attempt"));
-                    }
-                    return Err(coded(
-                        "liveness_unknown",
-                        "no process holds this attempt, but its process group still exists or its detached unit may still start; inspect it (jobs get, systemctl --user) before repairing",
-                    ));
-                }
-                let owner = fs::OpenOptions::new()
-                    .create(true)
-                    .truncate(false)
-                    .read(true)
-                    .write(true)
-                    .open(dir.join("job.lock"))?;
-                fs2::FileExt::try_lock_exclusive(&owner)
-                    .map_err(|_| coded("attempt_active", "launcher still owns this attempt"))?;
-                let worker = fs::OpenOptions::new()
-                    .create(true)
-                    .truncate(false)
-                    .read(true)
-                    .write(true)
-                    .open(dir.join("worker.lock"))?;
-                fs2::FileExt::try_lock_exclusive(&worker)
-                    .map_err(|_| coded("attempt_active", "worker still owns this attempt"))?;
-                let state = read(&dir.join("job.json"))?;
-                if matches!(
-                    state["state"].as_str(),
-                    Some("completed" | "failed" | "cancelled" | "timed_out" | "interrupted")
-                ) {
-                    return Err(coded(
-                        "already_terminal",
-                        "attempt already finalized; repair is for interrupted attempts",
-                    ));
-                }
-                // Holding both locks proves the launcher and worker are gone, so
-                // this attempt's reservation can be released.
-                {
-                    let _g = lock(&root.join("slots.lock"))?;
-                    let mut ledger = optional(&root.join("slots.json"))?;
-                    reconcile_ledger(&root, &mut ledger)?;
-                    ledger.as_object_mut().ok_or("invalid ledger")?.remove(&id);
-                    write_atomic_json(&root.join("slots.json"), &ledger)?;
-                }
-                let started = state["state"] == "running";
-                if is_command(&dir)? {
-                    command::repair(&dir, started)?;
-                } else {
-                    optimization::repair(&dir, unadmitted, started)?;
-                }
-                output(get(&root, &id)?)
-            }
+            Jobs::Repair { id } => output(repair(&root, &id)?),
             Jobs::Artifact {
                 id,
                 name,

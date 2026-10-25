@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Fault-injecting local transport fixture. This is not an SSH implementation."""
+import json,os,subprocess,sys,time
+from pathlib import Path
+header=sys.stdin.buffer.readline(4*1024*1024+1)
+request=json.loads(header);kind=request['operation']['kind'];body=sys.stdin.buffer.read()
+log=Path(os.environ['REMOTE_FIXTURE_LOG'])
+with log.open('a') as f:f.write(json.dumps({'operation':kind,'argv':sys.argv[1:],'request':request})+'\n')
+for op,var in [('submit','REMOTE_PAUSE_SUBMIT'),('download','REMOTE_PAUSE_DOWNLOAD'),('put','REMOTE_PAUSE_PUT')]:
+    marker=os.environ.get(var)
+    if kind==op and marker:
+        marker=Path(marker)
+        try:
+            with marker.open('x') as f:f.write(str(os.getpid()))
+        except FileExistsError:pass
+        else:
+            while not marker.with_suffix('.go').exists():time.sleep(.01)
+if os.environ.get('REMOTE_STALL')=='1':time.sleep(30)
+command=sys.argv[-1].split()
+assert command[-2:]==['remote','serve']
+result=subprocess.run(command,input=header+body,capture_output=True)
+if kind=='submit' and os.environ.get('REMOTE_DROP_ACK'):
+    marker=Path(os.environ['REMOTE_DROP_ACK'])
+    if not marker.exists():marker.write_text('lost');raise SystemExit(255)
+if kind=='download' and os.environ.get('REMOTE_TRUNCATE'):
+    prefix,_,data=result.stdout.partition(b'\n');sys.stdout.buffer.write(prefix+b'\n'+data[:max(0,len(data)-1)]);raise SystemExit(0)
+if kind=='describe' and os.environ.get('REMOTE_BAD_PROTOCOL'):
+    data=json.loads(result.stdout);data['schema_version']='execution.remote/99';result.stdout=json.dumps(data).encode()+b'\n'
+try:sys.stdout.buffer.write(result.stdout);sys.stderr.buffer.write(result.stderr)
+except BrokenPipeError:pass
+raise SystemExit(result.returncode)

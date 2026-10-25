@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:optimization-jobs:schema:execution.fleet.job-0.1",
+  "title": "execution.fleet.job/0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "execution.fleet.job/0.1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "request_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "coordinator_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "dispatch_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "node_name": {
+      "type": "string"
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "endpoint": {
+      "$ref": "#/$defs/endpoint"
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "spec": {
+      "type": "object"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/blob"
+      },
+      "maxItems": 128
+    },
+    "worker": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "phase": {
+      "enum": [
+        "staging",
+        "dispatching",
+        "unknown",
+        "accepted",
+        "finished",
+        "rejected"
+      ]
+    },
+    "created_at": {
+      "type": "number"
+    },
+    "updated_at": {
+      "type": "number"
+    },
+    "collections": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "selection": {
+            "$ref": "#/$defs/selection"
+          },
+          "destination": {
+            "type": "string",
+            "pattern": "^/[^\\u0000]*$",
+            "maxLength": 4096
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 67108864
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "phase": {
+            "enum": [
+              "transferring",
+              "complete",
+              "retryable_transfer"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selection",
+          "destination",
+          "bytes",
+          "sha256",
+          "phase"
+        ]
+      }
+    },
+    "remote": {
+      "type": "object"
+    },
+    "observation": {
+      "type": "string"
+    },
+    "last_error": {
+      "type": "string"
+    },
+    "remote_identity": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "request_key",
+    "coordinator_id",
+    "dispatch_id",
+    "node_name",
+    "node_id",
+    "endpoint",
+    "identity",
+    "spec",
+    "inputs",
+    "worker",
+    "phase",
+    "created_at",
+    "collections"
+  ],
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "root": {
+          "type": "string",
+          "pattern": "^/[^\\u0000]*$",
+          "maxLength": 4096
+        },
+        "helper": {
+          "type": "string",
+          "pattern": "^/[^\\u0000]*$",
+          "maxLength": 4096
+        },
+        "identity_file": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^/[^\\u0000]*$",
+              "maxLength": 4096
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "known_hosts": {
+          "type": "string",
+          "pattern": "^/[^\\u0000]*$",
+          "maxLength": 4096
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        }
+      },
+      "required": [
+        "host",
+        "user",
+        "port",
+        "root",
+        "helper",
+        "identity_file",
+        "known_hosts",
+        "timeout_seconds"
+      ]
+    },
+    "blob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "index",
+        "bytes",
+        "sha256"
+      ]
+    },
+    "selection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "native"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "execution"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "output"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "artifact"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
+        }
+      ]
+    }
+  }
+}
