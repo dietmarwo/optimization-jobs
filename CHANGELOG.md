@@ -84,6 +84,12 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- The README, the landing page and its catalog, and the
+  [systems comparison](docs/optimization-systems-for-ai-agents.md) include
+  [experiment-craft](https://github.com/dietmarwo/experiment-craft), which
+  runs reproducible campaigns of these jobs. The comparison's 25 October
+  update also describes the explicit SSH placement and marks multi-node
+  execution as partial.
 - The runner's launch path is split into private modules: admission (the
   slot ledger), supervision (process group, bounded logs, stop and deadline
   handling) and the execution lifecycle, with worker invocation, result

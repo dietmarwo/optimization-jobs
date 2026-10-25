@@ -1,10 +1,10 @@
 # Optimization systems for AI agents: how fcmaes & craft compares
 
 Research date 21 October 2026; updated 23 October 2026 for the October registry
-releases.
+releases, and 25 October 2026 for explicit SSH placement and experiment-craft.
 
 > **Who wrote this.** This comparison was prepared with AI-assisted research for
-> the maintainer of the five repositories, and the maintainer publishes it. It
+> the maintainer of the six repositories, and the maintainer publishes it. It
 > is therefore **not an independent evaluation**. Alternatives are described
 > from their public documentation and, for ten smaller projects, from their
 > source at the revisions in [Section 8](#8-sources-revisions-and-scope). No
@@ -13,7 +13,7 @@ releases.
 > Corrections are welcome through the
 > [evaluation issue form](https://github.com/dietmarwo/optimization-jobs/issues/new?template=independent-evaluation.yml).
 
-**fcmaes & craft** is the name for five MIT-licensed repositories used as one
+**fcmaes & craft** is the name for six MIT-licensed repositories used as one
 toolbox:
 
 - [optimization-jobs](https://github.com/dietmarwo/optimization-jobs): the shared shell/MCP job layer.
@@ -21,6 +21,7 @@ toolbox:
 - [fast-cma-es](https://github.com/dietmarwo/fast-cma-es): the Python `fcmaes` package.
 - [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft): LP and MILP in Rust.
 - [SQP-craft](https://github.com/dietmarwo/SQP-craft): smooth constrained NLP in Rust.
+- [experiment-craft](https://github.com/dietmarwo/experiment-craft): reproducible campaigns over the job layer (parameter sweeps, dependent steps, budgets, reports), in early development.
 
 It is compared here with the open-source systems an AI agent could use instead.
 
@@ -60,8 +61,8 @@ The closest systems match parts of it:
 - **Optuna with optuna-mcp** offers an established black-box ecosystem and
   **BO-MCP** persistent Bayesian campaigns; both evaluate objectives outside
   their MCP interface and have no LP or NLP solvers.
-- **libEnsemble**, **Dakota** and **Ray Tune** schedule work across nodes,
-  which fcmaes & craft does not.
+- **libEnsemble**, **Dakota** and **Ray Tune** schedule work across nodes;
+  fcmaes & craft places a job only on a node named explicitly over SSH.
 
 These strengths are established from source and documentation:
 
@@ -82,6 +83,12 @@ These strengths are established from source and documentation:
   macOS need no compiler. The Rust solver crates link no C/C++ solver library
   and forbid `unsafe` code. `cargo install optimization-runner --locked`
   installs the CLI and the MCP server.
+- **Campaigns that keep their evidence (early).** experiment-craft 0.1
+  compiles a JSON campaign (parameter sweeps, dependent steps, budgets and
+  deadlines) into ordinary jobs. It records each decision in SQLite before
+  acting on it, observes uncertain work instead of resubmitting it, and
+  reports every step, failed and blocked ones included, with the job's native
+  claim and evidence. It runs locally and sequentially and is not on PyPI.
 - **Track record of the black-box methods.** The fast-cma-es Python package,
   whose algorithms fcmaes-rust reimplements in Rust, has been on PyPI as
   `fcmaes` since February 2020 (133 releases). An independently authored
@@ -99,8 +106,8 @@ The alternatives are stronger in several places:
 - symbolic and constraint programming (MCP Solver);
 - community size and track record (Optuna, Dakota).
 
-Four of the five fcmaes & craft repositories were created between July and
-October 2026, and one maintainer develops all five.
+Five of the six fcmaes & craft repositories were created between July and
+October 2026, and one maintainer develops all six.
 
 No speed claim is made in either direction. The recommended next step is a
 measured comparison on fixed workloads ([Section 7](#7-how-to-establish-measured-rankings)).
@@ -111,7 +118,7 @@ measured comparison on fixed workloads ([Section 7](#7-how-to-establish-measured
 
 | System | Agent access | Mathematical scope | Execution and persistence | Compared with fcmaes & craft |
 |---|---|---|---|---|
-| **fcmaes & craft** | MCP server (15 tools, MCP Tasks), CLI, Python and Rust libraries, one routing guide | LP/MILP; smooth constrained NLP up to 256 variables; black-box global; constrained multiobjective; quality diversity; exact-GP surrogate (1-32 variables) | Local Linux node; CPU slots shared by concurrent jobs; hashed inputs, journals and records that outlive the MCP server; repair of interrupted records | — |
+| **fcmaes & craft** | MCP server (15 tools, MCP Tasks), CLI, Python and Rust libraries, one routing guide | LP/MILP; smooth constrained NLP up to 256 variables; black-box global; constrained multiobjective; quality diversity; exact-GP surrogate (1-32 variables) | Local Linux node; CPU slots shared by concurrent jobs; hashed inputs, journals and records that outlive the MCP server; repair of interrupted records; explicit placement on registered SSH nodes; campaigns over these jobs (experiment-craft, early) | — |
 | [GEMSEO](https://gemseo.org/) | Python through a shell; no first-party MCP route found | Broad: LP/MILP (HiGHS, SciPy), SLSQP/NLopt, Ipopt plugin, pymoo, surrogates | Parallel multistart and configurable parallel workflows | Broader engineering modeling and solver plugins; no agent job service, no QD |
 | [libEnsemble](https://github.com/Libensemble/libensemble) + [Ensemble Agent](https://github.com/Libensemble/ensemble_agent) | Agent application with an MCP script-generation server; Python | Generators and simulations the user connects | CPU/GPU/node assignment across nodes, monitoring, cancellation | Much stronger distributed execution; fewer built-in solvers, less packaged agent layer |
 | [Optees](https://github.com/Pablo-gitub/optees) | CLI, REST, MCP, desktop UI | LP/MILP, convex QP, robust linear, packing, knapsack, restricted nonlinear expressions | Asynchronous queue, one dispatch worker, in-memory job records | Closest contract design and adds QP; no shared CPU budget, records do not survive the process |
@@ -138,7 +145,8 @@ notes) · – not found in the sources reviewed · ? not checked
 | Job records survive a restart | ● | ? | ? | – | ◐ ⁹ | ● | ? | ◐ ¹⁰ | ◐ ¹¹ |
 | Resource management for parallel work | ● ¹² | ◐ ¹³ | ● | – | ◐ ¹⁴ | – | ◐ ¹⁵ | ◐ ¹⁶ | ● |
 | Claim separated from verification | ● | ? | ? | ● | ? | ? | ? | ◐ ¹⁷ | ? |
-| Multi-node execution | – | ? | ● | – | ● | ? | ? | – | ● |
+| Multi-node execution | ◐ ¹⁸ | ? | ● | – | ● | ? | ? | – | ● |
+| Campaigns of dependent jobs | ◐ ¹⁹ | ? | ◐ ²¹ | ? | ◐ ⁹ | ◐ ²⁰ | ? | ? | ? |
 | License | MIT | LGPL-3.0 (core) | BSD-3 / MIT | Apache-2.0 | MIT | MIT | Apache-2.0 | Apache-2.0 | LGPL |
 
 1. Dense BFGS, at most 256 variables; a local method.
@@ -158,6 +166,10 @@ notes) · – not found in the sources reviewed · ? not checked
 15. A pool of GPU workers.
 16. Four background solve threads with bounded accepted work.
 17. Exact-solver checks for supported formulations.
+18. Explicit placement of a job on a registered SSH node through the CLI, with a pinned host key and node identity; no automatic scheduling or budget across nodes. The tests simulate the node's systemd user manager; behavior on real hosts is not yet commissioned.
+19. experiment-craft 0.1: JSON campaigns with sweeps, dependencies, budgets and deadlines, run locally and sequentially; reports keep native claims; no statistical comparison yet.
+20. Persistent Bayesian-optimization campaigns (Section 3.5).
+21. Ensembles of generator and simulation calls (Section 3.2).
 
 ### 2.3 Where fcmaes & craft is strongest
 
@@ -241,15 +253,22 @@ notes) · – not found in the sources reviewed · ? not checked
 10. **Kept consistent across repositories.** Each solver repository pins one
     revision of the shared job crates, guide and test scripts. A weekly check
     fails when optimization-jobs has changed any of them since the pin, so
-    pins move instead of drifting. A
+    pins move instead of drifting. experiment-craft's baseline lock pins the
+    runner and the three workers to merged commits and rebuilds and tests
+    them together. A
     [landing page](https://dietmarwo.github.io/optimization-jobs/) with
     `llms.txt` and a JSON catalog points agents to the right guide.
 
 ### 2.4 Where the alternatives are stronger
 
-- **Several machines, GPUs, HPC.** fcmaes & craft runs on one Linux node and
-  does not schedule across machines. libEnsemble, Ray Tune, Dakota (MPI) and
-  Optuna (shared storage) do; cuOpt targets GPUs.
+- **Several machines, GPUs, HPC.** fcmaes & craft runs a job on one Linux
+  node. It can place a job on another node registered over SSH, but it does
+  not schedule across machines, and the durability of such jobs on real hosts
+  is still being commissioned. libEnsemble, Ray Tune, Dakota (MPI) and Optuna
+  (shared storage) schedule across nodes; cuOpt targets GPUs.
+- **Mature campaign tooling.** Optuna's studies, BO-MCP's campaigns and
+  libEnsemble's ensembles have more users and features. experiment-craft is
+  new, local and sequential, and has no statistical comparison protocol yet.
 - **Large sparse NLP and multidisciplinary models.** SQP-craft is dense and
   limited to 256 variables. GEMSEO and OpenMDAO with Ipopt-family solvers
   handle large sparse and coupled models.
@@ -487,11 +506,12 @@ alternatives:
 
 ## 4. fcmaes & craft in detail
 
-The five repositories form a toolbox with a common execution layer, not one
+The six repositories form a toolbox with a common execution layer, not one
 universal solver. The numerical choice depends on mathematical structure and
 on where the objective is implemented; the job layer makes supported
-computations discoverable, budgeted and inspectable. All five are MIT; check
-dependency and data licenses separately.
+computations discoverable, budgeted and inspectable, and experiment-craft
+composes such jobs into campaigns. All six are MIT; check dependency and data
+licenses separately.
 
 | Repository | Responsibility | Agent entry point | Registry release (Oct 2026) |
 |---|---|---|---|
@@ -500,6 +520,7 @@ dependency and data licenses separately.
 | fast-cma-es | Python optimization with native C++ algorithms | Python library, examples, tutorials | PyPI `fcmaes` 2.1.0 |
 | LP-IP-craft | LP and MILP | Sparse model data through the library or a job | PyPI `lp-ip-craft`, crates.io `lp-ip-craft` and `lp-ip-craft-native` 0.29.0 |
 | SQP-craft | Small smooth constrained NLP | A differentiable model through the library or a worker | PyPI `sqp-craft`, crates.io `sqp-craft-solver` and four companion crates 0.17.0 |
+| experiment-craft | Campaigns of jobs: sweeps, dependent steps, budgets, deadlines, reports | The `experiment-craft` CLI over a JSON campaign manifest | Not released; 0.1.0 builds from source |
 
 The job workers (`fcmaes-job-worker`, `lp-ip-job-worker`, `sqp-job-worker`)
 are built from source in their repositories.
@@ -545,10 +566,18 @@ claim fails an independent check, the job records the refutation instead of
 failing. SHA-256 verifies recorded bytes, not mathematical correctness; each
 solver supplies the numerical checks.
 
+**Remote placement.** Source after 0.3.0 places a job on a node registered
+over SSH (`fleet submit --node NAME`), with a pinned host key and node
+identity. A fixed helper receives every request as JSON, and the persisted
+dispatch intent means an uncertain start is observed on that node, never
+repeated or moved. There is no automatic placement or budget across nodes,
+and the tests simulate the node's systemd user manager
+([SSH guide](job-api.md#explicit-ssh-placement-and-recovery)).
+
 **Limits.**
 - Runs on Linux, as a local, single-user service.
-- No scheduling across machines, no arbitrary code submission, no general
-  remote ask/tell session.
+- No automatic scheduling across machines, no arbitrary code submission, no
+  general remote ask/tell session.
 - No exact resume of optimizer state: recovery keeps committed work and
   finalizes records, but does not resume a branch-and-bound tree or a CMA-ES
   population.
@@ -732,7 +761,41 @@ both QP backends. Larger sparse NLPs call for an Ipopt-family solver.
 
 Sources: [agent guide](https://github.com/dietmarwo/SQP-craft/blob/b2c2c4322ad8df3d4b586888f18467100d674618/ai-context.md), [solver API](https://github.com/dietmarwo/SQP-craft/blob/b2c2c4322ad8df3d4b586888f18467100d674618/docs/api.md), [job interface](https://github.com/dietmarwo/SQP-craft/blob/b2c2c4322ad8df3d4b586888f18467100d674618/docs/job-api.md), [custom models](https://github.com/dietmarwo/SQP-craft/blob/b2c2c4322ad8df3d4b586888f18467100d674618/docs/job-api/models.md).
 
-### 4.6 How an agent combines the repositories
+### 4.6 experiment-craft: campaigns over the jobs
+
+**Role.** experiment-craft is the Python layer above optimization-jobs for
+campaigns: parameter sweeps, comparisons and dependent steps. It owns
+campaign composition, scientific choices and reports; the Rust runner keeps
+execution, admission, staging and recovery. It contains no SSH code,
+launcher or capacity ledger of its own.
+
+**Campaigns.** A versioned JSON manifest expands deterministically into
+ordinary optimization and command jobs; duplicate keys, cycles, ambiguous
+bindings and oversized expansions fail before anything runs, and
+initialization validates the jobs through the runner. Each step's request
+key binds the plan, the input contents, the worker and runner identities,
+the node and the workspace, so two runs of one manifest never share jobs.
+SQLite records every decision before the client acts on it, so an
+interrupted client continues the same jobs instead of submitting new ones,
+and uncertain work is observed, never resubmitted. Campaign budgets (jobs,
+declared slot-seconds, a deadline) are a client policy on top of the
+runner's own admission.
+
+**Results.** A dependent step can consume a verified command output or a
+native result. Acceptance rules can require feasibility or particular
+claims. Reports in JSON, CSV and Markdown list every step, including failed,
+cancelled, blocked and unknown ones, with the native claim and evidence;
+reporting submits no work and detects tampered cached results.
+
+**Limits and best use.** Version 0.1 is local and sequential, needs Python
+3.12 or later and is not on PyPI. It has no pooled ranking or statistical
+comparison yet; comparison protocols with fixed-work and fixed-time
+partitions are planned. Use it to make a sweep or a multi-solver pipeline
+reproducible and auditable, not for throughput.
+
+Sources: [project overview](https://github.com/dietmarwo/experiment-craft/blob/main/README.md), [campaign guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md), [integration contract](https://github.com/dietmarwo/experiment-craft/blob/main/docs/integration-contract.md).
+
+### 4.7 How an agent combines the repositories
 
 Start with the shared routing guide, even when the solve uses only a library.
 Determine the variable structure, required output, tolerances, available
@@ -747,6 +810,7 @@ execution interface.
 | Linear model given as data | LP artifact, optional MPS conversion, `lp-ip.solve/1` | Objective, feasibility, integrality, dual/bound checks |
 | Smooth small nonlinear model | SQP library or registered worker, usually multistart | Derivative checks before, KKT residuals after |
 | Several campaigns sharing one machine | One optimization-jobs node with registered workers | Usable CPUs, declared slots, retained records, outcome evidence |
+| A sweep or a multi-solver pipeline to repeat and audit | An experiment-craft campaign over one node | Every step reported with its native claim and evidence; no job submitted twice |
 
 A global-to-local pipeline is application integration, not automatic model
 translation. Transfer variable order, units, bounds, model version,
@@ -1167,6 +1231,7 @@ Sources: [surrogate job profile](https://github.com/dietmarwo/fcmaes-rust/blob/6
 | optimization-jobs | Discovery, validation, CPU-slot admission, run control, artifacts and evidence | A local runner, not a distributed scheduler or CPU isolation |
 | LP-IP-craft | Linear subproblems, restricted discrete neighborhoods, repeated LP/MIP solves | Compare with mature solvers; keep good structured formulations |
 | SQP-craft | Small smooth constrained refinements after global or structural search | Needs valid derivatives; dense size limit and local convergence |
+| experiment-craft | Reproducible sweeps, comparisons and multi-solver pipelines with complete reports | A client over the runner, not a scheduler; local and sequential so far |
 
 An agent still builds the validated evaluator, the variable encoding,
 objectives and constraints, worker registration or a shell driver, and any
@@ -1216,8 +1281,11 @@ to audit. For each:
    shows why gradient methods belong in the comparison.
 
 Use fixed datasets and tolerances, several seeds, separate cold-start from
-steady-state timing, and keep unsuccessful runs. Results can be submitted
-through the
+steady-state timing, and keep unsuccessful runs. experiment-craft campaigns
+can run the fcmaes & craft side of such a comparison reproducibly: a fixed
+manifest, every step reported, unsuccessful ones included, and each job's
+native claim kept; its comparison protocols are still planned. Results can
+be submitted through the
 [evaluation issue form](https://github.com/dietmarwo/optimization-jobs/issues/new?template=independent-evaluation.yml);
 the [reference index](discovery/references.md) lists independent evidence.
 
@@ -1225,8 +1293,8 @@ the [reference index](discovery/references.md) lists independent evidence.
 
 ### fcmaes & craft revisions
 
-Descriptions of the five repositories refer to these revisions (the default
-branch on 22 October 2026). Registry releases are listed in
+Descriptions of the five original repositories refer to these revisions (the
+default branch on 22 October 2026). Registry releases are listed in
 [Section 4](#4-fcmaes--craft-in-detail); installed versions can lag the
 source.
 
@@ -1249,6 +1317,11 @@ the five repositories against the revisions above and the registries:
 - the fcmaes worker's declared evaluation limits;
 - the fcmaes PyPI release history and GitHub stars;
 - the published fcmaes-rust 0.2.0 wheel (the errata in Section 4.2).
+
+The 25 October update added experiment-craft (Section 4.6), the explicit SSH
+placement of optimization-jobs (Section 4.1) and the corresponding
+capability marks; it describes the default branches of 25 October 2026. The
+alternatives were not re-inspected for it.
 
 ### Alternatives: source revisions
 

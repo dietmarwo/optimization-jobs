@@ -104,6 +104,22 @@
         {"registry": "crates.io", "name": "optimization-runner", "url": "https://crates.io/crates/optimization-runner", "status": "published"}
       ],
       "topics": ["optimization", "mcp", "mcp-server", "ai-agents", "rust", "job-scheduler", "parallel-computing", "operations-research"]
+    },
+    {
+      "id": "experiment-craft",
+      "name": "experiment-craft",
+      "repository": "https://github.com/dietmarwo/experiment-craft",
+      "branch": "main",
+      "summary": "Reproducible experiment campaigns over optimization-jobs: parameter sweeps, dependent steps, budgets and complete reports.",
+      "fit": "A sweep, comparison or multi-solver pipeline must be repeatable and auditable, with every step's native claim and evidence kept.",
+      "limits": "Early development (0.1): local and sequential, Python 3.12 or newer, and a Linux runner with registered workers. No statistical comparison yet; the runner keeps execution and capacity.",
+      "availability": "Not on PyPI. Install from a checkout with pip install .; it drives a built optimization-run.",
+      "guide": "https://github.com/dietmarwo/experiment-craft/blob/main/AGENTS.md",
+      "tutorial": "https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md",
+      "documentation": "https://github.com/dietmarwo/experiment-craft/blob/main/README.md",
+      "languages": ["Python"],
+      "packages": [{"registry": "source", "name": "experiment-craft", "status": "source-only"}],
+      "topics": ["optimization", "experiments", "reproducibility", "parameter-sweep", "benchmarking", "ai-agents", "python", "operations-research"]
     }
   ]
 }
