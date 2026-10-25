@@ -53,6 +53,13 @@ maps problem classes to profiles:
 | [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | `lp-ip-job-worker` | `lp-ip.solve/1`, `lp-ip.evaluate/1` |
 | [SQP-craft](https://github.com/dietmarwo/SQP-craft) | `sqp-job-worker` | `sqp.solve/1`, `sqp.evaluate/1` |
 
+[experiment-craft](https://github.com/dietmarwo/experiment-craft) builds on
+this job layer. It runs reproducible campaigns of these jobs through
+`optimization-run`: parameter sweeps, dependent steps, budgets, deadlines and
+reports that keep each job's claim and evidence. Its baseline rebuilds the
+runner and the three workers at pinned revisions and tests them together. It
+is in early development.
+
 [Nine prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet design, production policies, energy sizing, curve fitting, GTOC1 route screening, surrogate optimization, LP/IP allocation, constrained SQP and synthetic rail-traffic recovery, with optional native application workers and an executable validation driver.
 
 ## Install

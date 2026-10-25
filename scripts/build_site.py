@@ -15,7 +15,8 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "site"
 OUTPUT = ROOT / "target" / "site"
-PROJECTS = {"fast-cma-es", "fcmaes-rust", "LP-IP-craft", "SQP-craft", "optimization-jobs"}
+PROJECTS = {"fast-cma-es", "fcmaes-rust", "LP-IP-craft", "SQP-craft", "optimization-jobs",
+            "experiment-craft"}
 
 
 def require(condition: bool, message: str) -> None:
@@ -36,8 +37,8 @@ def load_catalog() -> dict:
     require(https_url(data["comparison"]), "invalid comparison URL")
     datetime.date.fromisoformat(data["availability_checked"])
     entries = data["projects"]
-    require(len(entries) == 5 and {p["id"] for p in entries} == PROJECTS,
-            "catalog must contain each of the five projects once")
+    require(len(entries) == len(PROJECTS) and {p["id"] for p in entries} == PROJECTS,
+            "catalog must contain each project once")
     for project in entries:
         for key in ("repository", "guide", "tutorial", "documentation"):
             require(https_url(project[key]), f"invalid {project['id']} {key}")
@@ -154,7 +155,8 @@ def validate_page(output: Path, canonical: str) -> None:
     match = re.search(r'<script type="application/ld\+json">(.*?)</script>', text, re.S)
     require(match is not None, "structured data missing")
     ld = json.loads(match[1])
-    require(len(ld["@graph"][1]["itemListElement"]) == 5, "structured project list incomplete")
+    require(len(ld["@graph"][1]["itemListElement"]) == len(PROJECTS),
+            "structured project list incomplete")
 
 
 def build() -> Path:
