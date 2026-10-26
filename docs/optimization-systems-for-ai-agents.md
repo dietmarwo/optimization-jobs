@@ -1,7 +1,8 @@
 # Optimization systems for AI agents: how fcmaes & craft compares
 
 Research date 21 October 2026; updated 23 October 2026 for the October registry
-releases, and 25 October 2026 for explicit SSH placement and experiment-craft.
+releases, 25 October 2026 for explicit SSH placement and experiment-craft, and
+26 October 2026 for experiment-craft's comparisons, operations and dashboard.
 
 > **Who wrote this.** This comparison was prepared with AI-assisted research for
 > the maintainer of the six repositories, and the maintainer publishes it. It
@@ -21,7 +22,7 @@ toolbox:
 - [fast-cma-es](https://github.com/dietmarwo/fast-cma-es): the Python `fcmaes` package.
 - [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft): LP and MILP in Rust.
 - [SQP-craft](https://github.com/dietmarwo/SQP-craft): smooth constrained NLP in Rust.
-- [experiment-craft](https://github.com/dietmarwo/experiment-craft): reproducible campaigns over the job layer (parameter sweeps, dependent steps, budgets, reports), in early development.
+- [experiment-craft](https://github.com/dietmarwo/experiment-craft): reproducible campaigns over the job layer (parameter sweeps, dependent steps, budgets, reports), predeclared solver comparisons, pause/backup/restore and a local dashboard; in early development.
 
 It is compared here with the open-source systems an AI agent could use instead.
 
@@ -83,12 +84,15 @@ These strengths are established from source and documentation:
   macOS need no compiler. The Rust solver crates link no C/C++ solver library
   and forbid `unsafe` code. `cargo install optimization-runner --locked`
   installs the CLI and the MCP server.
-- **Campaigns that keep their evidence (early).** experiment-craft 0.1
-  compiles a JSON campaign (parameter sweeps, dependent steps, budgets and
-  deadlines) into ordinary jobs. It records each decision in SQLite before
-  acting on it, observes uncertain work instead of resubmitting it, and
-  reports every step, failed and blocked ones included, with the job's native
-  claim and evidence. It runs locally and sequentially and is not on PyPI.
+- **Campaigns and comparisons that keep their evidence (early).**
+  experiment-craft compiles a JSON campaign (parameter sweeps, dependent
+  steps, budgets and deadlines) into ordinary jobs. It records each decision
+  in SQLite before acting on it, observes uncertain work instead of
+  resubmitting it, and reports every step, failed and blocked ones included,
+  with the job's native claim and evidence. A solver comparison is sealed
+  before the first job runs and reported descriptively over every planned
+  run. Campaigns can be paused, backed up, restored and watched in a local
+  browser dashboard. It runs locally and sequentially and is not on PyPI.
 - **Track record of the black-box methods.** The fast-cma-es Python package,
   whose algorithms fcmaes-rust reimplements in Rust, has been on PyPI as
   `fcmaes` since February 2020 (133 releases). An independently authored
@@ -167,7 +171,7 @@ notes) · – not found in the sources reviewed · ? not checked
 16. Four background solve threads with bounded accepted work.
 17. Exact-solver checks for supported formulations.
 18. Explicit placement of a job on a registered SSH node through the CLI, with a pinned host key and node identity; no automatic scheduling or budget across nodes. The tests simulate the node's systemd user manager; behavior on real hosts is not yet commissioned.
-19. experiment-craft 0.1: JSON campaigns with sweeps, dependencies, budgets and deadlines, run locally and sequentially; reports keep native claims; no statistical comparison yet.
+19. experiment-craft 0.4 (unreleased): JSON campaigns with sweeps, dependencies, budgets and deadlines, run locally and sequentially; predeclared descriptive comparisons; reports keep native claims; no statistical inference.
 20. Persistent Bayesian-optimization campaigns (Section 3.5).
 21. Ensembles of generator and simulation calls (Section 3.2).
 
@@ -268,7 +272,8 @@ notes) · – not found in the sources reviewed · ? not checked
   (shared storage) schedule across nodes; cuOpt targets GPUs.
 - **Mature campaign tooling.** Optuna's studies, BO-MCP's campaigns and
   libEnsemble's ensembles have more users and features. experiment-craft is
-  new, local and sequential, and has no statistical comparison protocol yet.
+  new, local and sequential. Its comparisons are descriptive, with no
+  significance tests, and its dashboard serves only the local machine.
 - **Large sparse NLP and multidisciplinary models.** SQP-craft is dense and
   limited to 256 variables. GEMSEO and OpenMDAO with Ipopt-family solvers
   handle large sparse and coupled models.
@@ -520,7 +525,7 @@ licenses separately.
 | fast-cma-es | Python optimization with native C++ algorithms | Python library, examples, tutorials | PyPI `fcmaes` 2.1.0 |
 | LP-IP-craft | LP and MILP | Sparse model data through the library or a job | PyPI `lp-ip-craft`, crates.io `lp-ip-craft` and `lp-ip-craft-native` 0.29.0 |
 | SQP-craft | Small smooth constrained NLP | A differentiable model through the library or a worker | PyPI `sqp-craft`, crates.io `sqp-craft-solver` and four companion crates 0.17.0 |
-| experiment-craft | Campaigns of jobs: sweeps, dependent steps, budgets, deadlines, reports | The `experiment-craft` CLI over a JSON campaign manifest | Not released; 0.1.0 builds from source |
+| experiment-craft | Campaigns of jobs: sweeps, dependent steps, budgets, deadlines, reports; predeclared comparisons; pause, backup and restore | The `experiment-craft` CLI over JSON campaign manifests and comparison protocols; a local browser dashboard | Not released; 0.4.0 builds from source |
 
 The job workers (`fcmaes-job-worker`, `lp-ip-job-worker`, `sqp-job-worker`)
 are built from source in their repositories.
@@ -787,13 +792,37 @@ claims. Reports in JSON, CSV and Markdown list every step, including failed,
 cancelled, blocked and unknown ones, with the native claim and evidence;
 reporting submits no work and detects tampered cached results.
 
-**Limits and best use.** Version 0.1 is local and sequential, needs Python
-3.12 or later and is not on PyPI. It has no pooled ranking or statistical
-comparison yet; comparison protocols with fixed-work and fixed-time
-partitions are planned. Use it to make a sweep or a multi-solver pipeline
-reproducible and auditable, not for throughput.
+**Comparisons.** A comparison protocol is sealed in the campaign database
+before the first job runs and cannot be changed afterwards. It names the
+arms, the one solver setting that varies, the seeds or start points, a common
+work or time cap and the metrics. Arms that differ in the model, the inputs,
+the tolerances or the resources are refused, not pooled. Reports count every
+planned run: failed, partial and missing results stay visible and never count
+as zero. Means, medians and paired differences are computed exactly. There is
+no ranking, significance test or confidence interval, and the first adapters
+cover one task per job for fcmaes retry, LP/IP and SQP.
 
-Sources: [project overview](https://github.com/dietmarwo/experiment-craft/blob/main/README.md), [campaign guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md), [integration contract](https://github.com/dietmarwo/experiment-craft/blob/main/docs/integration-contract.md).
+**Operations.** Dispatch can be paused and resumed; resuming first checks
+every native handle with the runner. A paused campaign can be backed up to an
+archive and restored into a new workspace, which starts paused and refuses
+work that another copy of the campaign launched. A node inventory prepares
+further machines: one local test node is the default, planned SSH workers stay
+disabled, and an offline export writes the runner's own registration
+commands. Campaigns still run on the local node only.
+
+**Dashboard.** A browser page served on the local machine shows the attached
+campaigns, their steps and per-node progress, and offers start, pause, resume
+and stop with the same rules as the CLI. It is a single-operator tool behind a
+token, not a hosted multi-user service, and it does not measure CPU, memory
+or solver progress.
+
+**Limits and best use.** Version 0.4 is local and sequential, needs Python
+3.12 or later and is not on PyPI. Remote campaign routing and automatic
+placement are not implemented, and real-host service and reboot behavior is
+still being commissioned. Use it to make a sweep, a solver comparison or a
+multi-solver pipeline reproducible and auditable, not for throughput.
+
+Sources: [project overview](https://github.com/dietmarwo/experiment-craft/blob/main/README.md), [campaign guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md), [comparison guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/scientific-comparisons.md), [operating guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/operations.md), [dashboard guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/dashboard.md), [integration contract](https://github.com/dietmarwo/experiment-craft/blob/main/docs/integration-contract.md).
 
 ### 4.7 How an agent combines the repositories
 
@@ -811,6 +840,7 @@ execution interface.
 | Smooth small nonlinear model | SQP library or registered worker, usually multistart | Derivative checks before, KKT residuals after |
 | Several campaigns sharing one machine | One optimization-jobs node with registered workers | Usable CPUs, declared slots, retained records, outcome evidence |
 | A sweep or a multi-solver pipeline to repeat and audit | An experiment-craft campaign over one node | Every step reported with its native claim and evidence; no job submitted twice |
+| Two solver settings to compare fairly | An experiment-craft comparison protocol sealed before the campaign runs | Same model, inputs and caps in every arm; every planned run counted, failures included |
 
 A global-to-local pipeline is application integration, not automatic model
 translation. Transfer variable order, units, bounds, model version,
@@ -1231,7 +1261,7 @@ Sources: [surrogate job profile](https://github.com/dietmarwo/fcmaes-rust/blob/6
 | optimization-jobs | Discovery, validation, CPU-slot admission, run control, artifacts and evidence | A local runner, not a distributed scheduler or CPU isolation |
 | LP-IP-craft | Linear subproblems, restricted discrete neighborhoods, repeated LP/MIP solves | Compare with mature solvers; keep good structured formulations |
 | SQP-craft | Small smooth constrained refinements after global or structural search | Needs valid derivatives; dense size limit and local convergence |
-| experiment-craft | Reproducible sweeps, comparisons and multi-solver pipelines with complete reports | A client over the runner, not a scheduler; local and sequential so far |
+| experiment-craft | Reproducible sweeps, predeclared comparisons and multi-solver pipelines with complete reports | A client over the runner, not a scheduler; local and sequential so far; descriptive statistics only |
 
 An agent still builds the validated evaluator, the variable encoding,
 objectives and constraints, worker registration or a shell driver, and any
@@ -1284,8 +1314,9 @@ Use fixed datasets and tolerances, several seeds, separate cold-start from
 steady-state timing, and keep unsuccessful runs. experiment-craft campaigns
 can run the fcmaes & craft side of such a comparison reproducibly: a fixed
 manifest, every step reported, unsuccessful ones included, and each job's
-native claim kept; its comparison protocols are still planned. Results can
-be submitted through the
+native claim kept. Its comparison protocols are sealed before the runs and
+report descriptive summaries over every planned run. Results can be
+submitted through the
 [evaluation issue form](https://github.com/dietmarwo/optimization-jobs/issues/new?template=independent-evaluation.yml);
 the [reference index](discovery/references.md) lists independent evidence.
 
@@ -1321,11 +1352,13 @@ the five repositories against the revisions above and the registries:
 The 25 October update added experiment-craft (Section 4.6), the explicit SSH
 placement of optimization-jobs (Section 4.1) and the corresponding
 capability marks; it describes the default branches of 25 October 2026. The
-alternatives were not re-inspected for it.
+26 October update describes experiment-craft's predeclared comparisons,
+operations and dashboard (Section 4.6) at its default branch of 26 October
+2026. The alternatives were not re-inspected for either update.
 
 ### Alternatives: source revisions
 
-The alternatives were not re-inspected for the update. Source statements
+The alternatives were not re-inspected for the updates. Source statements
 refer to these shallow-clone revisions from 21 October 2026:
 
 | Repository | Revision |
