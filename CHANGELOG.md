@@ -84,6 +84,10 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- The [systems comparison](docs/optimization-systems-for-ai-agents.md) has a
+  26 October update for experiment-craft's predeclared solver comparisons,
+  pause, backup and restore, node inventory and local dashboard, and the
+  landing-page catalog describes its comparisons.
 - The README, the landing page and its catalog, and the
   [systems comparison](docs/optimization-systems-for-ai-agents.md) include
   [experiment-craft](https://github.com/dietmarwo/experiment-craft), which
