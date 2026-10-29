@@ -103,6 +103,11 @@ jobs:
                   for chapter, slug in chapters.items():
                       if chapter == "LP9":
                           continue  # wall-clock limits: work counters vary
+                      if chapter == "X4" and preset == "study":
+                          # Its 60-charge SQP multistart ends in a line-search
+                          # failure whose path follows last-digit differences
+                          # of NumPy's CPU-specific math kernels.
+                          continue
                       recorded = src / repo / "tutorials" / slug / "results" / preset / "summary.json"
                       r = subprocess.run([sys.executable, compare, recorded, out / chapter / "summary.json"])
                       if r.returncode:
