@@ -140,6 +140,13 @@ completes with the job's result. Jobs outlive the server. The server cannot
 register workers, change the node or run command jobs. See
 [Agents and MCP](docs/job-api.md#agents-and-mcp).
 
+Two tutorial series show the workers in use. The nine
+[agent tutorials](tutorials/agentic/README.md) drive registered models
+through prompts. The twenty
+[structured tutorials](tutorials/structured/README.md) solve LP, MIP, SQP and
+black-box models with the native solvers' Python APIs, check each answer
+against an independent reference, and can run as trusted command jobs.
+
 ## Depending on this repository
 
 A worker repository pins a revision in its workspace manifest:

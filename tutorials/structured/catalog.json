@@ -1,0 +1,30 @@
+{
+  "LP-IP-craft": {
+    "LP1": "resource-allocation",
+    "LP2": "battery-dispatch",
+    "LP3": "sudoku",
+    "LP4": "staff-rostering",
+    "LP5": "transportation-duals",
+    "LP6": "facility-location",
+    "LP7": "cutting-stock",
+    "LP8": "stochastic-planning",
+    "LP9": "spoc4-matching"
+  },
+  "SQP-craft": {
+    "SQP1": "constrained-calibration",
+    "SQP2": "multistart-scaling",
+    "SQP3": "hanging-chain",
+    "SQP4": "collocation",
+    "SQP5": "low-thrust-pykep",
+    "SQP6": "reaction-kinetics",
+    "X2": "power-dispatch"
+  },
+  "fcmaes-rust": {
+    "X3": "truss-bounds",
+    "X4": "thomson-refinement"
+  },
+  "optimization-jobs": {
+    "X1": "solver-choice",
+    "LP10": "rail-formulation"
+  }
+}

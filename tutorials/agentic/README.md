@@ -33,3 +33,7 @@ A related [fluid-dynamics workshop](https://github.com/dietmarwo/fcmaes-rust/blo
 [run.py](run.py) builds workers and drives all nine pilots through `optimization-run`. It validates worker payload schemas and published job/result schemas; retains every input/spec/result; checks exact LP and curve-fit quantities; and renders measured figures. Agent-facing pages contain the prompts and interpretation; setup commands live in the appendix.
 
 Optional application workers live beside their models in fcmaes-rust. LP-IP-craft and SQP-craft use their existing workers. fast-cma-es remains the Python in-process route and does not acquire an MCP worker through this series.
+
+## Further structured applications
+
+The [twenty structured tutorials](../structured/README.md) cover more problem classes, each with an independent reference. They call the native solvers through their Python APIs and can run as trusted command jobs; the nine chapters here use registered worker models instead.

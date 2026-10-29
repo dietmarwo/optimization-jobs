@@ -1,0 +1,167 @@
+name: Structured tutorials
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tutorials/structured/**'
+      - 'tutorials/solver-choice/**'
+      - 'tutorials/rail-formulation/**'
+      - 'tutorials/agentic/rail-traffic/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/structured-tutorials.yml'
+  pull_request:
+    paths:
+      - 'tutorials/structured/**'
+      - 'tutorials/solver-choice/**'
+      - 'tutorials/rail-formulation/**'
+      - 'tutorials/agentic/rail-traffic/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/structured-tutorials.yml'
+  workflow_dispatch:
+  # The chapters live in the solver repositories; detect changes there too.
+  schedule:
+    - cron: '17 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chapters:
+    name: Twenty chapters, directly and as command jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: '2'
+      MPLBACKEND: Agg
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: sources/optimization-jobs
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/LP-IP-craft
+          ref: main
+          path: sources/LP-IP-craft
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/SQP-craft
+          ref: main
+          path: sources/SQP-craft
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/fcmaes-rust
+          ref: main
+          path: sources/fcmaes-rust
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: structured
+          workspaces: |
+            sources/optimization-jobs
+            sources/fcmaes-rust/tutorials/truss-sizing
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: sources/optimization-jobs/tutorials/structured/requirements.txt
+      - name: Python dependencies
+        run: python3 -m pip install -r sources/optimization-jobs/tutorials/structured/requirements.txt
+      - name: Build the runner and the original-FEM replay for X3
+        run: |
+          cargo build --release --locked --manifest-path sources/optimization-jobs/Cargo.toml -p optimization-runner
+          cargo build --release --locked --manifest-path sources/fcmaes-rust/tutorials/truss-sizing/Cargo.toml --example structured_replay
+          echo "TRUSS_REPLAY_BIN=$GITHUB_WORKSPACE/sources/fcmaes-rust/tutorials/truss-sizing/target/release/examples/structured_replay" >> "$GITHUB_ENV"
+      - name: Mathematical and execution boundary tests
+        run: python3 -m unittest discover -s sources/optimization-jobs/tutorials/structured/tests -v
+      - name: Both presets of all chapters, compared with the recorded summaries
+        run: |
+          python3 - <<'EOF'
+          import json, subprocess, sys
+          from pathlib import Path
+          src = Path("sources")
+          catalog = json.loads((src / "optimization-jobs/tutorials/structured/catalog.json").read_text())
+          # Floats to 1e-6: SciPy reference values vary in the last digits between CPUs.
+          compare = src / "SQP-craft/tutorials/_support/compare_results.py"
+
+          def stable(chapter, preset, summary):
+              # Drop the parts whose solver path follows last-digit differences
+              # of the CPU-specific NumPy and OpenBLAS kernels; with other
+              # kernels, everything else still matches to 1e-6.
+              result = summary["result"]
+              if chapter == "X3":
+                  result["attempts"].pop(0)  # the active-set sizing attempt
+                  for bound in result["bounds"]:
+                      bound.pop("result")  # degenerate LPs: duals, iterations
+              if chapter == "X4" and preset == "study":
+                  result["arms"].pop(0)  # the 60-charge SQP multistart
+              return summary
+
+          failed = []
+          for preset in ["smoke", "study"]:
+              out = Path("out") / preset
+              subprocess.run([sys.executable, src / "optimization-jobs/tutorials/structured/run.py",
+                              "--chapter", "all", "--preset", preset, "--sources", src,
+                              "--output", out])
+              report = out / "report.json"
+              records = json.loads(report.read_text()) if report.exists() else []
+              passed = {r["chapter"] for r in records if r["status"] == "passed"}
+              for r in records:
+                  if r["status"] != "passed":
+                      # Show the chapter's own error as an annotation.
+                      text = r.get("error", "")[-1500:]
+                      text = text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+                      print(f"::error title={r['chapter']} {preset} failed::{text}", flush=True)
+                      failed.append(f"{r['chapter']} {preset} (failed)")
+              ran = {r["chapter"] for r in records}
+              for chapters in catalog.values():
+                  failed += [f"{c} {preset} (not run)" for c in chapters if c not in ran]
+              for repo, chapters in catalog.items():
+                  for chapter, slug in chapters.items():
+                      if chapter not in passed:
+                          continue
+                      if chapter == "LP9":
+                          continue  # wall-clock limits: work counters vary
+                      pair = []
+                      for name, path in [("recorded", src / repo / "tutorials" / slug / "results" / preset / "summary.json"),
+                                         ("new", out / chapter / "summary.json")]:
+                          reduced = Path("out/compare") / preset / chapter / f"{name}.json"
+                          reduced.parent.mkdir(parents=True, exist_ok=True)
+                          reduced.write_text(json.dumps(stable(chapter, preset, json.loads(path.read_text()))))
+                          pair.append(reduced)
+                      r = subprocess.run([sys.executable, compare, *pair], capture_output=True, text=True)
+                      print(r.stdout, end="", flush=True)
+                      if r.returncode:
+                          if "::error" not in r.stdout:
+                              # The comparison itself stopped; show why.
+                              text = (r.stdout + r.stderr)[-1500:]
+                              text = text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+                              print(f"::error title={chapter} {preset} comparison stopped::{text}", flush=True)
+                          failed.append(f"{chapter} {preset}")
+          if failed:
+              print("::error title=structured tutorials::" + ", ".join(failed), flush=True)
+              sys.exit("failed or differs from the recorded summary: " + ", ".join(failed))
+          EOF
+      - name: LP10 and X1 as trusted command jobs
+        run: >-
+          python3 sources/optimization-jobs/tutorials/structured/run.py
+          --runner sources/optimization-jobs/target/release/optimization-run
+          --chapter LP10 --sources sources --output out/command-lp10 &&
+          python3 sources/optimization-jobs/tutorials/structured/run.py
+          --runner sources/optimization-jobs/target/release/optimization-run
+          --chapter X1 --sources sources --output out/command-x1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: structured-tutorials
+          path: out
