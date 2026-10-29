@@ -6,6 +6,12 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 static TEMP_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Appends `value` as one JSON line and syncs the file. A torn final line is
+/// ended first, so the new record never joins it.
+///
+/// # Errors
+///
+/// Returns an I/O or serialization error.
 pub fn append_jsonl<T: Serialize>(path: &Path, value: &T) -> Result<(), io::Error> {
     let mut file = OpenOptions::new()
         .create(true)
@@ -134,13 +140,19 @@ fn temporary_path(parent: &Path, filename: &str) -> PathBuf {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Envelope {
+    /// The version of the record format in `payload_json`.
     pub schema_version: u32,
+    /// The lowercase hexadecimal SHA-256 of the `payload_json` bytes.
     pub checksum: String,
+    /// The record as JSON text.
     pub payload_json: String,
 }
+/// The lowercase hexadecimal SHA-256 of `bytes`.
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+/// Appends `value` as a checked record of `version`: an [`Envelope`] line
+/// with the checksum of its JSON, written by [`append_jsonl`].
 pub fn append_checked<T: Serialize>(path: &Path, version: u32, value: &T) -> io::Result<()> {
     let payload_json = serde_json::to_string(value)?;
     append_jsonl(
@@ -152,6 +164,9 @@ pub fn append_checked<T: Serialize>(path: &Path, version: u32, value: &T) -> io:
         },
     )
 }
+/// The checked records of `version` in `path`. An incomplete final line is
+/// ignored; a wrong version, a wrong checksum or earlier corruption is an
+/// error.
 pub fn read_checked<T: DeserializeOwned>(path: &Path, version: u32) -> io::Result<Vec<T>> {
     let lines: Vec<Envelope> = read_jsonl_resilient(path)?;
     lines

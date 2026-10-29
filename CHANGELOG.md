@@ -8,6 +8,15 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Changed
+
+- Every public item of both crates has a doc comment, so docs.rs documents
+  all of them (it reported 40% for `optimization-job-api` 0.4.0). The job,
+  result and legacy types describe each field and link the guide's sections.
+  Both crates enable `missing_docs`, so CI's Clippy run, which denies
+  warnings, fails on an undocumented public item. The command-line help is
+  unchanged.
+
 ## [0.4.0] - 2026-10-29
 
 Opt-in trusted command jobs, checked binary file transfer and output

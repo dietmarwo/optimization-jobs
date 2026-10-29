@@ -114,13 +114,18 @@ struct Args {
     input_store_bytes: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
+/// How `submit_job` starts jobs (`--launch`).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Launch {
+    /// `optimization-run run` in a session of its own, which outlives the
+    /// server.
     Process,
+    /// `optimization-run submit`, which needs a systemd user manager.
     Systemd,
 }
 
 impl Launch {
+    /// The option value: `process` or `systemd`.
     pub fn name(self) -> &'static str {
         match self {
             Launch::Process => "process",
@@ -129,10 +134,27 @@ impl Launch {
     }
 }
 
+// Written out rather than derived: a derived ValueEnum turns the variants'
+// doc comments into option help, which would change `--help`.
+impl ValueEnum for Launch {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Launch::Process, Launch::Systemd]
+    }
+
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        Some(clap::builder::PossibleValue::new(self.name()))
+    }
+}
+
+/// The MCP server over one node root.
 pub struct Server {
+    /// The node root.
     pub root: PathBuf,
+    /// The `optimization-run` executable that every tool calls.
     pub runner: PathBuf,
+    /// How jobs are started.
     pub launch: Launch,
+    /// The directory that relative input files of inline jobs are read from.
     pub input_dir: PathBuf,
     /// Limit of the input store's total size.
     pub input_store_bytes: u64,
@@ -141,6 +163,7 @@ pub struct Server {
     initialized: AtomicBool,
     /// JSON-RPC batches, part of protocol 2025-03-26 only.
     batches: AtomicBool,
+    /// Set at the end of input; waiting requests stop, jobs keep running.
     pub shutdown: AtomicBool,
     /// Requests counted against [`MAX_WAITING`].
     waiting: AtomicUsize,
@@ -161,16 +184,23 @@ impl Drop for Permit<'_> {
 
 /// One request: its era and whether it may be cancelled or report progress.
 pub struct Ctx {
+    /// The request is served statelessly under revision 2026-07-28.
     pub modern: bool,
     /// The client declared the Tasks extension on this request.
     pub tasks: bool,
+    /// Set when the client cancels the request.
     pub cancel: Arc<AtomicBool>,
+    /// The request's progress token, if it asked for progress.
     pub progress: Option<Value>,
+    /// The JSON-RPC ID of the request.
     pub id: Value,
 }
 
+/// The answer to one request.
 pub enum Reply {
+    /// A result.
     Ok(Value),
+    /// A JSON-RPC error: its code, message and optional data.
     Err(i64, String, Option<Value>),
     /// No response: the request was cancelled, or it ended a subscription
     /// the client cancelled.
@@ -178,6 +208,7 @@ pub enum Reply {
 }
 
 impl Ctx {
+    /// Whether the request was cancelled or the server is shutting down.
     pub fn stopped(&self, server: &Server) -> bool {
         self.cancel.load(Ordering::Relaxed) || server.shutdown.load(Ordering::Relaxed)
     }
@@ -245,6 +276,7 @@ impl Server {
         }
     }
 
+    /// Sends the notification `method` with `params`.
     pub fn notify(&self, method: &str, params: Value) {
         self.send(&json!({"jsonrpc":"2.0","method":method,"params":params}));
     }
@@ -757,6 +789,8 @@ fn read_message(input: &mut impl BufRead, line: &mut Vec<u8>) -> io::Result<Fram
     }
 }
 
+/// The `optimization-mcp` binary: parses its options and serves MCP on
+/// standard input and output until the input ends.
 pub fn main() {
     if !cfg!(target_os = "linux") {
         eprintln!("optimization-mcp: Linux is required");

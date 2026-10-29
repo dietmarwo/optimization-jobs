@@ -1,21 +1,38 @@
+//! The retry journal and the manifest of `fcmaes.job/0.1`.
 use crate::{Result, legacy::JobSpec, storage};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, path::Path};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+/// One completed retry in the journal `retries.jsonl` of an `fcmaes.job/0.1`
+/// attempt.
 pub struct RetryRecord {
+    /// The retry's index, below `budget.retries`.
     pub retry_id: usize,
+    /// The retry's seed, derived from `execution.seed` and `retry_id`.
     pub run_seed: u64,
+    /// The [`JobSpec::digest`] of the retry's job.
     pub spec_digest: String,
+    /// How the optimizer's start was drawn.
     pub initialization: String,
+    /// The retry's best point, inside the bounds.
     pub x: Vec<f64>,
+    /// The objective of `x`; `None` if the retry found no finite value.
     pub y: Option<f64>,
+    /// The objective evaluations the retry used.
     pub actual_evaluations: u64,
+    /// The time the retry took.
     pub elapsed_seconds: f64,
+    /// Whether `y` is present.
     pub valid: bool,
+    /// Whether `x` is feasible; never true without `valid`.
     pub feasible: bool,
 }
+/// The retry journal of the attempt in `dir`; empty without a journal. Each
+/// record must have a retry ID below `budget.retries` and not seen before, the
+/// job's digest, a finite point inside the bounds, finite values, and from one
+/// to the per-retry maximum of evaluations.
 pub fn replay(dir: &Path, spec: &JobSpec) -> Result<Vec<RetryRecord>> {
     let path = dir.join("retries.jsonl");
     if !path.exists() {
@@ -53,6 +70,8 @@ pub fn replay(dir: &Path, spec: &JobSpec) -> Result<Vec<RetryRecord>> {
     }
     Ok(records)
 }
+/// The manifest `run.json` (schema version 1) of an `fcmaes.job/0.1` attempt,
+/// built from its retry journal, with the best retry.
 pub fn manifest(
     dir: &Path,
     spec: &JobSpec,

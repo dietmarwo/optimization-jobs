@@ -104,10 +104,12 @@ impl Declaration {
             ..Self::records(name, file)
         }
     }
+    /// Ties the artifact to task `task_id`.
     pub fn task(mut self, task_id: usize) -> Self {
         self.task_id = Some(task_id);
         self
     }
+    /// Sets the description, at most 200 bytes.
     pub fn describe(mut self, description: impl Into<String>) -> Self {
         self.description = description.into();
         self
