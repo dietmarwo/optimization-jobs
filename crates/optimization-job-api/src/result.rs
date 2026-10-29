@@ -1,3 +1,6 @@
+//! The result contract `optimization.result/0.2`: outcomes with claims and
+//! evidence, the result journal, and the manifests the runner builds from it
+//! (the guide's section [Results and durable recovery](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#results-and-durable-recovery)).
 use crate::{JobSpec, Request, Result, artifact, legacy, safe_name, storage};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -82,6 +85,8 @@ pub const VERDICTS: [&str; 5] = [
     "invalid_certificate",
 ];
 
+/// What a worker reports for one task: why it stopped, what it claims and how
+/// the claim is supported. [`Outcome::check`] enforces the contract's rules.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Outcome {
@@ -91,9 +96,16 @@ pub struct Outcome {
     /// One of [`CLAIMS`]. A non_dominated_set describes a set of points in
     /// `details` and has no single `x` or `objective`.
     pub claim: String,
+    /// Whether the returned point satisfies the model's constraints within
+    /// their tolerances; `None` if that is unknown.
     pub feasible: Option<bool>,
+    /// The objective of `x`; `None` without a point or with several
+    /// objectives.
     pub objective: Option<f64>,
+    /// The returned point, finite and nonempty; `None` if there is none.
     pub x: Option<Vec<f64>>,
+    /// Solver-specific details such as gaps, residuals, a front or elites
+    /// (the guide's section [Details](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#details)).
     pub details: Value,
     /// How the claim is supported. Workers of protocol 0.2 always report it;
     /// a record without it predates 0.2 and is only `claimed`.
@@ -108,6 +120,7 @@ pub struct Outcome {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub imprecise: bool,
 }
+/// How much of a claim was verified, and how.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Evidence {
@@ -122,9 +135,11 @@ pub struct Evidence {
     /// states only what survived the check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refuted: Option<Refutation>,
+    /// The proof that an independent checker judged, if there is one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub certificate: Option<Certificate>,
 }
+/// A claim of the solver that an independent check rejected.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Refutation {
@@ -132,8 +147,10 @@ pub struct Refutation {
     pub claim: String,
     /// One of [`VERDICTS`].
     pub verdict: String,
+    /// What the check found.
     pub message: String,
 }
+/// A proof of a claim and the verdict of the checker that judged it.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Certificate {
@@ -149,6 +166,7 @@ pub struct Certificate {
     /// `verified` or `rejected`.
     pub verdict: String,
 }
+/// The objective of the best feasible point and a proven bound on the optimum.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ObjectiveBounds {
@@ -354,15 +372,27 @@ impl Outcome {
     }
 }
 
+/// One committed task in the result journal `results.jsonl`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Record {
+    /// The task's index, below the resolved `task_count`.
     pub task_id: usize,
+    /// The [`JobSpec::digest`] of the task's job.
     pub spec_digest: String,
+    /// The time the task took.
     pub elapsed_seconds: f64,
+    /// Named work counters, such as evaluations or iterations. Counters of
+    /// different profiles measure different work.
     pub work: BTreeMap<String, u64>,
+    /// The task's outcome.
     pub outcome: Outcome,
 }
+/// The result journal of the attempt in `dir`, ordered by `task_id`; empty
+/// without a journal. Each record must have a task ID below `task_count` and
+/// not seen before, the job's digest, a finite nonnegative time, safe counter
+/// names and an outcome that passes [`Outcome::check`]. An incomplete final
+/// line is ignored; any other invalid record is an error.
 pub fn replay(dir: &Path, spec: &JobSpec) -> Result<Vec<Record>> {
     let path = dir.join("results.jsonl");
     if !path.exists() {
@@ -394,6 +424,7 @@ pub fn replay(dir: &Path, spec: &JobSpec) -> Result<Vec<Record>> {
     records.sort_by_key(|r| r.task_id);
     Ok(records)
 }
+/// The work counters of `records`, summed per name; an overflow is an error.
 pub fn counts(records: &[Record]) -> Result<BTreeMap<String, u64>> {
     let mut counts = BTreeMap::<String, u64>::new();
     for r in records {
@@ -404,6 +435,9 @@ pub fn counts(records: &[Record]) -> Result<BTreeMap<String, u64>> {
     }
     Ok(counts)
 }
+/// The result manifest `run.json` of the attempt in `dir`, built from its
+/// journal and its artifacts. With `complete` false, the work is not fully
+/// accounted for: `work` is null and only `known_work_lower_bound` is given.
 pub fn manifest(
     dir: &Path,
     spec: &Request,
@@ -461,6 +495,8 @@ pub fn unreadable_manifest(
         }),
     }
 }
+/// The progress of a running attempt: its completed tasks, its known work and
+/// its artifact index.
 pub fn progress(dir: &Path, s: &Request) -> Result<Value> {
     match s {
         Request::Legacy(s) => {
@@ -480,6 +516,9 @@ pub fn progress(dir: &Path, s: &Request) -> Result<Value> {
         }
     }
 }
+/// Replays the journal of the attempt in `dir`, then ends a torn final line:
+/// a valid record gets its newline, anything else is removed. An invalid
+/// earlier record is an error, and the journal stays unchanged.
 pub fn repair(dir: &Path, s: &Request) -> Result<()> {
     match s {
         Request::Legacy(s) => {
@@ -499,6 +538,11 @@ pub fn repair(dir: &Path, s: &Request) -> Result<()> {
     }
     Ok(())
 }
+/// The status and elapsed time from the worker's own `run.json` in `dir`, if
+/// it can be trusted: it belongs to this job, its accounting is complete, its
+/// status is terminal, and its results and work equal the journal's.
+/// Otherwise `None`. A `completed` manifest without all tasks, or an invalid
+/// elapsed time, is an error.
 pub fn worker_outcome(dir: &Path, s: &Request) -> Result<Option<(String, f64)>> {
     if !dir.join("run.json").exists() {
         return Ok(None);
@@ -546,6 +590,10 @@ pub fn worker_outcome(dir: &Path, s: &Request) -> Result<Option<(String, f64)>> 
         .ok_or("invalid worker elapsed time")?;
     Ok(Some((status.into(), elapsed)))
 }
+/// Sets result manifests side by side. All must use a schema of [`SCHEMAS`],
+/// the same payload schema and the same `spec_digest`; manifests of the legacy
+/// format go to [`legacy::result::compare`]. The answer lists the arms and
+/// warnings and names no winner.
 pub fn compare(runs: &[Value]) -> Result<Value> {
     let common = |r: &Value| {
         r["schema_version"]

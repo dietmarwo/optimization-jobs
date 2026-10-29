@@ -18,23 +18,38 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// What [`Prepared::solve`] returns for one task.
 pub struct TaskResult {
+    /// The task's outcome. It must pass [`Outcome::check`]; otherwise the
+    /// attempt fails before the record reaches the journal.
     pub outcome: Outcome,
+    /// Named work counters of the task, such as evaluations.
     pub work: BTreeMap<String, u64>,
 }
+/// A validated job, ready to solve its tasks. [`execute`] calls
+/// [`solve`](Prepared::solve) from up to `outer_workers` threads at once.
 pub trait Prepared: Send + Sync {
+    /// The number of tasks; it becomes the job's `task_count`.
     fn tasks(&self) -> usize;
+    /// Solves task `task`, counted from 0, within `remaining_seconds` of the
+    /// wall time.
     fn solve(&self, task: usize, remaining_seconds: f64) -> Result<TaskResult>;
     /// A cooperative stop. Implementations without solver tokens may finish
     /// their active task; the runner enforces the process deadline.
     fn cancel(&self);
 }
+/// The solver behind one worker ID. [`run`] turns it into a worker binary
+/// with the commands `describe`, `validate` and `execute`.
 pub trait Worker {
+    /// The worker's description for `describe`, usually built by
+    /// [`description`].
     fn describe(&self) -> Value;
     /// Validate all model data, bounds, starts, budgets and thread support.
     /// Resolve defaults into payload; no optimization is performed here.
     fn prepare(&self, spec: &mut JobSpec, base: &Path) -> Result<Box<dyn Prepared>>;
 }
+/// A worker description of protocol [`PROTOCOL`]: the engine and its version,
+/// the profiles, the registered problems and the largest `inner_threads`.
 pub fn description(
     engine: &str,
     version: &str,
@@ -56,6 +71,11 @@ fn prepared(worker: &dyn Worker, path: &Path) -> Result<(JobSpec, Box<dyn Prepar
     s.validate()?;
     Ok((s, p))
 }
+/// Executes the job in the attempt directory `dir`: validates `resolved.json`,
+/// solves the tasks on up to `outer_workers` threads, appends each result to
+/// `results.jsonl` and writes `run.json`. A `cancel.request` file or the wall
+/// time stops the remaining tasks. An attempt that already has a journal or
+/// a manifest is refused: a job is never resumed.
 pub fn execute(worker: &dyn Worker, dir: &Path) -> Result<()> {
     let _owner = storage::lock(&dir.join("worker.lock"))?;
     if dir.join("results.jsonl").exists() || dir.join("run.json").exists() {
@@ -176,6 +196,9 @@ pub fn execute(worker: &dyn Worker, dir: &Path) -> Result<()> {
     storage::write_atomic_json(&dir.join("run.json"), &run)?;
     Ok(())
 }
+/// The `main` of a worker binary: `describe`, `validate SPEC` or `execute
+/// JOB_DIRECTORY`. It prints its JSON answer, or exits with status 1 and
+/// `{"error":{"code":"worker_error","message":...}}` on standard error.
 pub fn run(worker: impl Worker) {
     let run = (|| -> Result<()> {
         let args = std::env::args().collect::<Vec<_>>();

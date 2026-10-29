@@ -2,6 +2,7 @@
 //!
 //! The [`legacy`] module keeps compatibility with the earlier `fcmaes.job/0.1`
 //! format; its numerical semantics are unchanged.
+#![warn(missing_docs)]
 pub mod artifact;
 pub mod legacy;
 pub mod process;
@@ -10,14 +11,20 @@ pub mod spec;
 pub mod storage;
 pub mod worker;
 pub use spec::*;
+/// The error of every fallible function in this crate. A [`Coded`] error
+/// carries a stable code ([`error_code`]); any other error is reported as
+/// `runner_error`.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
+/// A result with the crate's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// An error with a stable, machine-readable code. The runner prints the code
 /// next to the message; the [guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#errors) lists every code.
 #[derive(Debug)]
 pub struct Coded {
+    /// The stable code, such as `invalid_job` or `attempt_active`.
     pub code: &'static str,
+    /// The human-readable message.
     pub message: String,
 }
 impl std::fmt::Display for Coded {

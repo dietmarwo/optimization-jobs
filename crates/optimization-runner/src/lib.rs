@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![warn(missing_docs)]
 mod admission;
 mod command;
 mod execution;
@@ -1225,6 +1226,9 @@ fn main_result() -> Result<()> {
         },
     }
 }
+/// The `optimization-run` binary. An error is printed as
+/// `{"error":{"code","message","retryable"}}` on standard error, with exit
+/// status 2.
 pub fn main() {
     if !cfg!(target_os = "linux") {
         eprintln!("Linux is required for process supervision");

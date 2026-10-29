@@ -5,6 +5,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+/// Puts the command in a process group of its own, so that
+/// [`terminate_process_group`] also reaches its descendants.
 pub fn group(command: &mut Command) {
     #[cfg(unix)]
     {
@@ -12,6 +14,7 @@ pub fn group(command: &mut Command) {
         command.process_group(0);
     }
 }
+/// Kills the child's process group with SIGKILL, then the child itself.
 pub fn terminate_process_group(child: &mut Child) {
     #[cfg(unix)]
     {
@@ -39,6 +42,10 @@ pub fn drain(mut reader: impl Read, maximum: usize) -> io::Result<(Vec<u8>, bool
     }
     Ok((out, overflow))
 }
+/// Runs `argv` without a shell in its own process group, writes `input` to its
+/// standard input, and returns its exit status, standard output and standard
+/// error. Fails with `TimedOut` after `timeout`, and when either stream
+/// exceeds `maximum` bytes. The group is killed when the command ends.
 pub fn bounded_command(
     argv: &[String],
     input: Vec<u8>,

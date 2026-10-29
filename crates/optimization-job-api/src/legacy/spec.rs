@@ -1,48 +1,113 @@
+//! The job format `fcmaes.job/0.1`: one registered scalar problem, solved by
+//! independent BiteOpt or DE retries.
 use crate::Result;
 use serde::{Deserialize, Serialize};
-macro_rules! contract { ($name:ident { $($field:ident : $ty:ty),* $(,)? }) => {
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-    #[serde(deny_unknown_fields)]
-    pub struct $name { $(pub $field: $ty),* }
-}; }
-contract!(JobSpec {
-    schema_version: String,
-    request_key: String,
-    problem: Problem,
-    optimizer: Optimizer,
-    execution: Execution,
-    budget: Budget,
-    outputs: Outputs
-});
-contract!(Problem {
-    id: String,
-    version: String,
-    config: ProblemConfig,
-    bounds: Bounds
-});
-contract!(ProblemConfig { dimension: usize });
-contract!(Bounds { lower: Vec<f64>, upper: Vec<f64>, broadcast: bool });
-contract!(Optimizer {
-    kind: String,
-    parameters: Parameters
-});
+/// Declares a strict serde struct with public fields, keeping the attributes,
+/// such as doc comments, of the struct and of each field.
+macro_rules! contract {
+    ($(#[$meta:meta])* $name:ident { $($(#[$field_meta:meta])* $field:ident : $ty:ty),* $(,)? }) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+        #[serde(deny_unknown_fields)]
+        pub struct $name { $($(#[$field_meta])* pub $field: $ty),* }
+    };
+}
+contract!(
+    /// A job of the format `fcmaes.job/0.1`, which the native fcmaes worker runs.
+    JobSpec {
+        /// Exactly `fcmaes.job/0.1`.
+        schema_version: String,
+        /// The caller-chosen idempotency key, 1 to 200 bytes.
+        request_key: String,
+        /// The registered problem.
+        problem: Problem,
+        /// The optimizer of the retries.
+        optimizer: Optimizer,
+        /// The seed and parallelism of the retries.
+        execution: Execution,
+        /// The retries, evaluations and time of the job.
+        budget: Budget,
+        /// What the job reports as progress.
+        outputs: Outputs
+    }
+);
+contract!(
+    /// A registered problem: `benchmark.sphere`, `benchmark.rosenbrock` or
+    /// `gtop.cassini1`.
+    Problem {
+        /// The problem's identifier.
+        id: String,
+        /// The problem's version, `1`.
+        version: String,
+        /// The problem's configuration.
+        config: ProblemConfig,
+        /// The search box.
+        bounds: Bounds
+    }
+);
+contract!(
+    /// The configuration of a registered problem.
+    ProblemConfig {
+        /// The number of variables: 1 to 10,000, at least 2 for Rosenbrock
+        /// and 6 for Cassini1.
+        dimension: usize
+    }
+);
+contract!(
+    /// A search box.
+    Bounds {
+        /// The lower bounds, one per variable, or one value with `broadcast`.
+        lower: Vec<f64>,
+        /// The upper bounds, one per variable, or one value with `broadcast`.
+        upper: Vec<f64>,
+        /// Whether one lower and one upper bound apply to every variable;
+        /// [`Bounds::resolve`] expands them.
+        broadcast: bool
+    }
+);
+contract!(
+    /// The optimizer of the retries.
+    Optimizer {
+        /// `biteopt`, with a hard evaluation limit, or `de`, with a soft one.
+        kind: String,
+        /// The optimizer's parameters.
+        parameters: Parameters
+    }
+);
+/// The optimizer's parameters.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Parameters {
+    /// The population size, 4 to 1,000,000; by default 9 + 3 * dimension for
+    /// BiteOpt and 31 for DE. `population * dimension` must not exceed
+    /// [`MAX_POPULATION_CELLS`].
     pub population: Option<usize>,
 }
-contract!(Execution {
-    strategy: String,
-    seed: u64,
-    workers: usize,
-    retry_wave_size: usize
-});
+contract!(
+    /// How the retries run.
+    Execution {
+        /// Exactly `independent_retry`.
+        strategy: String,
+        /// The root seed; each retry's seed derives from it and the retry's
+        /// index.
+        seed: u64,
+        /// The retries that run at the same time; the job's CPU slots.
+        workers: usize,
+        /// The retries started together; no new wave starts after the wall
+        /// time.
+        retry_wave_size: usize
+    }
+);
 /// Evaluation and time budget of one job.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Budget {
+    /// The number of independent retries.
     pub retries: usize,
+    /// The objective evaluations of each retry.
     pub evaluations_per_retry: u64,
+    /// `hard` for BiteOpt, which never exceeds the evaluations, or `soft` for
+    /// DE, which may exceed them by `2 * population - 1` per retry.
     pub evaluation_limit_mode: String,
     /// No new retry wave starts after this execution time.
     pub wall_time_seconds: f64,
@@ -55,7 +120,13 @@ pub struct Budget {
 fn default_grace_seconds() -> f64 {
     1.0
 }
-contract!(Outputs { progress: String });
+contract!(
+    /// What the job reports as progress.
+    Outputs {
+        /// Exactly `completed_retries`.
+        progress: String
+    }
+);
 impl Bounds {
     /// Expands broadcast bounds to `n` coordinates and checks that every
     /// bound is finite with `lower < upper` and a finite span.
@@ -123,6 +194,10 @@ pub const CASSINI1_LOWER: [f64; 6] = [-1000.0, 30.0, 100.0, 30.0, 400.0, 1000.0]
 /// Canonical Cassini1 box; job bounds must lie inside it.
 pub const CASSINI1_UPPER: [f64; 6] = [0.0, 400.0, 470.0, 400.0, 2000.0, 6000.0];
 impl JobSpec {
+    /// Checks the job and resolves its defaults: the schema and problem, the
+    /// bounds, positive counts, the time limits, the progress mode, the
+    /// population and the optimizer's limit mode. The evaluation totals must
+    /// not overflow.
     pub fn resolve(mut self) -> Result<Self> {
         if self.schema_version != "fcmaes.job/0.1" || self.problem.version != "1" {
             return Err("unsupported schema/problem version".into());
@@ -192,11 +267,14 @@ impl JobSpec {
         self.maximum_evaluations()?;
         Ok(self)
     }
+    /// The evaluations the job requests: `retries * evaluations_per_retry`.
     pub fn requested(&self) -> Result<u64> {
         (self.budget.retries as u64)
             .checked_mul(self.budget.evaluations_per_retry)
             .ok_or_else(|| "requested evaluations overflow".into())
     }
+    /// The most evaluations the job can use: DE may exceed each retry's
+    /// evaluations by `2 * population - 1`.
     pub fn maximum_evaluations(&self) -> Result<u64> {
         let extra = if self.optimizer.kind == "de" {
             2 * self.optimizer.parameters.population.unwrap_or(31) as u64 - 1
@@ -220,6 +298,8 @@ impl JobSpec {
         Ok(crate::storage::digest(&serde_json::to_vec(&value)?))
     }
 }
+/// The description of the native worker: its problems, optimizers and
+/// population rules.
 pub fn discovery() -> serde_json::Value {
     serde_json::json!({
         "protocol":"fcmaes.worker/0.1", "problems":[
