@@ -124,10 +124,18 @@ jobs:
                           # of NumPy's CPU-specific math kernels.
                           continue
                       recorded = src / repo / "tutorials" / slug / "results" / preset / "summary.json"
-                      r = subprocess.run([sys.executable, compare, recorded, out / chapter / "summary.json"])
+                      r = subprocess.run([sys.executable, compare, recorded, out / chapter / "summary.json"],
+                                         capture_output=True, text=True)
+                      print(r.stdout, end="", flush=True)
                       if r.returncode:
+                          if "::error" not in r.stdout:
+                              # The comparison itself stopped; show why.
+                              text = (r.stdout + r.stderr)[-1500:]
+                              text = text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+                              print(f"::error title={chapter} {preset} comparison stopped::{text}", flush=True)
                           failed.append(f"{chapter} {preset}")
           if failed:
+              print("::error title=structured tutorials::" + ", ".join(failed), flush=True)
               sys.exit("failed or differs from the recorded summary: " + ", ".join(failed))
           EOF
       - name: LP10 and X1 as trusted command jobs
