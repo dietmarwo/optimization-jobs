@@ -8,6 +8,16 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-29
+
+Opt-in trusted command jobs, checked binary file transfer and output
+collection, explicit SSH placement on registered nodes with recovery, and an
+execution record for every finished job. Commands and remote placement are
+off unless a node owner enables or registers them, and both stay CLI-only.
+The job envelope `optimization.job/0.1`, the worker protocol and the result
+contract `optimization.result/0.2` are unchanged. The solver workers still
+pin this repository by git revision.
+
 ### Added
 
 - Explicit SSH `fleet` placement and a fixed `remote serve` JSON/binary helper:

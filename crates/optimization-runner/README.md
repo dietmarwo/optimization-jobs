@@ -24,9 +24,8 @@ optimization-run --root /tmp/node workers add --id fcmaes --executable /path/to/
 optimization-run --root /tmp/node run --spec JOB.json
 ```
 
-Built from `main` after 0.3.0, the runner also has `optimization-run node
-capabilities`, which lists the execution kinds and schemas it supports (only
-optimization jobs), and `optimization-run --root NODE jobs execution JOB_ID`,
+From 0.4.0 the runner also has `optimization-run node capabilities`, which
+lists the execution kinds and schemas it supports and which are enabled, and `optimization-run --root NODE jobs execution JOB_ID`,
 which prints how a finished job's worker process ended and the hash of its
 native result. The execution lifecycle behind them is internal, not a plugin
 API.
@@ -48,7 +47,7 @@ before creating registry launch metadata.
 
 ## Trusted local commands and binary files
 
-Source after 0.3.0 supports opt-in `execution.command/0.1` jobs and verified
+From 0.4.0 the runner supports opt-in `execution.command/0.1` jobs and verified
 binary transfers on the same local admission budget. Commands are trusted
 programs under the runner user, not a sandbox. Read the
 [command and file guide](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#trusted-local-command-jobs-and-binary-files)
@@ -57,7 +56,7 @@ build–run–collect example. MCP submission remains optimization-only.
 
 ## Explicit remote execution
 
-Source after 0.3.0 adds `fleet nodes add/probe`, `fleet submit --node`,
+0.4.0 adds `fleet nodes add/probe`, `fleet submit --node`,
 `fleet reconcile/resume/cancel/repair` and verified terminal `fleet collect`.
 A fixed SSH helper, pinned node identity and persisted dispatch/launch intent
 keep uncertain work on the selected node. Remote launch requires a responding

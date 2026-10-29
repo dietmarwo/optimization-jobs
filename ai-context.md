@@ -4,7 +4,7 @@ Last reviewed 2026-10-21 against `main` with the changes of an external
 review of agent workflows: workers publish payload schemas and runnable
 examples in `describe`, the MCP server has `get_guide` and `put_input`, and
 `node doctor` reports the host's usable CPUs and memory. The crates are
-`optimization-job-api` and `optimization-runner` 0.3.0, the envelope is
+`optimization-job-api` and `optimization-runner` 0.4.0, the envelope is
 `optimization.job/0.1` and the result contract `optimization.result/0.2`.
 In another checkout, check `Cargo.toml`, the `describe_node`/`describe_worker`
 output and the linked guides before you rely on a command, option or claim.
@@ -383,7 +383,7 @@ job validate --spec job.json             # the resolved job with task_count; run
 job run --spec job.json                  # blocks until the end, prints the final job
 job jobs list                            # newest first, with id, state, directory, artifact_index
 job jobs get JOB_ID                      # state and progress
-job jobs execution JOB_ID                # how the worker process ended (after 0.3.0)
+job jobs execution JOB_ID                # how the worker process ended (from 0.4.0)
 job jobs wait JOB_ID --timeout 60        # returns at the end or after the timeout
 job result JOB_DIRECTORY                 # the result manifest
 job jobs artifact JOB_ID results --offset 0 --limit 100   # a page of checked records
@@ -408,7 +408,7 @@ whether one is available). Lifecycle states:
 `completed` means the tasks returned normally, not that the solution is
 optimal; read the outcomes.
 
-A runner built from `main` after 0.3.0 also keeps an execution record of
+From 0.4.0 the runner also keeps an execution record of
 each finished job (`jobs execution JOB_ID`, `execution.record/0.1`): the
 worker's exit code or signal, the stop reason, whether its process group is
 verifiably stopped, and the size and SHA-256 of `run.json`. It holds no

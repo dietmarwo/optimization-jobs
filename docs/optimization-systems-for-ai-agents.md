@@ -571,7 +571,7 @@ claim fails an independent check, the job records the refutation instead of
 failing. SHA-256 verifies recorded bytes, not mathematical correctness; each
 solver supplies the numerical checks.
 
-**Remote placement.** Source after 0.3.0 places a job on a node registered
+**Remote placement.** From 0.4.0 the runner places a job on a node registered
 over SSH (`fleet submit --node NAME`), with a pinned host key and node
 identity. A fixed helper receives every request as JSON, and the persisted
 dispatch intent means an uncertain start is observed on that node, never
