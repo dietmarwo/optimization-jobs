@@ -98,9 +98,24 @@ jobs:
               out = Path("out") / preset
               subprocess.run([sys.executable, src / "optimization-jobs/tutorials/structured/run.py",
                               "--chapter", "all", "--preset", preset, "--sources", src,
-                              "--output", out], check=True)
+                              "--output", out])
+              report = out / "report.json"
+              records = json.loads(report.read_text()) if report.exists() else []
+              passed = {r["chapter"] for r in records if r["status"] == "passed"}
+              for r in records:
+                  if r["status"] != "passed":
+                      # Show the chapter's own error as an annotation.
+                      text = r.get("error", "")[-1500:]
+                      text = text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+                      print(f"::error title={r['chapter']} {preset} failed::{text}", flush=True)
+                      failed.append(f"{r['chapter']} {preset} (failed)")
+              ran = {r["chapter"] for r in records}
+              for chapters in catalog.values():
+                  failed += [f"{c} {preset} (not run)" for c in chapters if c not in ran]
               for repo, chapters in catalog.items():
                   for chapter, slug in chapters.items():
+                      if chapter not in passed:
+                          continue
                       if chapter == "LP9":
                           continue  # wall-clock limits: work counters vary
                       if chapter == "X4" and preset == "study":
@@ -113,7 +128,7 @@ jobs:
                       if r.returncode:
                           failed.append(f"{chapter} {preset}")
           if failed:
-              sys.exit("differs from the recorded summary: " + ", ".join(failed))
+              sys.exit("failed or differs from the recorded summary: " + ", ".join(failed))
           EOF
       - name: LP10 and X1 as trusted command jobs
         run: >-
