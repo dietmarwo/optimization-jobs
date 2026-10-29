@@ -93,6 +93,20 @@ jobs:
           catalog = json.loads((src / "optimization-jobs/tutorials/structured/catalog.json").read_text())
           # Floats to 1e-6: SciPy reference values vary in the last digits between CPUs.
           compare = src / "SQP-craft/tutorials/_support/compare_results.py"
+
+          def stable(chapter, preset, summary):
+              # Drop the parts whose solver path follows last-digit differences
+              # of the CPU-specific NumPy and OpenBLAS kernels; with other
+              # kernels, everything else still matches to 1e-6.
+              result = summary["result"]
+              if chapter == "X3":
+                  result["attempts"].pop(0)  # the active-set sizing attempt
+                  for bound in result["bounds"]:
+                      bound.pop("result")  # degenerate LPs: duals, iterations
+              if chapter == "X4" and preset == "study":
+                  result["arms"].pop(0)  # the 60-charge SQP multistart
+              return summary
+
           failed = []
           for preset in ["smoke", "study"]:
               out = Path("out") / preset
@@ -118,14 +132,14 @@ jobs:
                           continue
                       if chapter == "LP9":
                           continue  # wall-clock limits: work counters vary
-                      if chapter == "X4" and preset == "study":
-                          # Its 60-charge SQP multistart ends in a line-search
-                          # failure whose path follows last-digit differences
-                          # of NumPy's CPU-specific math kernels.
-                          continue
-                      recorded = src / repo / "tutorials" / slug / "results" / preset / "summary.json"
-                      r = subprocess.run([sys.executable, compare, recorded, out / chapter / "summary.json"],
-                                         capture_output=True, text=True)
+                      pair = []
+                      for name, path in [("recorded", src / repo / "tutorials" / slug / "results" / preset / "summary.json"),
+                                         ("new", out / chapter / "summary.json")]:
+                          reduced = Path("out/compare") / preset / chapter / f"{name}.json"
+                          reduced.parent.mkdir(parents=True, exist_ok=True)
+                          reduced.write_text(json.dumps(stable(chapter, preset, json.loads(path.read_text()))))
+                          pair.append(reduced)
+                      r = subprocess.run([sys.executable, compare, *pair], capture_output=True, text=True)
                       print(r.stdout, end="", flush=True)
                       if r.returncode:
                           if "::error" not in r.stdout:
