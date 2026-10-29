@@ -11,6 +11,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from sources import require  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 CATALOG = json.loads((HERE / "catalog.json").read_text())
 CHAPTERS = {
@@ -21,6 +24,16 @@ ORDER = (
     + [f"SQP{i}" for i in range(1, 7)]
     + [f"X{i}" for i in range(1, 5)]
 )
+
+
+def checkout(sources, repo):
+    """The sibling checkout of ``repo``, matched case-insensitively."""
+    path = sources / repo
+    if not path.exists() and sources.is_dir():
+        matches = [p for p in sources.iterdir() if p.name.casefold() == repo.casefold()]
+        if len(matches) == 1:
+            return matches[0]
+    return path
 
 
 def digest(path):
@@ -51,16 +64,30 @@ def environment(sources):
             versions[package] = None
     revisions = {}
     for repo in CATALOG:
-        p = sources / repo
-        r = subprocess.run(
-            ["git", "-C", str(p), "rev-parse", "HEAD"], capture_output=True, text=True
+        p = checkout(sources, repo)
+        head = subprocess.run(
+            ["git", "-C", str(p), "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
         )
         diff = subprocess.run(
             ["git", "-C", str(p), "diff", "HEAD", "--"], capture_output=True
-        ).stdout
+        )
+        status = subprocess.run(
+            ["git", "-C", str(p), "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True,
+        )
+        if head.returncode or diff.returncode or status.returncode:
+            # Not a usable git checkout: record that instead of an empty hash.
+            revisions[repo] = dict(
+                commit=None, error=(head.stderr or "git failed")[-300:]
+            )
+            continue
         revisions[repo] = dict(
-            commit=r.stdout.strip(),
-            tracked_diff_sha256=hashlib.sha256(diff).hexdigest(),
+            commit=head.stdout.strip(),
+            tracked_diff_sha256=hashlib.sha256(diff.stdout).hexdigest(),
+            clean=not status.stdout,
+            status_sha256=hashlib.sha256(status.stdout).hexdigest(),
         )
     return dict(
         python=sys.version,
@@ -80,7 +107,7 @@ def environment(sources):
 
 def command_spec(sources, chapter, preset, folder):
     repo, slug = CHAPTERS[chapter]
-    entry = sources / repo / "tutorials" / slug / "run.py"
+    entry = checkout(sources, repo) / "tutorials" / slug / "run.py"
     # Frozen identity of scripts/data that may be read outside the command workdir.
     watched = [entry]
     for owner in ["LP-IP-craft", "SQP-craft", "fcmaes-rust", "optimization-jobs"]:
@@ -89,7 +116,7 @@ def command_spec(sources, chapter, preset, folder):
             "tutorials/structured-support",
             "tutorials/structured",
         ]:
-            base = sources / owner / rel
+            base = checkout(sources, owner) / rel
             if base.exists():
                 watched.extend(
                     p
@@ -107,7 +134,8 @@ def command_spec(sources, chapter, preset, folder):
         "fcmaes-rust/tutorials/truss-sizing/results/publication/sections.csv",
         "fcmaes-rust/tutorials/truss-sizing/results/publication/so/best_members.csv",
     ]:
-        watched.append(sources / rel)
+        owner, _, path = rel.partition("/")
+        watched.append(checkout(sources, owner) / path)
     if os.environ.get("TRUSS_REPLAY_BIN"):
         watched.append(Path(os.environ["TRUSS_REPLAY_BIN"]).resolve())
     manifest = dict(
@@ -133,6 +161,8 @@ def command_spec(sources, chapter, preset, folder):
         "OPENBLAS_NUM_THREADS": "1",
         "OMP_NUM_THREADS": "1",
         "MPLBACKEND": "Agg",
+        # The entries import siblings from here: the tree the manifest hashed.
+        "STRUCTURED_SOURCES": str(sources),
     }
     if os.environ.get("TRUSS_REPLAY_BIN"):
         env["TRUSS_REPLAY_BIN"] = os.environ["TRUSS_REPLAY_BIN"]
@@ -163,6 +193,12 @@ def main():
     p.add_argument("--sources", type=Path, default=HERE.parents[2])
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--runner", type=Path)
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=1800,
+        help="seconds per chapter in direct mode (command jobs have their own limit)",
+    )
     args = p.parse_args()
     out = args.output.resolve()
     sources = args.sources.resolve()
@@ -185,7 +221,7 @@ def main():
         record = dict(chapter=chapter, preset=args.preset)
         try:
             repo, slug = CHAPTERS[chapter]
-            entry = sources / repo / "tutorials" / slug / "run.py"
+            entry = checkout(sources, repo) / "tutorials" / slug / "run.py"
             if runner:
                 folder.mkdir()
                 spec = command_spec(sources, chapter, args.preset, folder)
@@ -195,6 +231,16 @@ def main():
                 )
                 record["native_handle"] = native
                 if native["state"] != "completed":
+                    # Keep the execution record (exit status, signal) of a failure.
+                    try:
+                        execution = call(
+                            [runner, "--root", node, "jobs", "execution", native["id"]]
+                        )
+                        (folder / "execution.json").write_text(
+                            json.dumps(execution, indent=2) + "\n"
+                        )
+                    except RuntimeError as e:
+                        record["execution_record_error"] = str(e)
                     raise RuntimeError("native command " + native["state"])
                 call(
                     [
@@ -230,6 +276,8 @@ def main():
                     ],
                     capture_output=True,
                     text=True,
+                    env={**os.environ, "STRUCTURED_SOURCES": str(sources)},
+                    timeout=args.timeout,
                 )
                 folder.mkdir(parents=True, exist_ok=True)
                 (folder / "stdout.log").write_text(child.stdout)
@@ -237,7 +285,7 @@ def main():
                 if child.returncode:
                     raise RuntimeError(child.stderr[-1800:])
             summary = json.loads((folder / "summary.json").read_text())
-            assert summary["chapter"] == chapter
+            require(summary["chapter"] == chapter)
             from figures import render
 
             render(chapter, summary["result"], folder / "figure.png")

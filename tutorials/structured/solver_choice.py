@@ -1,15 +1,14 @@
 """One workshop story, LP/MIP/SQP/black-box variants with separate references."""
 
 import itertools
-from pathlib import Path
 import sys
 import numpy as np
+from sources import require, sibling
 
 
 def run(preset):
-    sources = Path(__file__).resolve().parents[3]
-    sys.path.insert(0, str(sources / "LP-IP-craft/tutorials/_support"))
-    sys.path.insert(0, str(sources / "SQP-craft/tutorials/_support"))
+    sys.path.insert(0, str(sibling("LP-IP-craft", "tutorials", "_support")))
+    sys.path.insert(0, str(sibling("SQP-craft", "tutorials", "_support")))
     from linear_model import LinearModel
     from numerics import Case, plain
     import fcmaes_rust as fc
@@ -20,7 +19,28 @@ def run(preset):
     lp.row("machine", {a: 2, b: 1}, upper=100)
     lp.row("labor", {a: 1, b: 1}, upper=80)
     r, A = lp.run()
-    assert abs(r.evaluation.objective - 2600) < 1e-6
+    require(abs(r.evaluation.objective - 2600) < 1e-6)
+    # Independent reference: every vertex of the feasible polygon.
+    rows = [((2, 1), 100), ((1, 1), 80), ((1, 0), 50), ((0, 1), 80)]
+    rows += [((1, 0), 0), ((0, 1), 0)]
+    vertices = []
+    for (g, s), (h, t) in itertools.combinations(rows, 2):
+        M = np.array([g, h], float)
+        if abs(np.linalg.det(M)) > 1e-12:
+            v = np.linalg.solve(M, [s, t])
+            if (
+                np.all(v >= -1e-9)
+                and v[0] <= 50 + 1e-9
+                and 2 * v[0] + v[1] <= 100 + 1e-9
+                and v[0] + v[1] <= 80 + 1e-9
+            ):
+                vertices.append((float(40 * v[0] + 30 * v[1]), v.tolist()))
+    best_vertex = max(vertices)
+    require(abs(best_vertex[0] - 2600) < 1e-9)
+    require(np.allclose(r.candidate, best_vertex[1], atol=1e-7), r.candidate)
+    # The resource prices: machine hour 10, labor hour 20.
+    require(np.allclose(r.duals.row_duals, [10, 20], atol=1e-7), r.duals)
+    A["vertices"] = sorted(vertices, reverse=True)
     candidates = [
         (40 * 7 * p + 30 * 9 * q - 150 * (p > 0) - 150 * (q > 0), p, q)
         for p in range(8)
@@ -28,7 +48,7 @@ def run(preset):
         if 14 * p + 9 * q <= 100 and 7 * p + 9 * q <= 80
     ]
     reference = max(candidates)
-    assert reference == (2160, 3, 6)
+    require(reference == (2160, 3, 6))
     mip = LinearModel("maximize")
     p = mip.var("P_batches", 280, upper=7, kind="integer")
     q = mip.var("Q_batches", 270, upper=8, kind="integer")
@@ -39,7 +59,7 @@ def run(preset):
     mip.row("P_link", {p: 1, yp: -7}, upper=0)
     mip.row("Q_link", {q: 1, yq: -8}, upper=0)
     r, B = mip.run()
-    assert abs(r.evaluation.objective - 2160) < 1e-6
+    require(abs(r.evaluation.objective - 2160) < 1e-6)
 
     def fun(x):
         return -((40 - 0.25 * x[0]) * x[0] + (30 - 0.2 * x[1]) * x[1]), np.array(
@@ -62,7 +82,14 @@ def run(preset):
         linear_rows=[0, 1],
     )
     r, C = case.run()
-    assert r.status == "converged" and abs(-r.evaluation.objective - 91000 / 49) < 1e-5
+    require(
+        r.status == "converged" and abs(-r.evaluation.objective - 91000 / 49) < 1e-5
+    )
+    # Closed-form KKT point: only the machine row is active. With f = -profit
+    # and grad f = J^T lambda + z, its multiplier is -90/7 (upper bound).
+    require(np.allclose(r.candidate, [200 / 7, 300 / 7], atol=1e-6), r.candidate)
+    lam = r.multipliers.constraints
+    require(abs(lam[0] + 90 / 7) < 1e-6 and abs(lam[1]) < 1e-6, lam)
     sizes = np.array([7, 9, 3, 4, 5, 2])
     prices = np.array([40, 30, 22, 18, 25, 35])
     setup = np.array([150, 150, 20, 20, 20, 20])
@@ -100,7 +127,9 @@ def run(preset):
     for j in range(6):
         six.row(f"setup_link{j}", {q[j]: 1, active[j]: -int(bounds[j])}, upper=0)
     mip6, rec6 = six.run()
-    assert mip6.status == "optimal" and abs(mip6.evaluation.objective + exact[0]) < 1e-6
+    require(
+        mip6.status == "optimal" and abs(mip6.evaluation.objective + exact[0]) < 1e-6
+    )
     result = fc.optimize_bite(
         score,
         np.zeros(6),
@@ -110,20 +139,26 @@ def run(preset):
         max_evaluations=budget,
     )
     x = np.rint(result[0]).astype(int)
-    if score(x) > 0:
-        x = np.zeros(6, int)
-    value = min(0.0, score(x))
+    feasible = score(x) <= 0
+    value = score(x) if feasible else None
     return dict(
         LP=A,
         MIP=B,
         SQP=C,
         six_product_mip=rec6,
         black_box=dict(
-            native=plain(result),
+            native=dict(
+                zip(
+                    ["point", "value", "evaluations", "iterations", "stop"],
+                    plain(result),
+                    strict=True,
+                )
+            ),
             rounded=x,
-            best_found_profit=-value,
+            feasible=bool(feasible),
+            best_found_profit=None if value is None else -value,
             enumerated_optimum=-exact[0],
-            gap=value - exact[0],
+            gap=None if value is None else value - exact[0],
             requested_evaluations=budget,
         ),
         note="Four formulations; descriptive comparison, no shared solver ranking.",

@@ -4,7 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 import numpy as np
-from lp_ip_craft import Model, NativeOptions, Options, solve
+from lp_ip_craft import Model, NativeOptions, Options, evaluate, solve
+from sources import require
 
 
 def run(preset):
@@ -31,25 +32,61 @@ def run(preset):
             values=A["values"],
             kinds=artifact["kinds"],
         )
-        r = solve(
-            model,
+        options = dict(
             backend="native",
             options=Options(threads=1),
             backend_options=NativeOptions(component_threads=1, time_limit_seconds=30),
         )
+        r = solve(model, **options)
         from dataclasses import asdict
 
+        require(r.status == "optimal", (relaxed, r.status))
+        # Independent evaluation of the returned point against the model rows.
+        check = evaluate(model, r.candidate)
+        require(check.feasible_candidate, check)
         rec = asdict(r)
         rec["relaxed"] = relaxed
+        rec["independent"] = asdict(check)
+        if not relaxed:
+            # A first-come, first-served order as a MIP start: a candidate only,
+            # not a resumed search; the optimum must not depend on it.
+            fifo = sorted(
+                range(len(data["trains"])),
+                key=lambda i: (data["trains"][i]["planned"], data["trains"][i]["id"]),
+            )
+            start = rail.encode(data, rail.schedule_order(data, fifo))
+            warm = solve(model, start=start, **options)
+            require(warm.status == "optimal", warm.status)
+            require(
+                abs(warm.evaluation.objective - r.evaluation.objective) < 1e-6,
+                (warm.evaluation.objective, r.evaluation.objective),
+            )
+            rec["fifo_start"] = dict(
+                order=fifo,
+                start_objective=asdict(evaluate(model, start))["objective"],
+                warm_start_status=warm.backend.start_status,
+                objective=warm.evaluation.objective,
+                nodes=warm.nodes,
+            )
         if not relaxed:
             check = rail.assess(data, r.candidate[: len(data["trains"])])
-            assert check["feasible"]
-            assert (
-                abs(check["passenger_minutes"] - oracle["best"]["passenger_minutes"])
-                < 1e-6
+            require(check["feasible"])
+            require(
+                (
+                    abs(
+                        check["passenger_minutes"] - oracle["best"]["passenger_minutes"]
+                    )
+                    < 1e-6
+                )
             )
             rec["domain_check"] = check
         records.append(rec)
+    # The relaxation is a lower bound on the passenger-minute objective.
+    require(
+        records[0]["evaluation"]["objective"]
+        <= records[1]["evaluation"]["objective"] + 1e-6,
+        "the relaxation exceeds the MIP optimum",
+    )
     return dict(
         scenario=data,
         enumeration=oracle,

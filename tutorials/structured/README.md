@@ -1,17 +1,20 @@
 # Twenty structured-optimization tutorials
 
-The four foundation chapters and sixteen application chapters are executable
-through the existing native Rust solvers' Python APIs. The models stay in
-their owning repositories. This directory supplies one driver, provenance,
-figures, and optional trusted command-job execution.
+Twenty chapters show how to formulate a problem, solve it with the native
+Rust solvers through their Python APIs, and check the answer against an
+independent reference. The models stay in the repositories of their solvers.
+This directory supplies one driver, provenance records, figures and optional
+execution as trusted command jobs.
 
 ## Setup
 
-Apply the supplied patches to sibling checkouts named `LP-IP-craft`,
-`SQP-craft`, `fcmaes-rust`, `optimization-jobs` and `experiment-craft`.
-Use Python 3.12 in a virtual environment:
+Clone the repositories side by side, keeping their names:
 
 ```bash
+for repo in optimization-jobs LP-IP-craft SQP-craft fcmaes-rust; do
+  git clone https://github.com/dietmarwo/$repo
+done
+cd optimization-jobs
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -r tutorials/structured/requirements.txt
@@ -20,18 +23,22 @@ python tutorials/structured/run.py --chapter LP1 --output /absolute/new/allocati
 python tutorials/structured/run.py --chapter all --output /absolute/new/smoke
 ```
 
-The driver defaults to the sibling source layout; `--sources` selects another
-root. Output must be new. Owner entry points allow new or empty directories,
-which also accommodates the command runner's prepared output directories.
-Every run retains `summary.json`; the shared driver renders PNG/SVG figures
-and writes a complete `report.json` and package/source environment record.
+The driver expects the checkouts next to this one; `--sources` selects
+another directory, and the names are matched case-insensitively. It passes
+that directory to every chapter as `STRUCTURED_SOURCES`, so the chapters
+import their sibling support code from the tree the driver records. Output
+must be a new directory; a chapter's own entry point also accepts an empty
+one. Every run keeps each chapter's `summary.json`; the driver renders PNG
+and SVG figures and writes `report.json` and `environment.json` (package
+versions, the commit of each checkout, hashes of its uncommitted changes and
+of `git status`).
 
-The pinned distributions have the same numerical implementations as the
-reviewed source revisions. They supply actual Rust optimisation, not a
-SciPy substitution. SciPy provides independent numerical references, replay,
-root isolation and validation. Larger studies use `--preset study`.
+The pinned packages in `requirements.txt` provide the native optimization:
+LP-IP-craft, SQP-craft, fcmaes-rust and pykep-rust. SciPy supplies only the
+independent references, replays, root isolation and checks. `--preset study`
+runs the larger declared cases; chapters without them repeat the smoke case.
 
-## Catalogue
+## Chapters
 
 | ID | Chapter | Owner |
 |---|---|---|
@@ -44,69 +51,70 @@ root isolation and validation. Larger studies use `--preset study`.
 | LP7 | Cutting stock and exact pricing | LP-IP-craft |
 | LP8 | Two-stage planning and information value | LP-IP-craft |
 | LP9 | Full-table SpOC4 matching at a budget | LP-IP-craft |
-| LP10 | Maintained rail formulation | optimization-jobs |
+| LP10 | [Rail timetable formulation](../rail-formulation/README.md) | optimization-jobs |
 | SQP1 | Constrained calibration and derivatives | SQP-craft |
 | SQP2 | Multistart, coordinate units and backends | SQP-craft |
 | SQP3 | Hanging chain and discretization error | SQP-craft |
-| SQP4 | Brachistochrone/orbit collocation and replay | SQP-craft |
+| SQP4 | Brachistochrone and orbit collocation with replay | SQP-craft |
 | SQP5 | pykep-core Earth–Mars rendezvous | SQP-craft |
 | SQP6 | Reaction sensitivities and identifiability | SQP-craft |
-| X1 | One problem, four solver choices | optimization-jobs |
+| X1 | [One problem, four solver choices](../solver-choice/README.md) | optimization-jobs |
 | X2 | DC dispatch versus AC physics | SQP-craft |
 | X3 | Truss bounds and checked sizing | fcmaes-rust |
-| X4 | Sphere charges: global/local search | fcmaes-rust |
+| X4 | Sphere charges: global and local search | fcmaes-rust |
 
-The machine-readable [catalogue](catalog.json) names each owner and path. Each
-chapter has a README, executable entry, prompt, follow-up, and recorded smoke
-result. The original nine [agent tutorials](../agentic/README.md) retain their
-existing numerical workflows.
+[catalog.json](catalog.json) names each chapter's repository and directory.
+Each chapter has a README, an entry point (`run.py`), a prompt, a follow-up
+exercise and recorded smoke and study results. The nine
+[agent tutorials](../agentic/README.md) keep their own workflows.
 
 ## Native FEM reference for X3
 
-Build the checked catalogue-design replay of the original FEM:
+Build the replay of a catalogue design through the original truss FEM:
 
 ```bash
 cargo build --release --locked --manifest-path ../fcmaes-rust/tutorials/truss-sizing/Cargo.toml --example structured_replay
 export TRUSS_REPLAY_BIN="$PWD/../fcmaes-rust/tutorials/truss-sizing/target/release/examples/structured_replay"
 ```
 
-X3 reports this check as unrun when the variable is absent. The delivery's
-acceptance run includes parity for both the published and rounded designs.
+Without the variable, X3 records the native parity as `null`. The recorded
+X3 results include parity for both the published and the rounded design.
 
 ## Execute through optimization-run
 
-The same maintained scripts can run as trusted commands on a local node:
+The same scripts can run as trusted command jobs on a local node:
 
 ```bash
 cargo build --release --locked
 python tutorials/structured/run.py --runner target/release/optimization-run --chapter all --output /absolute/new/command-smoke
 ```
 
-The driver explicitly enables commands on its new private node. It stages
-checked entry/identity inputs, keeps the native handle, and collects the
-sealed summary with the native transfer API. A separate execution record
-records exit status and containment. MCP still refuses arbitrary command
-jobs: these walkthroughs use a shell and the CLI. Callbacks are never
-serialized as job payloads.
+The driver enables commands on its new private node. It stages a launcher
+and a source manifest as hashed inputs, keeps the native handle, and collects
+the sealed summary with the native transfer API. The execution record of
+each job, including a failed one, is kept as `execution.json`. MCP still
+refuses command jobs: these walkthroughs use a shell and the CLI. Callbacks
+are never serialized into job payloads.
 
-Source identities are checked at launch. The scripts read trusted sibling
-checkouts and installed packages; this is not an immutable filesystem
-sandbox or an offline environment bundle. Keep those sources stable during
-a run. A changed watched file fails admission-time application checks.
+The launcher checks the hashes of the watched sources and data before it
+starts a chapter, and refuses to run if any changed. The chapters still read
+trusted checkouts and installed packages: this is a launch-time identity
+check, not a filesystem sandbox or an offline environment bundle. Keep the
+sources stable during a run.
 
-Command completion is an execution observation. Solver claims and reference
-arguments remain in the application artifact. An individual nonconvergent
-attempt can be an intended lesson: the original coast model and the first
-truss backend attempt are retained beside successful declared alternatives.
+A completed command job is an execution observation. Solver claims and
+reference arguments stay in the chapter's summary. An individual
+nonconvergent attempt can be the intended lesson: SQP5's coast-permitting
+model and X3's first QP backend attempt are kept beside the declared
+alternatives that converge.
 
 ## Campaigns and scientific comparisons
 
-The experiment-craft example
-`examples/campaigns/structured-tutorials/run.py` runs the twenty application
-commands, a dependent artifact checker, and four stock-worker jobs. Its two
-predeclared native comparison groups vary LP presolve and SQP backend only.
-Application/formulation/mesh/global-local tables remain descriptive. The
-existing comparison allowlist and all protocol versions remain unchanged.
+experiment-craft's `examples/campaigns/structured-tutorials/run.py` runs the
+twenty chapters as command steps, a dependent artifact checker and four
+stock-worker jobs. Its two predeclared comparison groups vary only LP presolve
+and the SQP backend, the settings its comparison adapter supports. Tables
+across formulations, meshes, solvers or global/local splits are descriptive.
 
 ## Validation
 
@@ -114,12 +122,20 @@ existing comparison allowlist and all protocol versions remain unchanged.
 python -m unittest discover -s tutorials/structured/tests -v
 ```
 
-These tests target wrong constraints, incorrect certificates, derivative
-errors, coordinate/multiplier mistakes, source drift and output preservation.
-The full executable suite is separate from those unit tests. Remote-host
-commissioning and fresh external-model usability trials are separate from
-this delivery's local execution evidence.
+These tests cover wrong constraints and certificates, derivative and
+multiplier errors, infeasible points, checks that must survive `python -O`,
+source drift, the sibling tree the chapters import from, the catalog, and
+refusal to overwrite output. The
+[`structured-tutorials` workflow](../../.github/workflows/structured-tutorials.yml)
+runs them, both presets of all twenty chapters, and the command-job route for
+LP10 and X1.
 
 ## Limits and work accounting
 
-The direct SQP helper caps function-plus-derivative callbacks at 20,000; ordinary runs use up to 500 major iterations, with up to 1,500 for the separately declared throttle-floor retry. Individual wall limits are 60–180 seconds. These are common maxima, not expected work; native counters and termination reasons record actual work. LP solves use explicit time/node/pivot limits and one numerical worker. The Thomson arm counters measure search pair interactions; independent derivative/Hessian audits are outside those arm counts.
+The SQP chapters cap function-plus-derivative callbacks at 20,000; ordinary
+runs use up to 500 major iterations, and SQP5's declared throttle-floor model
+up to 1,500. Wall limits are 60–180 seconds per solve. These are maxima, not
+expected work; the native counters and termination reasons record the actual
+work. LP solves use explicit time, node and iteration limits and one
+numerical thread. The Thomson arm counters measure search pair interactions;
+the independent derivative and Hessian audits are not counted there.

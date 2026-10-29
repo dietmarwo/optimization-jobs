@@ -1,5 +1,6 @@
 """Decision-oriented figures from retained tutorial summaries."""
 
+from pathlib import Path
 import numpy as np
 import matplotlib
 
@@ -80,13 +81,22 @@ def render(chapter, d, path):
             [x["result"]["evaluation"]["objective"] for x in h],
             "o-",
         )
-        ax.axhline(453, color="grey", ls="--", label="Integer optimum")
+        ax.axhline(
+            d["integer"]["evaluation"]["objective"],
+            color="grey",
+            ls="--",
+            label="Integer optimum",
+        )
         ax.set(xlabel="Patterns in restricted master", ylabel="Rolls")
         ax.legend()
     elif chapter == "LP8":
         ax.bar(
             ["Stochastic plan", "Mean plan", "Perfect information"],
-            [198, d["mean_plan_profit"], d["wait_and_see"]],
+            [
+                d["result"]["evaluation"]["objective"],
+                d["mean_plan_profit"],
+                d["wait_and_see"],
+            ],
         )
         ax.set(ylabel="Expected profit")
     elif chapter == "LP9":
@@ -120,7 +130,10 @@ def render(chapter, d, path):
         ax.set(ylabel="Passenger minutes of delay")
     elif chapter == "SQP1":
         t = np.linspace(0, 5, 100)
-        r = min(d["records"], key=lambda r: r["independent"]["objective"])
+        r = min(
+            (r for r in d["records"] if (r["independent"] or {}).get("feasible")),
+            key=lambda r: r["independent"]["objective"],
+        )
         a, b, c = r["native"]["candidate"]
         ax.plot(t, a * np.exp(-b * t) + c, label="Fit")
         a = np.array(d["training"])
@@ -195,15 +208,14 @@ def render(chapter, d, path):
         )
         ax.set(ylabel="Mass kg (scope differs by stage)")
     elif chapter == "X4":
-        values = [
-            r["check"]["objective"] if "check" in r else r["energy"] for r in d["arms"]
-        ]
-        ax.bar([r["arm"] for r in d["arms"]], values)
-        ax.axhline(d["reference"], color="grey", ls="--", label="Reference")
-        ax.set(ylabel="Thomson energy")
-        ax.legend()
+        # Only independently checked sphere points; the gap to the reference
+        # shows differences that bars of the full energy would hide.
+        gaps = [r["check"]["objective"] - d["reference"] for r in d["arms"]]
+        ax.bar([r["arm"] for r in d["arms"]], gaps)
+        ax.set(ylabel=f"Energy above reference {d['reference']:.6f}")
     ax.set_title(chapter + " — retained numerical result")
     fig.tight_layout()
     fig.savefig(path, dpi=150)
-    fig.savefig(str(path).replace(".png", ".svg"))
+    # No creation date, so that a rerun gives the same SVG bytes.
+    fig.savefig(Path(path).with_suffix(".svg"), metadata={"Date": None})
     plt.close(fig)

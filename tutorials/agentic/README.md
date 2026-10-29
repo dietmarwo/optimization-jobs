@@ -36,4 +36,4 @@ Optional application workers live beside their models in fcmaes-rust. LP-IP-craf
 
 ## Further structured applications
 
-The [twenty structured workshops](../structured/README.md) add solver-local mathematics, independent references, prompts and command-job execution. Their direct Python callbacks use native Rust solvers; the existing nine native worker chapters remain a separate execution path.
+The [twenty structured tutorials](../structured/README.md) cover more problem classes, each with an independent reference. They call the native solvers through their Python APIs and can run as trusted command jobs; the nine chapters here use registered worker models instead.

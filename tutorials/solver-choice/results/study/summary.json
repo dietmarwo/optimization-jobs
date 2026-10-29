@@ -1,7 +1,7 @@
 {
   "chapter": "X1",
   "preset": "study",
-  "seconds": 0.10776376724243164,
+  "seconds": 0.08692669868469238,
   "result": {
     "LP": {
       "status": "optimal",
@@ -176,10 +176,10 @@
           "diagnostics.objective_lattice": "false",
           "numeric_threads": "1"
         },
-        "total_seconds": 0.000267761,
-        "conversion_seconds": 1.4383000000000001e-05,
-        "solve_seconds": 0.000179558,
-        "check_seconds": 7.221e-06,
+        "total_seconds": 0.000134814,
+        "conversion_seconds": 1.7457e-05,
+        "solve_seconds": 2.7635e-05,
+        "check_seconds": 1.0968e-05,
         "time_budget_exceeded": false
       },
       "independent": {
@@ -191,7 +191,65 @@
           100.0,
           80.0
         ]
-      }
+      },
+      "vertices": [
+        [
+          2600.0,
+          [
+            20.0,
+            60.0
+          ]
+        ],
+        [
+          2400.0,
+          [
+            0.0,
+            80.0
+          ]
+        ],
+        [
+          2400.0,
+          [
+            0.0,
+            80.0
+          ]
+        ],
+        [
+          2400.0,
+          [
+            0.0,
+            80.0
+          ]
+        ],
+        [
+          2000.0,
+          [
+            50.0,
+            -0.0
+          ]
+        ],
+        [
+          2000.0,
+          [
+            50.0,
+            0.0
+          ]
+        ],
+        [
+          2000.0,
+          [
+            50.0,
+            0.0
+          ]
+        ],
+        [
+          0.0,
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      ]
     },
     "MIP": {
       "status": "optimal",
@@ -397,10 +455,10 @@
           "singleton_removed_rows": "0",
           "numeric_threads": "1"
         },
-        "total_seconds": 0.000152438,
-        "conversion_seconds": 4.0589e-05,
-        "solve_seconds": 4.032100000000001e-05,
-        "check_seconds": 3.6967e-05,
+        "total_seconds": 0.000171926,
+        "conversion_seconds": 4.8748e-05,
+        "solve_seconds": 4.0477e-05,
+        "check_seconds": 4.533e-05,
         "time_budget_exceeded": false
       },
       "independent": {
@@ -486,19 +544,19 @@
           "fixed_step_corrections": 0,
           "bound_step_corrections": 0,
           "step_norm": 0.1993965722868154,
-          "total_seconds": 0.000108442,
-          "callback_seconds": 6.4076e-05,
-          "qp_seconds": 2.0622000000000003e-05,
+          "total_seconds": 8.398e-05,
+          "callback_seconds": 3.1197999999999995e-05,
+          "qp_seconds": 2.3126000000000002e-05,
           "qp_setups": 4,
           "qp_updates": 0,
           "qp_cold_retries": 0,
           "qp_retry_reason": null,
-          "qp_conversion_seconds": 3.766e-06,
-          "qp_setup_seconds": 3.4e-07,
+          "qp_conversion_seconds": 6.469e-06,
+          "qp_setup_seconds": 4.35e-07,
           "qp_update_seconds": 0.0,
-          "qp_solve_seconds": 6.759999999999999e-06,
-          "qp_check_seconds": 4.767e-06,
-          "bfgs_seconds": 1.874e-06,
+          "qp_solve_seconds": 7.225999999999999e-06,
+          "qp_check_seconds": 5.155000000000001e-06,
+          "bfgs_seconds": 1.908e-06,
           "qp_trace": [],
           "history": [
             {
@@ -805,10 +863,10 @@
           "singleton_removed_rows": "0",
           "numeric_threads": "1"
         },
-        "total_seconds": 0.000436682,
-        "conversion_seconds": 0.00013220700000000002,
-        "solve_seconds": 7.307800000000001e-05,
-        "check_seconds": 4.818200000000001e-05,
+        "total_seconds": 0.000336458,
+        "conversion_seconds": 7.953100000000001e-05,
+        "solve_seconds": 0.00012310100000000003,
+        "check_seconds": 6.519e-05,
         "time_budget_exceeded": false
       },
       "independent": {
@@ -829,8 +887,8 @@
       }
     },
     "black_box": {
-      "native": [
-        [
+      "native": {
+        "point": [
           3.636923810984329,
           3.9920139081035235,
           0.08926017338215816,
@@ -838,11 +896,11 @@
           0.6428142779581076,
           0.2582433070529622
         ],
-        -2005.0,
-        4000,
-        4000,
-        0
-      ],
+        "value": -2005.0,
+        "evaluations": 4000,
+        "iterations": 4000,
+        "stop": 0
+      },
       "rounded": [
         4,
         4,
@@ -851,6 +909,7 @@
         1,
         0
       ],
+      "feasible": true,
       "best_found_profit": 2005.0,
       "enumerated_optimum": 2005.0,
       "gap": 0.0,

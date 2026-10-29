@@ -1,7 +1,7 @@
 {
   "chapter": "X1",
   "preset": "smoke",
-  "seconds": 0.09606695175170898,
+  "seconds": 0.0717306137084961,
   "result": {
     "LP": {
       "status": "optimal",
@@ -176,10 +176,10 @@
           "diagnostics.objective_lattice": "false",
           "numeric_threads": "1"
         },
-        "total_seconds": 0.000158488,
-        "conversion_seconds": 1.0667e-05,
-        "solve_seconds": 2.0851e-05,
-        "check_seconds": 5.669e-06,
+        "total_seconds": 0.000128533,
+        "conversion_seconds": 1.5823e-05,
+        "solve_seconds": 2.6432e-05,
+        "check_seconds": 6.681e-06,
         "time_budget_exceeded": false
       },
       "independent": {
@@ -191,7 +191,65 @@
           100.0,
           80.0
         ]
-      }
+      },
+      "vertices": [
+        [
+          2600.0,
+          [
+            20.0,
+            60.0
+          ]
+        ],
+        [
+          2400.0,
+          [
+            0.0,
+            80.0
+          ]
+        ],
+        [
+          2400.0,
+          [
+            0.0,
+            80.0
+          ]
+        ],
+        [
+          2400.0,
+          [
+            0.0,
+            80.0
+          ]
+        ],
+        [
+          2000.0,
+          [
+            50.0,
+            -0.0
+          ]
+        ],
+        [
+          2000.0,
+          [
+            50.0,
+            0.0
+          ]
+        ],
+        [
+          2000.0,
+          [
+            50.0,
+            0.0
+          ]
+        ],
+        [
+          0.0,
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      ]
     },
     "MIP": {
       "status": "optimal",
@@ -397,10 +455,10 @@
           "singleton_removed_rows": "0",
           "numeric_threads": "1"
         },
-        "total_seconds": 0.000149244,
-        "conversion_seconds": 3.9308e-05,
-        "solve_seconds": 3.9221e-05,
-        "check_seconds": 3.7224e-05,
+        "total_seconds": 0.000214972,
+        "conversion_seconds": 5.4468e-05,
+        "solve_seconds": 6.952e-05,
+        "check_seconds": 4.7347000000000006e-05,
         "time_budget_exceeded": false
       },
       "independent": {
@@ -486,19 +544,19 @@
           "fixed_step_corrections": 0,
           "bound_step_corrections": 0,
           "step_norm": 0.1993965722868154,
-          "total_seconds": 7.1507e-05,
-          "callback_seconds": 2.9245e-05,
-          "qp_seconds": 1.933e-05,
+          "total_seconds": 8.5902e-05,
+          "callback_seconds": 3.1361e-05,
+          "qp_seconds": 2.3793e-05,
           "qp_setups": 4,
           "qp_updates": 0,
           "qp_cold_retries": 0,
           "qp_retry_reason": null,
-          "qp_conversion_seconds": 3.805e-06,
-          "qp_setup_seconds": 4.41e-07,
+          "qp_conversion_seconds": 6.95e-06,
+          "qp_setup_seconds": 4.14e-07,
           "qp_update_seconds": 0.0,
-          "qp_solve_seconds": 6.149e-06,
-          "qp_check_seconds": 4.3750000000000005e-06,
-          "bfgs_seconds": 1.752e-06,
+          "qp_solve_seconds": 7.3020000000000006e-06,
+          "qp_check_seconds": 5.23e-06,
+          "bfgs_seconds": 1.854e-06,
           "qp_trace": [],
           "history": [
             {
@@ -805,10 +863,10 @@
           "singleton_removed_rows": "0",
           "numeric_threads": "1"
         },
-        "total_seconds": 0.000288883,
-        "conversion_seconds": 9.053699999999999e-05,
-        "solve_seconds": 8.8741e-05,
-        "check_seconds": 4.8013e-05,
+        "total_seconds": 0.000272843,
+        "conversion_seconds": 7.962299999999999e-05,
+        "solve_seconds": 8.026600000000001e-05,
+        "check_seconds": 5.7131000000000006e-05,
         "time_budget_exceeded": false
       },
       "independent": {
@@ -829,8 +887,8 @@
       }
     },
     "black_box": {
-      "native": [
-        [
+      "native": {
+        "point": [
           3.636923810984329,
           3.9920139081035235,
           0.08926017338215816,
@@ -838,11 +896,11 @@
           0.6428142779581076,
           0.2582433070529622
         ],
-        -2005.0,
-        1000,
-        1000,
-        0
-      ],
+        "value": -2005.0,
+        "evaluations": 1000,
+        "iterations": 1000,
+        "stop": 0
+      },
       "rounded": [
         4,
         4,
@@ -851,6 +909,7 @@
         1,
         0
       ],
+      "feasible": true,
       "best_found_profit": 2005.0,
       "enumerated_optimum": 2005.0,
       "gap": 0.0,

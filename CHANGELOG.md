@@ -10,7 +10,7 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
-- Structured application workshops with executable native-solver examples, independent references, prompt exercises and retained smoke results; shared direct/command execution and a local campaign example.
+- [Structured tutorials](tutorials/structured/README.md): a driver for the twenty-chapter series (LP1–LP10, SQP1–SQP6, X1–X4) that runs each chapter directly or as a trusted command job through `optimization-run`, records package versions and checkout states, and renders figures. This repository holds two chapters, [LP10](tutorials/rail-formulation/README.md) (the rail model's formulation, its relaxation and a FIFO MIP start) and [X1](tutorials/solver-choice/README.md) (one problem solved as LP, MIP, SQP and black box); the others live with their solvers. `tutorials/structured/tests` checks the mathematical and execution boundaries, and the `structured-tutorials` workflow runs the tests, both presets of all twenty chapters and the command-job route.
 
 ### Changed
 
