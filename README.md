@@ -4,6 +4,8 @@
 
 # optimization-jobs
 
+**Structured application workshops:** see the [new learning sequence](tutorials/structured/README.md). The twenty-chapter series uses the native Rust solvers through Python, with independent checks, agent prompts and local campaign execution.
+
 **Open-source optimization for AI agents:**
 [ecosystem overview](https://dietmarwo.github.io/optimization-jobs/) ·
 [shared solver-selection guide](ai-context.md) ·

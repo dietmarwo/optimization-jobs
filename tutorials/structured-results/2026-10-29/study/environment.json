@@ -1,0 +1,37 @@
+{
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "executable": "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+  "packages": {
+    "lp-ip-craft": "0.29.0",
+    "sqp-craft": "0.17.0",
+    "fcmaes-rust": "0.2.1",
+    "pykep-rust": "0.1.4",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "matplotlib": "3.10.8"
+  },
+  "repositories": {
+    "LP-IP-craft": {
+      "commit": "822bd81903597c46fe8fe0d9f4b434283c518bc7",
+      "tracked_diff_sha256": "3139553a1e3f40bedd62b4504004a19d5d1b0f4d992ae13e4963bfe4067752aa"
+    },
+    "SQP-craft": {
+      "commit": "2b9b1d8a34672e2a626e2849aff03135319c0106",
+      "tracked_diff_sha256": "c54d4fb0f7f4e5b94773dd43347b8bc6b2bd221284df9c227769d6b498b52301"
+    },
+    "fcmaes-rust": {
+      "commit": "b63d7b7e21d59e79548d7b8a7b20b3c770fdb4f4",
+      "tracked_diff_sha256": "2d9ca0f313409f281065b9f372b60d3bf568893c27f173b38e92a1e09dae28f4"
+    },
+    "optimization-jobs": {
+      "commit": "fb1d812e1b800d89ea593bdae16b053001c38c0b",
+      "tracked_diff_sha256": "dd55c78f0e366cb1eb273ab0529c5f2bf5c3ecb0523b9b365a710104c63f8f6b"
+    }
+  },
+  "reference_binaries": {
+    "truss_replay": {
+      "path": "/workspace/scratch/71783bc4abea/target-truss/release/examples/structured_replay",
+      "sha256": "65b70c8883d09eb0abd597f7fe26e14969487753160ea28a4276467fe8c254a4"
+    }
+  }
+}

@@ -8,6 +8,10 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Added
+
+- Structured application workshops with executable native-solver examples, independent references, prompt exercises and retained smoke results; shared direct/command execution and a local campaign example.
+
 ### Changed
 
 - Every public item of both crates has a doc comment, so docs.rs documents

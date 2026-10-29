@@ -1,0 +1,162 @@
+[
+  {
+    "chapter": "LP1",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "e654038ef4368615bea561812188380788a1209dd8ea8e910f1662b6d3bf401d",
+    "figure": "figure.png",
+    "seconds": 0.9463965892791748
+  },
+  {
+    "chapter": "LP2",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "6f3cbec07651e2abac818f807f8a59d628a213dc05ba080471914f7ece68026d",
+    "figure": "figure.png",
+    "seconds": 0.6745643615722656
+  },
+  {
+    "chapter": "LP3",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "0e4ae0fa716dc4a20c06a9ae15712a6b43c097b828b5ea8e233c5d448db1314e",
+    "figure": "figure.png",
+    "seconds": 0.760556697845459
+  },
+  {
+    "chapter": "LP4",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "845c9f654b1e881802a9e96de3fa0ca1abe3d305cd0d73b74c156fbc3e818ef3",
+    "figure": "figure.png",
+    "seconds": 0.5842406749725342
+  },
+  {
+    "chapter": "LP5",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "403857f12959980d1a0f8142360d469aef4960a329cbda490ab087622e30871d",
+    "figure": "figure.png",
+    "seconds": 0.5607903003692627
+  },
+  {
+    "chapter": "LP6",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "62bcb58950edb677397f9fd08bc12f620950ee00282e9db318d65c023a2c815e",
+    "figure": "figure.png",
+    "seconds": 0.512321949005127
+  },
+  {
+    "chapter": "LP7",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "d4d6b2e87a2e100561ed93ccbac1c25e319b249344e6316532bb7b71b968e632",
+    "figure": "figure.png",
+    "seconds": 0.5831902027130127
+  },
+  {
+    "chapter": "LP8",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "a07ac7021d08c765c0febf252bebd6e7d53433b5e76f4c0cb811d3f9d7c3a10e",
+    "figure": "figure.png",
+    "seconds": 0.4775068759918213
+  },
+  {
+    "chapter": "LP9",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "64060f97f38e3f46121ab7a766a00ad5ba0edf9ce678ee23ef2659c98670dbcb",
+    "figure": "figure.png",
+    "seconds": 4.948201656341553
+  },
+  {
+    "chapter": "LP10",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "2889ba2d21aa37fbd4ed047df979527cb9eb596d7ae13f1b0720ef4619898239",
+    "figure": "figure.png",
+    "seconds": 0.2287917137145996
+  },
+  {
+    "chapter": "SQP1",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "f108d611d1e52bb7ca4f63fa3c37263be9a1def0ba020254855376901912c408",
+    "figure": "figure.png",
+    "seconds": 0.7774369716644287
+  },
+  {
+    "chapter": "SQP2",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "c52af85738eab365bb5e99e236468e0336880b1cb3c873b2d9461c782a23ef38",
+    "figure": "figure.png",
+    "seconds": 0.7094359397888184
+  },
+  {
+    "chapter": "SQP3",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "d5ce6a739d8600183c66bd488c3ca7d4ddfdf57d7a4db842888d536eabdec870",
+    "figure": "figure.png",
+    "seconds": 0.6880240440368652
+  },
+  {
+    "chapter": "SQP4",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "19b2868ccd872327af06264c41fcb6646249e1ec45d13026aacc334cf863c3df",
+    "figure": "figure.png",
+    "seconds": 0.7766139507293701
+  },
+  {
+    "chapter": "SQP5",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "a68bd575ed17c218632230081f99e5c990af44bab3ece40d477be5aa48c3ba56",
+    "figure": "figure.png",
+    "seconds": 1.0229382514953613
+  },
+  {
+    "chapter": "SQP6",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "590f6cd46959cb0b320209424f8d97d40ee779ac6be69741eca93d74b5850b9c",
+    "figure": "figure.png",
+    "seconds": 6.98770546913147
+  },
+  {
+    "chapter": "X1",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "c8cd85ac864561bcf14ec6bd986141b819d40ac7d8bef1ea7633cfcf6132fe8f",
+    "figure": "figure.png",
+    "seconds": 0.3005557060241699
+  },
+  {
+    "chapter": "X2",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "ed1fec03f84853c2b96e8decac9333e0c67a4eb5ca3ae62a321ee42c87f4d656",
+    "figure": "figure.png",
+    "seconds": 0.7782974243164062
+  },
+  {
+    "chapter": "X3",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "918764c6a546799a6abfe7e2c8fbc0ff4928c51b43709540f10fdd4ea068a3d2",
+    "figure": "figure.png",
+    "seconds": 1.1018047332763672
+  },
+  {
+    "chapter": "X4",
+    "preset": "smoke",
+    "status": "passed",
+    "summary_sha256": "cdccfc2750158a4d4df3c2c26f0e7a9e8ebd3ddb90eb8f51a9588c0ca82a685a",
+    "figure": "figure.png",
+    "seconds": 0.8989019393920898
+  }
+]
