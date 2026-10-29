@@ -33,8 +33,8 @@ and [`optimization.result-0.2.schema.json`](job-api/schemas/optimization.result-
 
 The shared crates, this guide, the plan, the schemas and the shared test
 scripts live in this repository; until October 2026 the three worker
-repositories carried identical copies. The crates are at version 0.3.0, the
-first release on crates.io. Worker repositories depend on them
+repositories carried identical copies. The crates are at version 0.4.0; 0.3.0
+was the first release on crates.io. Worker repositories depend on them
 through git at a pinned revision, which their `Cargo.lock` records (see the
 [README](../README.md)). 0.2.0 adds the result contract 0.2 (evidence,
 refutations, objective bounds, infeasibility and certified claims), worker
@@ -309,7 +309,7 @@ decision, independent of a solver's termination reason.
 
 ### Trusted local command jobs and binary files
 
-These interfaces require source after 0.3.0. Command jobs use
+These interfaces need 0.4.0 or later. Command jobs use
 [`execution.command/0.1`](job-api/schemas/execution.command-0.1.schema.json),
 not an optimization envelope. Enable them explicitly on a node:
 
@@ -449,7 +449,7 @@ python3 examples/commands/build_run_collect.py \
 
 ### Explicit SSH placement and recovery
 
-These interfaces need source after 0.3.0. The Rust runner owns remote dispatch,
+These interfaces need 0.4.0 or later. The Rust runner owns remote dispatch,
 file transport and reconciliation. `fleet` operations are CLI-only. Placement
 always names a registered node; there is no automatic host selection or global
 slot allocator, and nodes are never discovered or added automatically.
@@ -626,9 +626,8 @@ logout/reboot or home-machine durability.
 
 ### Execution discovery and terminal observations
 
-These commands are not in 0.3.0: they need a runner built from `main`
-after that release (see `[Unreleased]` in the changelog). The versions of the
-job, worker and native result contracts are unchanged.
+These commands need 0.4.0 or later. The versions of the job, worker and
+native result contracts are unchanged.
 
 ```sh
 optimization-run node capabilities

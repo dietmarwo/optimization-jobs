@@ -170,7 +170,7 @@ optimization-runner = { path = "../optimization-jobs/crates/optimization-runner"
 
 ## Trusted local commands and binary files
 
-After 0.3.0 the runner also runs opt-in command jobs (`execution.command/0.1`)
+From 0.4.0 the runner also runs opt-in command jobs (`execution.command/0.1`)
 and moves binary files with exact size and SHA-256 checks, on the same local
 admission budget as optimization jobs. Commands are trusted programs under the
 runner's user, not a sandbox, and they are off until the node owner runs
@@ -181,7 +181,7 @@ build–run–collect example.
 
 ## Explicit remote execution
 
-After 0.3.0 the runner can also place a job on a registered SSH node:
+From 0.4.0 the runner can also place a job on a registered SSH node:
 `fleet nodes add/probe` pins a node's endpoint and identity, `fleet submit
 --node NAME` sends one optimization or command job there, and
 `fleet reconcile/resume/cancel/repair/collect` follow it. A fixed helper,
