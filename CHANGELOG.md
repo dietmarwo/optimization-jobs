@@ -19,6 +19,7 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- The structured-tutorial CI job runs on `ubuntu-24.04` instead of `ubuntu-latest`. Since `ubuntu-latest` moved to Ubuntu 26.04, the SQP3 study and both SQP5 presets differ from their recorded summaries with the same package versions (38 differences in SQP3, 3,285 and 3,880 in the SQP5 presets); on Ubuntu 24.04 all three match again.
 - Every public item of both crates has a doc comment, so docs.rs documents
   all of them (it reported 40% for `optimization-job-api` 0.4.0). The job,
   result and legacy types describe each field and link the guide's sections.
