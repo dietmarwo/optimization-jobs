@@ -1,0 +1,10 @@
+{
+  "C1": {"repository": "CRN-craft", "document": "tutorials/optimization/C1-calibration.md", "title": "Calibrate a stochastic network without rebuilding topology"},
+  "C2": {"repository": "CRN-craft", "document": "tutorials/optimization/C2-sensitivities.md", "title": "Fit kinetics with BDF sensitivities and test stochastic transfer"},
+  "C3": {"repository": "CRN-craft", "document": "tutorials/optimization/C3-oscillators.md", "title": "Build oscillator Pareto fronts and behavior archives"},
+  "C4": {"repository": "CRN-craft", "document": "tutorials/optimization/C4-rules.md", "title": "Infer aggregation rates with the rules engine"},
+  "F1": {"repository": "CFD-craft", "document": "tutorials/optimization/F1-allocation.md", "title": "Choose LP or black-box search for source allocation"},
+  "F2": {"repository": "CFD-craft", "document": "tutorials/optimization/F2-sensors.md", "title": "Select sensors and test what remains identifiable"},
+  "F3": {"repository": "CFD-craft", "document": "tutorials/optimization/F3-coupled-flow.md", "title": "Optimize coupled flow under fidelity gates"},
+  "X1": {"repository": "experiment-craft", "document": "examples/campaigns/simulators/README.md", "title": "Measure complete campaigns at fixed CPU budgets"}
+}

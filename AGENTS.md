@@ -17,6 +17,9 @@ LP-IP-craft and SQP-craft. It has no solver of its own. It contains:
   among fast-cma-es, fcmaes-rust, LP-IP-craft and SQP-craft, library or job,
   installation, the job API and the MCP server. Over MCP, the tool
   `get_guide` returns the same file.
+- The guide's [simulation models](ai-context.md#simulation-models) section
+  routes agents to CRN-craft and CFD-craft. Their optional application workers
+  live with the simulators and reuse the existing scalar job profiles.
 - [`docs/job-api.md`](docs/job-api.md) is the reference for envelopes,
   resources, errors, results, artifacts, discovery and MCP.
 

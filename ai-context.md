@@ -1,6 +1,6 @@
-# AI entry point: optimization with fcmaes, LP-IP-craft, SQP-craft and optimization-jobs
+# AI entry point: optimization and simulation with fcmaes and craft
 
-Last reviewed 2026-10-21 against `main` with the changes of an external
+Job-interface baseline reviewed 2026-10-21 against `main` with the changes of an external
 review of agent workflows: workers publish payload schemas and runnable
 examples in `describe`, the MCP server has `get_guide` and `put_input`, and
 `node doctor` reports the host's usable CPUs and memory. The crates are
@@ -37,6 +37,34 @@ model ([where to read next](#where-to-read-next)).
 The two fcmaes projects are independent implementations of the same algorithm
 family. fast-cma-es is the one for objectives written in Python. fcmaes-rust
 is the one for objectives in Rust and for job workers.
+
+### Simulation models
+
+These repositories supply numerical models for optimization. Their core
+simulators are independent of this runner; optional application workers live
+with the simulators and build from separate source workspaces.
+
+| Repository | Numerical scope | Application worker and registered models |
+| --- | --- | --- |
+| [CRN-craft](https://github.com/dietmarwo/CRN-craft) | Chemical reaction networks: stochastic simulation, finite-state projection, approximate tau methods and optional deterministic kinetics; separate dynamic-species rules engine | `crn-job-worker`: `app.crn.fit-moments` and `app.crn.circuit-score`; [job integration](https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md) |
+| [CFD-craft](https://github.com/dietmarwo/CFD-craft) | Incompressible flow and passive-gas transport, source inference and refinement studies | `fcmaes-cfd-worker`: `app.cfd.source-allocation`, restricted to prescribed flow, three equal-base sources and one constituent; [job integration](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md) |
+
+Their current scalar application models use `fcmaes.evaluate/1`,
+`fcmaes.retry/1` and `fcmaes.surrogate/1` (experimental). Register the separate
+application executable, then use `describe_worker` or `problems describe` to
+obtain its actual model versions, payload schemas and examples. The stock
+`fcmaes-job-worker` does not acquire these models by knowing their names.
+
+CRN fits require an explicit fixed training `seed_set`; assess selected rates
+with disjoint seeds. The circuit score is a synthetic objective. The CFD
+worker's numerical acceptance is separate from physical validation, and its
+prescribed-flow model does not optimize the coupled flow solver. The broader
+simulator APIs do not imply that every method has an application-worker model.
+For sweeps and dependent checks, use experiment-craft's
+[simulator campaign guidance](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md#simulator-campaigns)
+with the existing job envelopes.
+
+The [eight simulator optimization lessons](https://github.com/dietmarwo/optimization-jobs/blob/main/tutorials/simulators/README.md) provide executable CRN calibration/sensitivity/oscillator/rules examples, CFD LP/MIP/coupled-flow examples and a fixed-CPU campaign. Numerical evidence stays simulator-owned; new MO/QD and coupled-flow examples use libraries or trusted commands rather than inventing stock worker models.
 
 ## 1. Write a short problem card
 
@@ -640,6 +668,9 @@ memory and how many tasks completed. CPU utilization alone is no result.
 | The same in Rust, the fcmaes job profiles, the surrogate chooser rule, application workers | fcmaes-rust [ai-context.md](https://github.com/dietmarwo/fcmaes-rust/blob/main/ai-context.md), [application models](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/job-api/models.md), [choosing an optimizer](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/choosing-an-optimizer.md) |
 | LP/MIP modelling, options, statuses, bounds, `lp-ip.solve/1` | LP-IP-craft [ai-context.md](https://github.com/dietmarwo/LP-IP-craft/blob/main/ai-context.md) |
 | Smooth NLP formulation, derivatives, KKT checks, `sqp.solve/1` | SQP-craft [ai-context.md](https://github.com/dietmarwo/SQP-craft/blob/main/ai-context.md) |
+| Chemical reaction networks, reusable parameters and CRN application jobs | CRN-craft [agent guide](https://github.com/dietmarwo/CRN-craft/blob/main/docs/ai-context.md), [parameter interface](https://github.com/dietmarwo/CRN-craft/blob/main/docs/reusable-parameters.md), [job integration](https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md) |
+| Flow/transport models, source inference and CFD application jobs | CFD-craft [agent guide](https://github.com/dietmarwo/CFD-craft/blob/main/docs/ai-context.md), [tutorials](https://github.com/dietmarwo/CFD-craft/blob/main/tutorials/README.md), [job integration](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md) |
+| Campaigns, dependent validation steps and complete reports | experiment-craft [campaign guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md) |
 | Envelope, resources, lifecycle, errors, results, artifacts, MCP | [docs/job-api.md](docs/job-api.md) |
 | JSON Schemas of the job and the result | [docs/job-api/schemas](docs/job-api/schemas/optimization.job-0.1.schema.json) |
 | A worker of your own | [crates/optimization-job-api](crates/optimization-job-api) and the guide's [Extending and testing](docs/job-api.md#extending-and-testing) |

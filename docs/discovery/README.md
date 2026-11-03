@@ -17,7 +17,8 @@ gates and the compatibility example to prepare.
   sources, and the LP-IP-craft and SQP-craft READMEs.
 - A static, accessible page with concrete problem classes, installation
   availability, constraints, tutorial links and a third-party reference.
-- One [catalog](../../site/catalog.json) for the page's five project cards,
+- One [catalog](../../site/catalog.json) for the project cards, including
+  CRN-craft and CFD-craft with links to their existing source integrations,
   JSON-LD source-code metadata, downloadable JSON, and `llms.txt` navigation.
 - Package URL metadata and keywords, plus links in published-crate README
   sources. These become public registry metadata on the next release.
@@ -55,6 +56,7 @@ Deployment sequence:
    through `github-pages`; future changes to the site sources deploy on main.
 4. Verify the public homepage, `/catalog.json`, `/llms.txt` and `/sitemap.xml`
    under `/optimization-jobs/`. Check the guide and three job tutorials.
+   Check the CRN-craft and CFD-craft cards and their simulator-owned guides too.
 5. The sibling READMEs and package metadata already link the overview; the
    direct GitHub guide links next to it work while deployment is pending.
 
@@ -156,3 +158,5 @@ control. Record engine, date, query, result positions and URLs. A missed result
 in one query is not evidence that a repository is globally unindexed. The
 useful outcome is discoverability plus successful installation and problem
 matching, not just a higher keyword count.
+
+The [simulator tutorial catalog](../../tutorials/simulators/README.md) links eight executable CRN/CFD/campaign lessons with per-repository numerical ownership. Its [JSON index](../../tutorials/simulators/catalog.json) is separate from worker discovery; catalog inclusion does not register a new worker model.
