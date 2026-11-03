@@ -4,11 +4,26 @@
 import argparse
 import json
 from pathlib import Path
+import sys
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+def f3_bars(arms):
+    """(height or None, label) per F3 design; None means no comparison."""
+    rows = []
+    for a in arms:
+        value = a["relative_energy_grid_change"]
+        if value is None:
+            rows.append((None, "no coarse/fine\ncomparison"))
+        elif a["supported_at_requested_fidelity"]:
+            rows.append((value, "supported"))
+        else:
+            rows.append((value, "not supported"))
+    return rows
 
 
 def main():
@@ -20,14 +35,19 @@ def main():
     for chapter in ["C1", "C2", "C3", "C4", "F1", "F2", "F3"]:
         path = args.results / chapter / "summary.json"
         if not path.is_file():
+            print(f"{chapter}: no summary, skipped", file=sys.stderr)
             continue
         r = json.loads(path.read_text())
         if r.get("passed") is not True:
+            print(f"{chapter}: checks did not pass, skipped", file=sys.stderr)
             continue
         fig, ax = plt.subplots(figsize=(8, 4.6), layout="constrained")
         arms = r["arms"]
         if chapter == "C1":
-            labels = [a["model"] + "\n" + a["route"] for a in arms]
+            labels = [
+                f"{a['model']}\n{a.get('policy', '')} {a['route']}\nseed {a['seed']}"
+                for a in arms
+            ]
             ax.bar(range(len(arms)), [a["holdout_loss"] for a in arms], color="#277da8")
             ax.set_xticks(range(len(arms)), labels, rotation=40, ha="right")
             ax.set_ylabel("Held-out moment loss")
@@ -49,9 +69,9 @@ def main():
                     "o-",
                     label=f"Extreme {i + 1}: train → holdout",
                 )
-            ax.set_xlabel("Oscillation quality loss")
-            ax.set_ylabel("Molecule cost")
-            ax.legend()
+            ax.set_xlabel("Oscillation quality loss (objective 1 of 3)")
+            ax.set_ylabel("Molecule cost (objective 2 of 3)")
+            ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0))
         elif chapter == "C4":
             x = np.arange(len(arms))
             ax.bar(
@@ -86,7 +106,7 @@ def main():
             )
             ax.set_xticks(x, [a["method"] for a in arms])
             ax.set_ylabel("Maximum receptor concentration / 1e-8 kg m⁻³")
-            ax.legend()
+            ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0))
         elif chapter == "F2":
             labels = [a["method"] for a in arms]
             ax.bar(
@@ -98,7 +118,7 @@ def main():
                 3, color="#bc4749", linestyle="--", label="Three unknown source rates"
             )
             ax.set_ylim(0, 3.6)
-            ax.set_ylabel("Rank of selected-sensor inverse matrix")
+            ax.set_ylabel("Rank of selected-sensor response matrix")
             ax.legend()
             for i, a in enumerate(arms):
                 ax.text(
@@ -109,17 +129,23 @@ def main():
                     color="white",
                 )
         else:
-            values = [a["relative_energy_grid_change"] for a in arms]
-            ax.bar(
-                [a["method"] for a in arms],
-                [v if v is not None else 0 for v in values],
-                color="#bc4749",
+            # A design without a coarse/fine comparison has no bar height; it
+            # is labeled, never drawn as zero change.
+            x = np.arange(len(arms))
+            for i, (value, label) in enumerate(f3_bars(arms)):
+                if value is None:
+                    ax.text(i, 0.01, label, ha="center")
+                    continue
+                ax.bar(i, value, color="#277da8" if label == "supported" else "#bc4749")
+                ax.text(i, value, label, ha="center", va="bottom")
+            ax.set_xticks(
+                x, [f"{a['method']}\nspeed {a['training']['speed']:.3g}" for a in arms]
             )
             ax.axhline(
-                0.1, color="#277da8", linestyle="--", label="Frozen 10% fidelity gate"
+                0.1, color="#555555", linestyle="--", label="Frozen 10% fidelity gate"
             )
             ax.set_ylabel("Relative coarse/fine energy change")
-            ax.legend()
+            ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0))
         ax.set_title(f"{chapter} · {r['preset']} preset · numerical evidence")
         ax.spines[["top", "right"]].set_visible(False)
         fig.savefig(args.output / (chapter + ".svg"))

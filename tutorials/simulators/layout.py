@@ -3,10 +3,13 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import time
+
+TASK_SECONDS = 300
 
 
 def run_one(entry, preset, out, index, inner):
@@ -28,7 +31,8 @@ def run_one(entry, preset, out, index, inner):
         ],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=TASK_SECONDS,
+        env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
     )
     path.with_suffix(".stdout.log").write_text(p.stdout)
     path.with_suffix(".stderr.log").write_text(p.stderr)
@@ -79,7 +83,8 @@ def main():
                     dict(index=i, error=str(error), returncode=None, summary=None)
                 )
     passed = all(
-        r["returncode"] == 0 and r["summary"] and r["summary"]["passed"] for r in rows
+        r["returncode"] == 0 and r["summary"] and r["summary"].get("passed") is True
+        for r in rows
     )
     report = dict(
         chapter="X1-layout",
@@ -88,10 +93,11 @@ def main():
         inner=args.inner,
         cpu_slots=args.cpu_slots,
         tasks=args.tasks,
+        task_timeout_seconds=TASK_SECONDS,
         preset=args.preset,
         total_seconds=time.perf_counter() - start,
         runs=rows,
-        scope="Warm installed binaries; subprocess import/start and final validation included. Cold build cost is recorded separately.",
+        scope="Warm installed binaries; subprocess import/start and final validation included. Cold build cost is not included.",
     )
     (args.output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     return 0 if passed else 1

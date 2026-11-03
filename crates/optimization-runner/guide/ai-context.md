@@ -1,4 +1,4 @@
-# AI entry point: optimization and simulation with fcmaes and craft
+# AI entry point: optimization with fcmaes, LP-IP-craft, SQP-craft and optimization-jobs; simulation with CRN-craft and CFD-craft
 
 Job-interface baseline reviewed 2026-10-21 against `main` with the changes of an external
 review of agent workflows: workers publish payload schemas and runnable

@@ -43,7 +43,13 @@ def packages():
     }
 
 
+def git(path, *argv):
+    p = subprocess.run(["git", "-C", str(path), *argv], capture_output=True)
+    return p.stdout if p.returncode == 0 else None
+
+
 def source_identity(sources):
+    """HEAD plus whether, and how, each checkout differs from it."""
     rows = {}
     for repo in [
         "CRN-craft",
@@ -55,13 +61,25 @@ def source_identity(sources):
         "SQP-craft",
         "fast-cma-es",
     ]:
-        p = subprocess.run(
-            ["git", "-C", str(sources / repo), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
+        head = git(sources / repo, "rev-parse", "--verify", "HEAD")
+        diff = git(sources / repo, "diff", "HEAD", "--")
+        status = git(sources / repo, "status", "--porcelain", "--untracked-files=no")
+        rows[repo] = dict(
+            commit=head.decode().strip() if head is not None else None,
+            modified=bool(status) if status is not None else None,
+            diff_sha256=hashlib.sha256(diff).hexdigest() if diff else None,
         )
-        rows[repo] = dict(commit=p.stdout.strip() if p.returncode == 0 else None)
     return rows
+
+
+def child_environment():
+    """Direct-mode children: no bytecode is written into the source checkouts."""
+    return dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+
+
+def host_cpus(runner, node):
+    """Usable CPUs as the runtime sees them (affinity and cgroup quota)."""
+    return call([runner, "--root", node, "node", "doctor"])["host"]["usable_cpus"]
 
 
 def binary_options(args, sources):
@@ -179,6 +197,7 @@ def command_spec(sources, chapter, preset, folder, bins, threads=1, layout=None)
         argv=[sys.executable, "execute.py"],
         env=dict(
             PYTHONPATH=os.environ.get("PYTHONPATH", ""),
+            PYTHONDONTWRITEBYTECODE="1",
             OPENBLAS_NUM_THREADS="1",
             OMP_NUM_THREADS="1",
             MPLBACKEND="Agg",
@@ -238,8 +257,17 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     bins = binary_options(args, sources)
     node = out / "node"
+    report = dict(
+        passed=False,
+        preset=args.preset,
+        command_jobs=args.command_jobs,
+        threads=args.threads,
+        packages=packages(),
+        repositories=source_identity(sources),
+        chapters=[],
+    )
     if args.command_jobs:
-        call(
+        init = call(
             [
                 bins["runner"],
                 "--root",
@@ -251,7 +279,11 @@ def main():
                 "--allow-commands",
             ]
         )
-    rows = []
+        report.update(
+            node_warnings=init.get("warnings", []),
+            usable_cpus=host_cpus(bins["runner"], node),
+        )
+    rows = report["chapters"]
     for chapter in ORDER if args.chapter == "all" else [args.chapter]:
         folder = out / chapter
         start = time.perf_counter()
@@ -275,25 +307,46 @@ def main():
                     ]
                 )
                 row["native_handle"] = native
-                if native["state"] != "completed":
-                    raise RuntimeError("native command " + native["state"])
-                for output, filename in [
-                    ("summary", "summary.json"),
-                    ("evidence", "evidence.zip"),
-                ]:
-                    call(
+                # Keep the execution record and whatever outputs the runtime
+                # sealed, including those of a failed lesson, before judging it.
+                try:
+                    execution = call(
                         [
                             bins["runner"],
                             "--root",
                             node,
                             "jobs",
-                            "collect",
+                            "execution",
                             native["id"],
-                            output,
-                            "--destination",
-                            folder / filename,
                         ]
                     )
+                    (folder / "execution.json").write_text(
+                        json.dumps(execution, indent=2) + "\n"
+                    )
+                except RuntimeError as error:
+                    row["execution_record_error"] = str(error)
+                for output, filename in [
+                    ("summary", "summary.json"),
+                    ("evidence", "evidence.zip"),
+                ]:
+                    try:
+                        call(
+                            [
+                                bins["runner"],
+                                "--root",
+                                node,
+                                "jobs",
+                                "collect",
+                                native["id"],
+                                output,
+                                "--destination",
+                                folder / filename,
+                            ]
+                        )
+                    except RuntimeError as error:
+                        row.setdefault("collect_errors", {})[output] = str(error)
+                if native["state"] != "completed":
+                    raise RuntimeError("native command " + native["state"])
             else:
                 p = subprocess.run(
                     [
@@ -305,6 +358,7 @@ def main():
                     capture_output=True,
                     text=True,
                     timeout=1800,
+                    env=child_environment(),
                 )
                 (out / (chapter + ".stdout.log")).write_text(p.stdout)
                 (out / (chapter + ".stderr.log")).write_text(p.stderr)
@@ -318,12 +372,8 @@ def main():
             row["error"] = str(error)
         row["seconds"] = time.perf_counter() - start
         rows.append(row)
-        (out / "summary.json").write_text(
-            json.dumps(
-                dict(passed=all(r["passed"] for r in rows), chapters=rows), indent=2
-            )
-            + "\n"
-        )
+        report["passed"] = all(r["passed"] for r in rows)
+        (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(rows, indent=2))
     return 0 if all(r["passed"] for r in rows) else 1
 

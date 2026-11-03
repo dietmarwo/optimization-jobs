@@ -8,12 +8,9 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
-### Simulator optimization tutorials
-
-- Added an [eight-lesson CRN/CFD catalog](tutorials/simulators/README.md), pinned setup and trusted command-job driver with source identities and sealed summary/evidence outputs. Existing protocols and registered application models are unchanged.
-
 ### Added
 
+- An [eight-lesson CRN/CFD catalog](tutorials/simulators/README.md), pinned setup and trusted command-job driver with source identities and sealed summary/evidence outputs. Existing protocols and registered application models are unchanged. Failed command jobs keep their execution record and sealed outputs, lesson children write no bytecode into the checkouts, and run summaries record repository state and usable CPUs (contributed by Astra, with review fixes).
 - CRN-craft and CFD-craft discovery entries in the README, shared/MCP guide,
   job API reference, agent tutorial index and ecosystem catalog. The entries
   link the existing optional application workers and simulator-owned examples,

@@ -25,11 +25,12 @@ C2/F3. These IDs are local to this simulator series; the separate
 
 ## Prepare sibling checkouts
 
-Use patched checkouts of CRN-craft, CFD-craft, fcmaes-rust, LP-IP-craft,
-SQP-craft, optimization-jobs and experiment-craft under one parent directory.
-The combined patch bundle records their exact source commits. Keep fast-cma-es
-next to them when reproducing the complete repository audit; these new runnable
-lessons use the native Rust bindings. This setup targets Linux and CPython 3.12.
+Check out CRN-craft, CFD-craft, fcmaes-rust, LP-IP-craft, SQP-craft,
+optimization-jobs and experiment-craft (and, optionally, fast-cma-es) on their
+default branches under one parent directory. Every run records each
+checkout's commit and whether it differs from that commit. The lessons use the
+native Rust bindings, not fast-cma-es's in-process Python API. This setup
+targets Linux and CPython 3.12.
 
 Run the following from the parent directory. Activate one environment for all
 commands and keep it active when launching a campaign:
@@ -71,6 +72,9 @@ python optimization-jobs/tutorials/simulators/run.py --chapter all --command-job
 python experiment-craft/examples/campaigns/simulators/run.py --cpu-slots 8 --tasks 8 --output /tmp/simulator-campaign
 ```
 
+The runner's own checks (staged environment, repository identities, figure
+labels) run with `python -m unittest discover -s optimization-jobs/tutorials/simulators/tests`.
+
 Use new output directories. `--sources` selects another sibling parent.
 `--crn-binary`, `--ode-binary`, `--reference-binary`, `--cfd-binary`,
 `--cfd-worker` and `--runner` override executable locations. `all` runs the
@@ -82,7 +86,12 @@ Command mode creates an isolated foreground node with commands explicitly
 enabled. It stages a checked entry point and source manifest, declares CPU and
 wall limits, and collects `summary.json` plus `evidence.zip`. The runtime owns
 admission, process supervision, output sealing and native job handles. The
-wrapper retains failures and never retries an uncertain job automatically.
+wrapper saves each job's execution record and collects whatever outputs the
+runtime sealed, also for a failed lesson, before judging it; it never retries
+an uncertain job automatically. The top-level `summary.json` records package
+versions, repository identities and, in command mode, the node's usable CPUs
+and warnings. Lessons run with `PYTHONDONTWRITEBYTECODE=1`, so the checkouts
+stay unchanged.
 
 The source manifest hashes scripts, input models and used binaries, records
 repository heads, and checks installed package versions at launch. Tutorial
@@ -100,7 +109,7 @@ After a direct or command run, render standalone SVG/PNG figures from its collec
 python optimization-jobs/tutorials/simulators/plot.py --results /tmp/simulator-command-smoke --output /tmp/simulator-figures
 ```
 
-The figures use recorded losses, laws, ranks and fidelity changes. They do not turn a failed scientific design gate into an accepted result.
+The figures use recorded losses, laws, ranks and fidelity changes. They do not turn a failed scientific design gate into an accepted result: F3 labels each design as supported or not, and a design without a coarse/fine comparison is drawn as such, not as zero change. Chapters that did not pass are skipped with a message.
 
 ## Interpret results
 
@@ -123,8 +132,8 @@ for these application lessons. The [job guide](../../docs/job-api.md) and
 scalar application workers. X1 uses descriptive reports rather than extending
 the campaign engine's formal comparison semantics.
 
-The combined deliverable includes a verification record, source commits and
-per-repository patches. The smoke evidence establishes reproducibility and
-checks the workflows; it does not establish optimizer superiority or physical
-validation. Use independent repetitions and predeclared statistical/fidelity
+Each simulator repository keeps a validation record of its lessons
+(`tutorials/optimization/VALIDATION.md` and `results/verified.json`). The smoke
+evidence establishes reproducibility and checks the workflows; it does not
+establish optimizer superiority or physical validation. Use independent repetitions and predeclared statistical/fidelity
 criteria before promoting a research claim.
