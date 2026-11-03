@@ -37,7 +37,9 @@ concurrency:
 jobs:
   chapters:
     name: Twenty chapters, directly and as command jobs
-    runs-on: ubuntu-latest
+    # Recorded summaries were produced on Ubuntu 24.04; on the 26.04 image the
+    # SQP3 study and SQP5 solver paths follow last-digit libm differences.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: '2'
