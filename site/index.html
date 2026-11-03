@@ -33,9 +33,10 @@
       <h1 id="hero-title">Optimization tools<br>for AI agents.</h1>
       <p class="lead">Turn a model or simulation into a measured search. Choose a
         solver, give it a CPU and evaluation budget, and check the result.</p>
-      <p>Six open-source repositories connect parallel black-box search,
+      <p>{{PROJECT_COUNT}} open-source repositories connect parallel black-box search,
         linear and mixed-integer programming, smooth nonlinear optimization,
-        durable jobs and reproducible campaigns. Use a library, a shell, or the
+        chemical reaction and fluid simulations, durable jobs and reproducible
+        campaigns. Use a library, a shell, or the
         Model Context Protocol.</p>
       <div class="actions">
         <a class="button" href="{{GUIDE}}">Read the shared agent guide <span aria-hidden="true">↗</span></a>
@@ -66,13 +67,16 @@
 
     <section id="projects" aria-labelledby="projects-title">
       <p class="eyebrow">02 / Choose an interface</p>
-      <h2 id="projects-title">The six repositories.</h2>
-      <p>Libraries solve in your program. The three Rust workers share one job
-        contract and one runner. Python fcmaes remains a library.
-        experiment-craft runs campaigns of those jobs.</p>
+      <h2 id="projects-title">The {{PROJECT_COUNT}} repositories.</h2>
+      <p>Optimizer libraries and simulators evaluate models in your program.
+        The three stock solver workers and the optional CRN/CFD application
+        workers share the job contract and runner. Python fcmaes remains a
+        library. experiment-craft composes jobs into campaigns; its recorded
+        baseline covers the three stock solver workers.</p>
       <div class="projects">{{PROJECTS}}</div>
-      <p class="note">Availability checked {{CHECKED}}. Package releases can lag
-        source changes; read each changelog before using a new feature.</p>
+      <p class="note">Registry availability checked {{CHECKED}}; simulator entries
+        describe source builds. Package releases can lag source changes; read
+        each changelog before using a new feature.</p>
     </section>
 
     <section id="start" aria-labelledby="start-title">
@@ -117,7 +121,7 @@ python3 tutorials/job-api/run.py --root /tmp/fcmaes-job-tutorial</code></pre>
       <p><a href="https://hub.optuna.org/samplers/fcmaes/">OptunaHub's FastCmaesSampler</a>,
         by Jacob Pfeil, integrates fcmaes CMA-ES into Optuna. It is an attributable
         third-party integration of fast-cma-es; it does not validate the other
-        five projects or establish a performance ranking.</p>
+        projects or establish a performance ranking.</p>
       <p>The repositories provide their own tests, benchmark harnesses and
         reproduction instructions. Compare solver versions on the same models,
         tolerances, CPU allocations and budgets, include failures and repeat seeds.

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "title": "Optimization tools for AI agents",
-  "description": "Open-source Python and Rust optimization: parallel black-box search, LP/MIP, smooth nonlinear solvers, and durable jobs through MCP or a shell.",
+  "description": "Open-source Python and Rust optimization, CRN/CFD simulation models, and reproducible campaigns through durable jobs, MCP or a shell.",
   "url": "https://dietmarwo.github.io/optimization-jobs/",
   "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
   "comparison": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/optimization-systems-for-ai-agents.md",
@@ -85,6 +85,38 @@
         {"registry": "source", "name": "sqp-job-worker", "status": "source-only"}
       ],
       "topics": ["optimization", "nonlinear-optimization", "sequential-quadratic-programming", "rust", "python", "mcp", "ai-agents"]
+    },
+    {
+      "id": "CRN-craft",
+      "name": "CRN-craft",
+      "repository": "https://github.com/dietmarwo/CRN-craft",
+      "branch": "main",
+      "summary": "Rust chemical reaction-network simulation with Python bindings, reusable parameters and optional optimization application workers.",
+      "fit": "Stochastic reaction-network studies and parameter fitting. crn-job-worker registers app.crn.fit-moments and app.crn.circuit-score for scalar evaluate, retry and experimental surrogate jobs.",
+      "limits": "The scalar worker uses fixed training seed sets; validate on disjoint seeds. Circuit scoring is synthetic. The separate rules engine and optional ODE interfaces are not additional registered worker models.",
+      "availability": "Build from the repository's locked source workspaces. The optional crn-job-worker lives in integrations/jobs and is built separately from the core CLI.",
+      "guide": "https://github.com/dietmarwo/CRN-craft/blob/main/docs/ai-context.md",
+      "tutorial": "https://github.com/dietmarwo/CRN-craft/blob/main/docs/tutorial.md",
+      "documentation": "https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md",
+      "languages": ["Rust", "Python"],
+      "packages": [{"registry": "source", "name": "crn-job-worker", "status": "source-only"}],
+      "topics": ["simulation", "chemical-reaction-networks", "stochastic-simulation", "parameter-estimation", "optimization", "rust", "python", "ai-agents"]
+    },
+    {
+      "id": "CFD-craft",
+      "name": "CFD-craft",
+      "repository": "https://github.com/dietmarwo/CFD-craft",
+      "branch": "main",
+      "summary": "Rust incompressible-flow and passive-gas transport simulation, source inference and refinement studies, with an optional optimization application worker.",
+      "fit": "Transport studies and source-allocation optimization. fcmaes-cfd-worker registers app.cfd.source-allocation for scalar evaluate, retry and experimental surrogate jobs.",
+      "limits": "The application worker requires prescribed flow, three equal-base sources and one constituent; it does not optimize the coupled flow solver. Numerical acceptance is separate from physical validation. The older fcmaes-rust room-ventilation example uses a different model.",
+      "availability": "Build from the repository's locked sources. The optional fcmaes-cfd-worker lives in integrations/fcmaes-cfd-worker; integrations/README.md documents it and the command adapter.",
+      "guide": "https://github.com/dietmarwo/CFD-craft/blob/main/docs/ai-context.md",
+      "tutorial": "https://github.com/dietmarwo/CFD-craft/blob/main/tutorials/README.md",
+      "documentation": "https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md",
+      "languages": ["Rust", "Python"],
+      "packages": [{"registry": "source", "name": "fcmaes-cfd-worker", "status": "source-only"}],
+      "topics": ["simulation", "computational-fluid-dynamics", "passive-scalar", "inverse-problems", "optimization", "rust", "python", "ai-agents"]
     },
     {
       "id": "optimization-jobs",

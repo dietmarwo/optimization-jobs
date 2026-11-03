@@ -10,6 +10,11 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
+- An [eight-lesson CRN/CFD catalog](tutorials/simulators/README.md), pinned setup and trusted command-job driver with source identities and sealed summary/evidence outputs. Existing protocols and registered application models are unchanged. Failed command jobs keep their execution record and sealed outputs, lesson children write no bytecode into the checkouts, and run summaries record repository state and usable CPUs (contributed by Astra, with review fixes).
+- CRN-craft and CFD-craft discovery entries in the README, shared/MCP guide,
+  job API reference, agent tutorial index and ecosystem catalog. The entries
+  link the existing optional application workers and simulator-owned examples,
+  with their supported scalar profiles and numerical scope.
 - [Structured tutorials](tutorials/structured/README.md): a driver for the twenty-chapter series (LP1–LP10, SQP1–SQP6, X1–X4) that runs each chapter directly or as a trusted command job through `optimization-run`, records package versions and checkout states, and renders figures. This repository holds two chapters, [LP10](tutorials/rail-formulation/README.md) (the rail model's formulation, its relaxation and a FIFO MIP start) and [X1](tutorials/solver-choice/README.md) (one problem solved as LP, MIP, SQP and black box); the others live with their solvers. `tutorials/structured/tests` checks the mathematical and execution boundaries, and the `structured-tutorials` workflow runs the tests, both presets of all twenty chapters and the command-job route.
 
 ### Changed

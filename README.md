@@ -10,8 +10,9 @@
 [how it compares with other systems](docs/optimization-systems-for-ai-agents.md).
 
 Choose between Python/Rust black-box optimization, LP/MIP and smooth nonlinear
-solvers. This repository provides their shared shell/MCP job layer; it has no
-solver of its own.
+solvers, with [CRN-craft and CFD-craft](#simulation-models) supplying simulation
+models. This repository provides their shared shell/MCP job layer; it has no
+solver or simulator of its own.
 
 ![Pure Rust](https://img.shields.io/badge/runner-100%25%20Rust-brightgreen)
 [![crates.io](https://img.shields.io/crates/v/optimization-runner.svg?cacheSeconds=300)](https://crates.io/crates/optimization-runner)
@@ -62,6 +63,26 @@ is in early development.
 
 [Nine prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet design, production policies, energy sizing, curve fitting, GTOC1 route screening, surrogate optimization, LP/IP allocation, constrained SQP and synthetic rail-traffic recovery, with optional native application workers and an executable validation driver.
 
+## Simulation models
+
+The simulators own their numerical engines and optional application workers.
+Build and register these workers separately from the stock solver workers above.
+
+| Repository | Application worker and models | Start here |
+| --- | --- | --- |
+| [CRN-craft](https://github.com/dietmarwo/CRN-craft) | `crn-job-worker`: `app.crn.fit-moments` and `app.crn.circuit-score`, for reaction-network parameter fitting and a synthetic circuit objective | [Agent guide](https://github.com/dietmarwo/CRN-craft/blob/main/docs/ai-context.md), [job integration and validation](https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md) |
+| [CFD-craft](https://github.com/dietmarwo/CFD-craft) | `fcmaes-cfd-worker`: `app.cfd.source-allocation`, for three-source allocation in prescribed-flow passive transport | [Agent guide](https://github.com/dietmarwo/CFD-craft/blob/main/docs/ai-context.md), [job integration](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md), [tutorials](https://github.com/dietmarwo/CFD-craft/blob/main/tutorials/README.md) |
+
+Both application workers use `fcmaes.evaluate/1`, `fcmaes.retry/1` and
+`fcmaes.surrogate/1` (experimental) through the existing job envelope. Read the
+worker's `describe` output for model versions, inputs and supported profiles.
+Use the simulator integration guides for locked source builds and runnable
+examples; their core CLI builds do not include the optional job workers.
+For dependent steps and sweeps, see experiment-craft's
+[simulator campaign guidance](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md#simulator-campaigns).
+
+The [eight CRN/CFD optimization tutorials](tutorials/simulators/README.md) add simulator-owned calibration, sensitivities, oscillator searches, rules inference, LP source allocation, sensor MIP, coupled-flow fidelity checks and a fixed-CPU campaign. They include runnable native examples and a trusted command-job driver.
+
 ## Install
 
 From 0.3.0 the crates are on crates.io. On Linux (the runner supervises
@@ -87,9 +108,9 @@ cargo build --release --locked        # target/release/optimization-run, optimiz
 cargo install --path crates/optimization-runner --locked   # optional: both on PATH
 ```
 
-The runner has no workers of its own. Each worker lives in one of our solver
-repositories and builds there together with this runner; Cargo fetches this
-repository at the revision the worker pins, so no second checkout is needed:
+The runner has no workers of its own. The three stock solver workers build
+in their repositories together with this runner; Cargo fetches this repository
+at the revision each worker pins, so no second checkout is needed:
 
 | Worker | Build from source |
 | --- | --- |
@@ -140,12 +161,14 @@ completes with the job's result. Jobs outlive the server. The server cannot
 register workers, change the node or run command jobs. See
 [Agents and MCP](docs/job-api.md#agents-and-mcp).
 
-Two tutorial series show the workers in use. The nine
+Three tutorial series show native libraries and workers in use. The nine
 [agent tutorials](tutorials/agentic/README.md) drive registered models
 through prompts. The twenty
 [structured tutorials](tutorials/structured/README.md) solve LP, MIP, SQP and
 black-box models with the native solvers' Python APIs, check each answer
 against an independent reference, and can run as trusted command jobs.
+
+The eight [simulator tutorials](tutorials/simulators/README.md) connect CRN-craft and CFD-craft to native optimization and complete local campaigns, with numerical checks separate from execution status.
 
 ## Depending on this repository
 

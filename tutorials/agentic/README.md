@@ -16,7 +16,25 @@ These nine tutorials let an agent execute maintained numerical models, validate 
 
 Start with [SETUP.md](SETUP.md), then paste a chapter's `prompt.md`. Each chapter has a follow-up prompt that changes or examines the experiment. [VALIDATION.md](VALIDATION.md) separates program tests, executed pilot campaigns and fresh model trials.
 
-A related [fluid-dynamics workshop](https://github.com/dietmarwo/fcmaes-rust/blob/main/tutorials/cfd-room-ventilation/agentic/README.md) in fcmaes-rust applies the same prompt-first approach to a native CFD model. It drives that model's command-line program directly, because the model has no job worker.
+## Simulator tutorials and integrations
+
+These simulator-owned examples complement the nine chapters above:
+
+| Simulator | Learning material | Existing job integration |
+| --- | --- | --- |
+| [CRN-craft](https://github.com/dietmarwo/CRN-craft) | [Reaction-network tutorial](https://github.com/dietmarwo/CRN-craft/blob/main/docs/tutorial.md) and [reusable parameters](https://github.com/dietmarwo/CRN-craft/blob/main/docs/reusable-parameters.md) | [Moment fitting and synthetic circuit scoring](https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md) through `crn-job-worker` |
+| [CFD-craft](https://github.com/dietmarwo/CFD-craft) | [Source inference, canyon and refinement tutorials](https://github.com/dietmarwo/CFD-craft/blob/main/tutorials/README.md) | [Prescribed-flow source allocation](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md) through `fcmaes-cfd-worker` |
+
+Both workers use the existing scalar evaluate, retry and experimental surrogate
+profiles; discover each application before constructing a job. The examples live
+in their owner repositories and are not additional chapters of this series.
+For composing their jobs into sweeps and dependent checks, see
+[experiment-craft's campaign guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md#simulator-campaigns).
+
+The older [room-ventilation workshop](https://github.com/dietmarwo/fcmaes-rust/blob/main/tutorials/cfd-room-ventilation/agentic/README.md)
+in fcmaes-rust uses a separate educational lattice-Boltzmann model. It drives
+that model's command-line program directly; that model has no job worker. It is
+distinct from CFD-craft and its source-allocation worker.
 
 ## Execution contract
 
@@ -37,3 +55,7 @@ Optional application workers live beside their models in fcmaes-rust. LP-IP-craf
 ## Further structured applications
 
 The [twenty structured tutorials](../structured/README.md) cover more problem classes, each with an independent reference. They call the native solvers through their Python APIs and can run as trusted command jobs; the nine chapters here use registered worker models instead.
+
+## Complete CRN and CFD optimization lessons
+
+The [eight-lesson simulator series](../simulators/README.md) adds executable calibration, sensitivity fitting, Pareto/behavior search, rules inference, source-allocation LP, sensor MIP, coupled-flow fidelity checks and complete local campaigns. Use its own setup and driver; the nine registered-model chapters above keep their existing execution contract.

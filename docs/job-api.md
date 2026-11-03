@@ -94,6 +94,23 @@ For example, the best points of an `fcmaes.retry/1` job can be the `starts`
 of an `sqp.solve/1` job when both workers register the same model, and a
 result's points can be rechecked with the matching `evaluate` profile.
 
+### Simulator application workers
+
+[CRN-craft](https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md)
+provides `crn-job-worker` with `app.crn.fit-moments` and
+`app.crn.circuit-score`.
+[CFD-craft](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md)
+provides `fcmaes-cfd-worker` with `app.cfd.source-allocation` for prescribed-flow
+passive transport. These optional executables register scalar models using
+`fcmaes.evaluate/1`, `fcmaes.retry/1` and `fcmaes.surrogate/1` (experimental).
+They use the existing `optimization.job/0.1` envelope and result contract.
+
+Build each optional worker in its simulator repository using the linked
+integration guide, register its executable, and inspect its discovery output.
+Simulation methods beyond those registered models remain library/CLI interfaces.
+Keep the simulator's completion and numerical assessment alongside the optimizer
+result; a job's feasible/best-found claim does not establish physical validity.
+
 ## Build and discover
 
 Linux and Rust 1.88 or newer are required for the job layer. Python 3 is needed

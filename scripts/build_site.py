@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "site"
 OUTPUT = ROOT / "target" / "site"
 PROJECTS = {"fast-cma-es", "fcmaes-rust", "LP-IP-craft", "SQP-craft", "optimization-jobs",
-            "experiment-craft"}
+            "experiment-craft", "CRN-craft", "CFD-craft"}
 
 
 def require(condition: bool, message: str) -> None:
@@ -169,6 +169,7 @@ def build() -> Path:
                      for key in ("title", "description", "url", "guide", "comparison")}
     substitutions.update({
         "CHECKED": html.escape(data["availability_checked"]),
+        "PROJECT_COUNT": str(len(data["projects"])),
         "PROJECTS": "\n".join(project_html(p) for p in data["projects"]),
         "JSON_LD": structured_data(data),
     })
