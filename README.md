@@ -4,6 +4,8 @@
 
 # optimization-jobs
 
+> **One of 18 related repositories.** The [repository overview](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/repositories.md) shows what each one does and how they connect.
+
 **Open-source optimization for AI agents:**
 [ecosystem overview](https://dietmarwo.github.io/optimization-jobs/) ·
 [shared solver-selection guide](ai-context.md) ·
