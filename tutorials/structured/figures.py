@@ -7,6 +7,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+# Fixed salt for SVG clip-path/marker ids; together with the omitted date this
+# makes a rerun on the same data produce identical SVG bytes.
+plt.rcParams["svg.hashsalt"] = "optimization-jobs-figures"
+
 
 def render(chapter, d, path):
     fig, ax = plt.subplots(figsize=(7, 4.4))
@@ -208,11 +212,72 @@ def render(chapter, d, path):
         )
         ax.set(ylabel="Mass kg (scope differs by stage)")
     elif chapter == "X4":
-        # Only independently checked sphere points; the gap to the reference
-        # shows differences that bars of the full energy would hide.
-        gaps = [r["check"]["objective"] - d["reference"] for r in d["arms"]]
-        ax.bar([r["arm"] for r in d["arms"]], gaps)
-        ax.set(ylabel=f"Energy above reference {d['reference']:.6f}")
+        # Only independently checked sphere points. Linear bars of the gap
+        # hide both last-digit agreement (|gap| ~ 1e-11, slightly negative
+        # within the accepted primal tolerance) and a small but real gap to a
+        # different local minimum when another arm is far off. Plot |gap| on a
+        # log axis, print the signed value, and show the actual search work.
+        agreement = 1e-6  # documented cross-processor agreement of energies
+        floor = 1e-13
+        arms = d["arms"]
+        gaps = [r["check"]["objective"] - d["reference"] for r in arms]
+        heights = [max(abs(g), floor) for g in gaps]
+        positions = np.arange(len(arms))
+        ax.axhspan(floor / 10, agreement, color="0.93", zorder=0)
+        ax.text(
+            -0.45,
+            agreement / 3,
+            "matches reference (|gap| ≤ 1e−6)",
+            va="top",
+            fontsize=8,
+            color="0.35",
+        )
+        for x, r, gap, height in zip(positions, arms, gaps, heights):
+            checked = bool(r["check"].get("first_order"))
+            ax.scatter(
+                x,
+                height,
+                s=64,
+                facecolors="tab:blue" if checked else "white",
+                edgecolors="tab:blue",
+                linewidths=1.6,
+                zorder=3,
+            )
+            label = "gap 0" if gap == 0 else f"gap {gap:+.2g}".replace("-", "−")
+            if r["arm"] == d.get("hessian_arm") and "curvature" in d:
+                label += "\nHessian: " + d["curvature"]["verdict"].replace("_", " ")
+            ax.annotate(
+                label,
+                (x, height),
+                xytext=(9, 0),
+                textcoords="offset points",
+                va="center",
+                fontsize=9,
+            )
+        ax.scatter(
+            [], [], s=64, c="tab:blue", label="passed independent first-order check"
+        )
+        ax.scatter(
+            [],
+            [],
+            s=64,
+            facecolors="white",
+            edgecolors="tab:blue",
+            linewidths=1.6,
+            label="no first-order claim",
+        )
+        ax.set_yscale("log")
+        ax.set(
+            xticks=positions,
+            xticklabels=[
+                f"{r['arm']}\n{r['search_pair_traversals']:,} pair traversals"
+                for r in arms
+            ],
+            xlim=(-0.5, len(arms) - 0.05),
+            ylim=(floor / 10, max(heights) * 30),
+            ylabel=f"|energy − {d['reference']:.6f}|  (log scale)",
+        )
+        ax.legend(loc="upper left", fontsize=8, frameon=False)
     ax.set_title(chapter + " — retained numerical result")
     fig.tight_layout()
     fig.savefig(path, dpi=150)

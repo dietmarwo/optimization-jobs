@@ -28,6 +28,11 @@ revision. 0.3.0 is the first version on crates.io.
   warnings, fails on an undocumented public item. The command-line help is
   unchanged.
 
+### Fixed
+
+- Structured tutorial figure X4 (Thomson refinement) plotted linear bars of the energy gap, so arms at the reference (|gap| ~ 1e−11) and a small but real gap to another local minimum (+4.7e−3 in study) were invisible next to the global arm. It now plots |gap| on a log scale with a 1e−6 agreement band, signed values, first-order status, the curvature verdict and actual pair traversals.
+- Figure SVGs use a fixed `svg.hashsalt`, so a rerun on the same data writes identical bytes, as the renderer's comment already claimed.
+
 ## [0.4.0] - 2026-10-29
 
 Opt-in trusted command jobs, checked binary file transfer and output
