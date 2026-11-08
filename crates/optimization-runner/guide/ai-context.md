@@ -409,7 +409,7 @@ job() { "$RUN" --root "$NODE" "$@"; }    # RUN and NODE as above
 job problems describe lp-ip              # profiles, models, options, claims, resource limits
 job validate --spec job.json             # the resolved job with task_count; runs nothing
 job run --spec job.json                  # blocks until the end, prints the final job
-job jobs list                            # newest first, with id, state, directory, artifact_index
+job jobs list                            # every job (by id, not by time), with id, state, directory, artifact_index
 job jobs get JOB_ID                      # state and progress
 job jobs execution JOB_ID                # how the worker process ended (from 0.4.0)
 job jobs wait JOB_ID --timeout 60        # returns at the end or after the timeout

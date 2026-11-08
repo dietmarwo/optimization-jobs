@@ -707,7 +707,8 @@ reached `running` (the launcher writes it before it spawns the worker), and
 ### Errors
 
 A runner error, including a malformed command line, exits with status 2 and
-prints one JSON line on stderr (`--help` and `--version` print normally):
+prints one JSON line on stderr. `--help` and `--version` print normally, and a
+missing subcommand prints the help text, also with status 2:
 
 ```json
 {"error":{"code":"request_key_conflict","message":"...","retryable":false}}
