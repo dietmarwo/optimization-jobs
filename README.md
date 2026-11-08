@@ -95,7 +95,7 @@ https://rustup.rs):
 cargo install optimization-runner --locked   # optimization-run and optimization-mcp on PATH
 ```
 
-Worker crates depend on `optimization-job-api = "0.3"`.
+Worker crates depend on `optimization-job-api = "0.4"`.
 
 ### From source
 

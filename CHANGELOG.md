@@ -32,6 +32,12 @@ revision. 0.3.0 is the first version on crates.io.
 
 - Structured tutorial figure X4 (Thomson refinement) plotted linear bars of the energy gap, so arms at the reference (|gap| ~ 1e−11) and a small but real gap to another local minimum (+4.7e−3 in study) were invisible next to the global arm. It now plots |gap| on a log scale with a 1e−6 agreement band, signed values, first-order status, the curvature verdict and actual pair traversals.
 - Figure SVGs use a fixed `svg.hashsalt`, so a rerun on the same data writes identical bytes, as the renderer's comment already claimed.
+- Documentation errors:
+  - The README told worker crates to depend on `optimization-job-api = "0.3"`; the crates are 0.4.
+  - The guide said `jobs list` prints the newest job first; the command line lists jobs by id. Only MCP `list_jobs` sorts newest first.
+  - `docs/job-api.md` now notes that a missing subcommand prints the help text, not a JSON error, with exit status 2.
+  - The rail formulation tutorial called its timetable-order MIP start first-come, first-served, a name the rail chapter uses for another schedule.
+  - The systems comparison lists `optimization-runner` 0.4.0.
 
 ## [0.4.0] - 2026-10-29
 

@@ -520,7 +520,7 @@ licenses separately.
 
 | Repository | Responsibility | Agent entry point | Registry release (Oct 2026) |
 |---|---|---|---|
-| optimization-jobs | Jobs, CPU admission, supervision, results, MCP | [`ai-context.md`](../ai-context.md), then worker discovery | crates.io `optimization-job-api`, `optimization-runner` 0.3.0 |
+| optimization-jobs | Jobs, CPU admission, supervision, results, MCP | [`ai-context.md`](../ai-context.md), then worker discovery | crates.io `optimization-job-api`, `optimization-runner` 0.4.0 |
 | fcmaes-rust | Native global, multiobjective and QD search; experimental surrogate | Rust library, Python `fcmaes_rust`, or the fcmaes worker | crates.io `fcmaes-core` 0.2.1, PyPI `fcmaes-rust` 0.2.1 |
 | fast-cma-es | Python optimization with native C++ algorithms | Python library, examples, tutorials | PyPI `fcmaes` 2.1.0 |
 | LP-IP-craft | LP and MILP | Sparse model data through the library or a job | PyPI `lp-ip-craft`, crates.io `lp-ip-craft` and `lp-ip-craft-native` 0.29.0 |

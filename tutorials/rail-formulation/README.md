@@ -12,7 +12,7 @@ Reuse `rail.py` and its checked six-train scenario. A binary chooses which train
 
 1. Read the existing `make_model` and `replay` together. Trace one order binary into its two separation inequalities before looking at the objective.
 2. Solve the relaxed and integer versions and evaluate each returned point against the model's rows independently. Passenger delay is 3,360 versus 7,050 minutes; the check requires the relaxation not to exceed the integer optimum. Fractional order decisions explain why the relaxed bound understates a feasible timetable's delay.
-3. Enumerate all 720 orders independently and replay each earliest-start schedule. The best feasible order agrees with the integer model. Then solve the integer model again from a first-come, first-served order as a MIP start (`fifo_start`): that schedule has 9,840 passenger-minutes, and the solve still reaches 7,050. A start is a candidate, not an oracle, and not a resumed search.
+3. Enumerate all 720 orders independently and replay each earliest-start schedule. The best feasible order agrees with the integer model. Then solve the integer model again from the timetable order (trains sorted by planned time) as a MIP start (`fifo_start`): that schedule has 9,840 passenger-minutes, and the solve still reaches 7,050. A start is a candidate, not an oracle, and not a resumed search.
 4. Larger cases grow factorially: 8 trains have 40,320 orders and 10 have 3,628,800. Beyond the teaching fixture, native bounds and gaps become more useful than exhaustive enumeration.
 
 ## Run
