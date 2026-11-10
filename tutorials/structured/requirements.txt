@@ -1,5 +1,5 @@
 lp-ip-craft==0.29.0
-sqp-craft==0.17.0
+sqp-craft==0.18.0
 fcmaes-rust==0.2.1
 pykep-rust==0.1.4
 numpy>=1.26,<3
