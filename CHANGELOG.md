@@ -19,6 +19,11 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- The shared guide (and the identical copy `get_guide` returns) routes
+  larger smooth NLPs with small overlapping cliques to SQP-craft's
+  experimental structured mode (from SQP-craft 0.18.0) and general large
+  sparse NLPs to IPOPT-family solvers; the SQP-craft catalog entry on the
+  ecosystem page and the directory-submission template say the same.
 - README: links the [overview of the 18 related repositories](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/repositories.md).
 - The structured-tutorial CI job runs on `ubuntu-24.04` instead of `ubuntu-latest`. Since `ubuntu-latest` moved to Ubuntu 26.04, the SQP3 study and both SQP5 presets differ from their recorded summaries with the same package versions (38 differences in SQP3, 3,285 and 3,880 in the SQP5 presets); on Ubuntu 24.04 all three match again.
 - Every public item of both crates has a doc comment, so docs.rs documents

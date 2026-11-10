@@ -95,7 +95,7 @@ After their first releases and eligibility checks, possible craft entries are:
 
 ```markdown
 - [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) - Native Rust LP/MIP models, simplex and branch-and-bound, Python bindings and an optimization job worker.
-- [SQP-craft](https://github.com/dietmarwo/SQP-craft) - Rust SQP for smooth constrained problems up to 256 variables, with Python bindings and an optimization job worker.
+- [SQP-craft](https://github.com/dietmarwo/SQP-craft) - Rust SQP for smooth constrained problems (dense up to 256 variables, experimental sparse modes above), with Python bindings and an optimization job worker.
 ```
 
 ## Python and cross-language directories

@@ -72,7 +72,7 @@
       "branch": "main",
       "summary": "Rust sequential quadratic programming for smooth constrained optimization, with Python bindings and a shell/MCP job worker.",
       "fit": "Smooth continuous models with gradients and Jacobians, local refinement and multistart. User nonlinear jobs require a registered model in an application worker.",
-      "limits": "Dense BFGS with at most 256 variables. Local first-order results, not global certificates. For larger sparse NLPs, consider an IPOPT-family solver.",
+      "limits": "Dense BFGS with at most 256 variables by default; from 0.18.0, experimental partitioned or exact sparse curvature with Clarabel above that for models with small overlapping cliques. Local first-order results, not global certificates. For general large sparse NLPs, consider an IPOPT-family solver.",
       "availability": "PyPI: sqp-craft; crates.io: sqp-craft, sqp-craft-solver and the QP backends sqp-craft-clarabel and sqp-craft-activeset (since 0.17.0). Job worker: source only.",
       "guide": "https://github.com/dietmarwo/SQP-craft/blob/main/ai-context.md",
       "tutorial": "https://github.com/dietmarwo/SQP-craft/blob/main/tutorials/job-api/README.md",
