@@ -19,6 +19,12 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- The twenty-chapter structured tutorials install `sqp-craft==0.18.0` from
+  PyPI (was 0.17.0). 0.18.0 adds experimental structured SQP; the default
+  dense mode the chapters use is numerically unchanged. SQP-craft's
+  comparison script ignores only its own package version in the
+  active-set backend label, so the recorded summaries stay valid.
+
 - The shared guide (and the identical copy `get_guide` returns) routes
   larger smooth NLPs with small overlapping cliques to SQP-craft's
   experimental structured mode (from SQP-craft 0.18.0) and general large
