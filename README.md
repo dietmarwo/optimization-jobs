@@ -255,3 +255,5 @@ repository, with `JOB_API_TARGET` pointing at their own `target/release`
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+The [executed domain-evaluator tutorials](tutorials/domain-evaluators/README.md) run hydro/thermo evaluation, optimization and dependent CLI replay as trusted commands.

@@ -663,6 +663,9 @@ memory and how many tasks completed. CPU utilization alone is no result.
 
 ## Where to read next
 
+Choose a [learning track](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/learning-paths.md) by reader; the [domain-evaluator tutorial](https://github.com/dietmarwo/optimization-jobs/blob/main/tutorials/domain-evaluators/README.md) covers trusted shell commands, which MCP refuses.
+
+
 | Topic | Document |
 | --- | --- |
 | Black-box algorithm choice, parameters, constraints, MODE, MAP-Elites in Python | fast-cma-es [ai-context.md](https://github.com/dietmarwo/fast-cma-es/blob/master/ai-context.md) |

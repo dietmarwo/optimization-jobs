@@ -10,6 +10,10 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
+- Added descriptor-driven hydro/thermo command-job tutorials, deterministic replay and boundary tests, current-main weekly smoke CI, and reader learning-path discovery.
+
+### Added
+
 - An [eight-lesson CRN/CFD catalog](tutorials/simulators/README.md), pinned setup and trusted command-job driver with source identities and sealed summary/evidence outputs. Existing protocols and registered application models are unchanged. Failed command jobs keep their execution record and sealed outputs, lesson children write no bytecode into the checkouts, and run summaries record repository state and usable CPUs (contributed by Astra, with review fixes).
 - CRN-craft and CFD-craft discovery entries in the README, shared/MCP guide,
   job API reference, agent tutorial index and ecosystem catalog. The entries

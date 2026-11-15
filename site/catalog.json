@@ -6,6 +6,23 @@
   "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
   "comparison": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/optimization-systems-for-ai-agents.md",
   "availability_checked": "2026-10-23",
+  "learning_paths": [
+    {
+      "reader": "Python user",
+      "url": "https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/learning-paths.md#python-user",
+      "summary": "From a Python objective to repeatable simulator campaigns."
+    },
+    {
+      "reader": "Rust user",
+      "url": "https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/learning-paths.md#rust-user",
+      "summary": "From a native objective to a registered job-worker model."
+    },
+    {
+      "reader": "Agent builder",
+      "url": "https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/learning-paths.md#agent-builder",
+      "summary": "Choose a solver, connect MCP, run and interpret checked results."
+    }
+  ],
   "projects": [
     {
       "id": "fast-cma-es",

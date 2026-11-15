@@ -1,0 +1,8 @@
+{
+  "schema": "domain-evaluator.catalog/0.1",
+  "helpers": "hydro-craft/examples/jobs",
+  "evaluators": {
+    "hydro-craft": "hydro-craft/examples/jobs/evaluator.json",
+    "thermo-craft": "thermo-craft/examples/jobs/evaluator.json"
+  }
+}
