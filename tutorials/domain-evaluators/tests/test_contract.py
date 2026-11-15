@@ -206,6 +206,45 @@ class Contract(unittest.TestCase):
         for name in ["", "hydro-craft", "../hydro-craft/x", "/hydro-craft/x", ".hidden/x"]:
             self.assertRaises(ValueError, driver.sibling, parent, name)
 
+    def test_job_environment_pins_and_records_the_blas_kernel(self):
+        folder = self.staged("kernel")
+        job = driver.search_spec(folder, 2, 32, "cmaes", 1)
+        self.assertEqual(job["env"]["OPENBLAS_CORETYPE"], driver.BLAS_KERNEL)
+        driver.execute(folder, job)
+        identity = json.loads((folder / "identity.json").read_text())
+        self.assertEqual(identity["blas"]["requested_kernel"], driver.BLAS_KERNEL)
+        self.assertIn(driver.BLAS_KERNEL, identity["blas"]["loaded_kernels"])
+        # A library that loaded another kernel than the requested one is an error.
+        loaded = [dict(internal_api="openblas", architecture="SkylakeX")]
+        with self.assertRaisesRegex(ValueError, "BLAS kernel"):
+            support.blas_identity("Nehalem", loaded)
+        self.assertEqual(support.blas_identity(None, loaded)["loaded_kernels"], ["SkylakeX"])
+        self.assertEqual(support.blas_identity("Nehalem", None)["loaded_kernels"], None)
+
+    def test_results_do_not_depend_on_numpy_simd_dispatch(self):
+        # With the BLAS kernel pinned, restricting numpy's own dispatch to its
+        # baseline must not change a search. On a host without the wider
+        # instruction sets both runs already use the baseline.
+        narrow = "X86_V3 X86_V4 AVX512_ICL AVX512_SPR"
+        for evaluator in ["hydro-craft", "thermo-craft"]:
+            for optimizer in ["cmaes", "de"]:
+                outputs = []
+                for name, disabled in [("wide", None), ("narrow", narrow)]:
+                    folder = self.root / f"{evaluator}-{optimizer}-{name}"
+                    driver.stage(SOURCES, evaluator, folder)
+                    job = driver.search_spec(folder, 3, 96, optimizer, 1)
+                    if disabled:
+                        job["env"]["NPY_DISABLE_CPU_FEATURES"] = disabled
+                    driver.execute(folder, job)
+                    outputs.append(((folder / "best.json").read_bytes(), (folder / "history.csv").read_bytes()))
+                self.assertEqual(*outputs, msg=f"{evaluator} {optimizer}")
+
+    def test_comparison_names_the_fields_that_differ(self):
+        left = {"passed": True, "runs": [{"best": {"score": 1.0, "seconds": 3}}, {"best": {"score": 2.0}}]}
+        right = {"passed": True, "runs": [{"best": {"score": 1.0, "seconds": 9}}, {"best": {"score": 2.5}}]}
+        with self.assertRaisesRegex(ValueError, r"runs\[1\]\.best\.score: 2\.0 != 2\.5"):
+            compare(left, right)
+
     def test_saved_hydro_case_is_the_generator_output(self):
         repo = SOURCES / "hydro-craft"
         spec = importlib.util.spec_from_file_location("synthetic", repo / "examples/python/synthetic.py")

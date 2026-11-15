@@ -7,6 +7,7 @@ import importlib
 import importlib.metadata
 import json
 import math
+import os
 from pathlib import Path
 import sys
 
@@ -21,6 +22,15 @@ def digest(path):
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, allow_nan=False, separators=(",", ":"))
+
+
+def blas_identity(requested, libraries):
+    """Record the BLAS kernels in use; reject one that differs from the request."""
+    loaded = None if libraries is None else sorted(
+        {str(lib.get("architecture")) for lib in libraries if lib.get("internal_api") == "openblas"})
+    if requested and loaded and loaded != [requested]:
+        raise ValueError(f"BLAS kernel {loaded} differs from the requested {requested}")
+    return dict(requested_kernel=requested, loaded_kernels=loaded)
 
 
 def installed_identity(expected):
@@ -60,6 +70,12 @@ def search(adapter):
         raise ValueError("positive evaluation budget, nonnegative seed and 1..8 workers required")
     case = json.loads(args.case.read_text())
     identity = installed_identity(json.loads(args.identity.read_text()))
+    try:
+        from threadpoolctl import threadpool_info
+        libraries = threadpool_info()
+    except ImportError:
+        libraries = None
+    identity["blas"] = blas_identity(os.environ.get("OPENBLAS_CORETYPE"), libraries)
     module = importlib.import_module(identity["module"])
     prepared = module.Prepared(case["model"])
     lower, upper, x0 = adapter.configuration(case)

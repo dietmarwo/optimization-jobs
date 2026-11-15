@@ -14,6 +14,10 @@ from support import digest, write, canonical
 
 HERE = Path(__file__).resolve().parent
 CATALOG = json.loads((HERE / "catalog.json").read_text())
+# fcmaes CMA-ES calls BLAS, and OpenBLAS otherwise selects its kernels by CPU
+# model, which changes a search between hosts. This kernel needs only the
+# instruction set that numpy's own x86-64 baseline already requires.
+BLAS_KERNEL = "Nehalem"
 
 
 def call(argv, timeout=180):
@@ -92,7 +96,8 @@ def command_spec(folder, argv, outputs, workers=1, wall=120):
                    executable=p.name == "binary")
               for p in sorted(folder.iterdir()) if p.is_file() and p.name not in {'job.json'}]
     return dict(schema_version="execution.command/0.1", argv=[sys.executable, *argv],
-                env={"PYTHONDONTWRITEBYTECODE": "1"}, resources={"cpu_slots": workers},
+                env={"PYTHONDONTWRITEBYTECODE": "1", "OPENBLAS_CORETYPE": BLAS_KERNEL},
+                resources={"cpu_slots": workers},
                 limits={"wall_seconds": wall, "grace_seconds": 2}, replay="never", inputs=inputs,
                 outputs=[dict(name=name, path=path, required=True, max_bytes=8*1024*1024)
                          for name, path in outputs.items()])
