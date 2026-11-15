@@ -1,0 +1,77 @@
+# Reusable checks for the domain evaluators (thermo-craft, hydro-craft,
+# rail-craft, robotics-control-craft, population-epidemiology). They share one
+# layout: a Rust crate whose package name is its command-line tool, a wheel in
+# packages/, validation/validate.py and validation/installed.py, and a
+# SHA256SUMS that lists every tracked file. A caller needs only:
+#
+#   jobs:
+#     checks:
+#       uses: dietmarwo/optimization-jobs/.github/workflows/evaluator-checks.yml@main
+name: Evaluator checks
+
+on:
+  workflow_call:
+    inputs:
+      tools-ref:
+        description: Branch or commit of optimization-jobs that supplies the link checker.
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Build, tests, validation, checksums and links
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: repo
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/optimization-jobs
+          ref: ${{ inputs.tools-ref }}
+          path: tools
+          sparse-checkout: scripts
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: repo
+      - name: SHA256SUMS matches and lists every tracked file
+        run: |
+          sha256sum --check --quiet SHA256SUMS
+          diff <(git ls-files | grep -vx SHA256SUMS | LC_ALL=C sort) \
+               <(sed 's/^[0-9a-f]\{64\}  //' SHA256SUMS | LC_ALL=C sort)
+      - name: Build and test
+        run: |
+          cargo build --release --locked
+          cargo test --release --locked
+      - name: Independent validation of the command-line tool
+        run: |
+          name="$(sed -n 's/^name = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          echo "EVALUATOR=$name" >> "$GITHUB_ENV"
+          python -m pip install numpy==2.5.4 scipy==1.17.0
+          python validation/validate.py "target/release/$name"
+          # The script rewrites its recorded example and evidence. Other bytes
+          # than the tracked ones are reported, not failed: reference values
+          # from numpy and scipy can differ in the last digits between hosts.
+          if ! git diff --quiet; then
+            echo "::warning::validation wrote other bytes than the tracked files: $(git diff --name-only | tr '\n' ' ')"
+            git checkout -- .
+          fi
+      - name: The packaged wheel, used outside the source tree
+        run: |
+          python -m pip install packages/*.whl
+          script="$PWD/validation/installed.py"
+          cd "$RUNNER_TEMP"
+          python "$script" "$(echo "$EVALUATOR" | tr - _)"
+      - name: Relative links of the Markdown files
+        run: python ../tools/scripts/check_markdown_links.py --root .

@@ -8,6 +8,10 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Added
+
+- Two [reusable workflows](docs/shared-workflows.md) for the related repositories, with their scripts and tests. `docs-site.yml` renders the pages a repository lists in `book/SUMMARY.md` with mdBook, turns links to unrendered files into GitHub links, checks the built pages and deploys to GitHub Pages only when the caller's variable `PUBLISH_DOCS_SITE` is `true`. `evaluator-checks.yml` gives the five domain evaluators a build, their tests and validation scripts, a `SHA256SUMS` check and a link check. `scripts/check_markdown_links.py` checks the relative links and heading anchors of a repository's tracked Markdown files; CI runs it on this repository.
+
 ### Changed
 
 - The registry records in `docs/discovery/` name the published versions: optimization-jobs 0.4.1 and SQP-craft 0.18.0, both installed from their registries on 15 November 2026.
