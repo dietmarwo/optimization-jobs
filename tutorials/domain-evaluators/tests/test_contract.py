@@ -150,15 +150,71 @@ class Contract(unittest.TestCase):
         jobs = driver.call([RUNNER, "--root", self.node, "jobs", "list"])
         self.assertEqual(len(jobs), 1)
 
+    def replay(self, folder, best):
+        support.write(folder / "best.json", best)
+        return subprocess.run([sys.executable, "check.py"], cwd=folder, capture_output=True, text=True)
+
     def test_replay_rejects_wrong_model_and_accounting(self):
         folder = self.staged("replay")
         driver.execute(folder, driver.search_spec(folder, 2, 16, "de", 1))
         best = json.loads((folder / "best.json").read_text())
-        for field, value in [("model_sha256", "0"*64), ("evaluations", 17)]:
-            damaged = dict(best, **{field:value})
-            support.write(folder / "best.json", damaged)
-            p = subprocess.run([sys.executable, "check.py"], cwd=folder, capture_output=True)
-            self.assertNotEqual(p.returncode, 0)
+        # The undamaged winner must pass, so each rejection below has one cause.
+        p = self.replay(folder, best)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(json.loads((folder / "check-output/checks.json").read_text())["passed"])
+        for field, value, reason in [("model_sha256", "0"*64, "model hash differs"),
+                                     ("evaluations", 17, "invalid search accounting"),
+                                     ("budget", 15, "invalid search accounting"),
+                                     ("score", best["score"] + 1e-6, "replay or held-out check failed")]:
+            p = self.replay(folder, dict(best, **{field: value}))
+            self.assertNotEqual(p.returncode, 0, field)
+            self.assertIn(reason, p.stderr, field)
+
+    def test_replay_rejects_a_cli_that_evaluated_another_model(self):
+        folder = self.staged("other-model")
+        driver.execute(folder, driver.search_spec(folder, 2, 16, "de", 1))
+        best = json.loads((folder / "best.json").read_text())
+        (folder / "binary").rename(folder / "real-binary")
+        # Same records, but the CLI reports the hash of a different model.
+        (folder / "binary").write_text(
+            "#!" + sys.executable + "\nimport json, subprocess, sys\nfrom pathlib import Path\n"
+            "p = subprocess.run([str(Path(__file__).with_name('real-binary')), *sys.argv[1:]], capture_output=True, text=True)\n"
+            "data = json.loads(p.stdout)\ndata['model_sha256'] = '0' * 64\nprint(json.dumps(data))\nsys.exit(p.returncode)\n")
+        (folder / "binary").chmod(0o700)
+        p = self.replay(folder, best)
+        self.assertNotEqual(p.returncode, 0)
+        checks = json.loads((folder / "check-output/checks.json").read_text())
+        self.assertFalse(checks["passed"])
+        self.assertFalse(checks["model_replayed"])
+        self.assertEqual(checks["records"]["nominal"]["status"], "complete")
+
+    def test_symlinked_sibling_checkouts_are_accepted(self):
+        parent = self.root / "linked"
+        parent.mkdir()
+        for name in ["hydro-craft", "thermo-craft", "optimization-jobs"]:
+            (parent / name).symlink_to(SOURCES / name, target_is_directory=True)
+        repo, descriptor, desc = driver.load(parent, "hydro-craft")
+        self.assertEqual(repo, (SOURCES / "hydro-craft").resolve())
+        self.assertEqual(desc["name"], "hydro-craft")
+        driver.stage(parent, "thermo-craft", self.root / "linked-stage")
+        # A link inside a repository that leaves it is still rejected.
+        (self.root / "outside.json").write_text("{}")
+        inside = self.root / "repo"
+        inside.mkdir()
+        (inside / "leak.json").symlink_to(self.root / "outside.json")
+        self.assertRaises(ValueError, driver.relative, inside, "leak.json")
+        for name in ["", "hydro-craft", "../hydro-craft/x", "/hydro-craft/x", ".hidden/x"]:
+            self.assertRaises(ValueError, driver.sibling, parent, name)
+
+    def test_saved_hydro_case_is_the_generator_output(self):
+        repo = SOURCES / "hydro-craft"
+        spec = importlib.util.spec_from_file_location("synthetic", repo / "examples/python/synthetic.py")
+        synthetic = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(synthetic)
+        case = json.loads((repo / "examples/jobs/case.json").read_text())
+        self.assertEqual(case["model"], synthetic.observe(synthetic.catchment(synthetic.forcing())))
+        self.assertEqual(case["parameters"], synthetic.TRUTH)
+        self.assertEqual([b[0] for b in case["bounds"]], [b[0] for b in synthetic.BOUNDS])
 
 
 if __name__ == "__main__":

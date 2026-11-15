@@ -32,6 +32,7 @@ selects hydrology or thermodynamics. The [catalog](catalog.json) points to a
 case, optimizer adapter, wheel, presets and optimizer names. The adapter owns
 `configuration`, `decode`, `penalty` and `report`; shared support owns execution.
 Paths in a descriptor are relative to its repository and cannot escape it.
+The sibling checkouts themselves may be symbolic links.
 The common CLI wrapper and replay checker live in hydro-craft, so both ports
 need that sibling even when only thermo is selected.
 
@@ -40,7 +41,8 @@ The `smoke` preset has 400 evaluations × 2 seeds × 2 fcmaes optimizers.
 `identity.json`; each winner is replayed through a separately executed CLI
 check. The driver retains failures and exits nonzero if any check fails.
 `summary.json` contains the scientific records; `compare.py` excludes only
-elapsed seconds. Checked-in smoke summaries are in each evaluator's
+elapsed seconds. The replay check also requires the CLI to report the hash of
+the model it was asked to evaluate. Checked-in smoke summaries are in each evaluator's
 `examples/jobs/outputs/smoke-summary.json`. A dependency update requires
 intentional baseline review; CI must not silently regenerate expected outputs.
 
@@ -59,7 +61,12 @@ against a verified wheel; neither the Python environment nor host libraries
 are a snapshot. These bounded synthetic examples establish no physical-model
 qualification or optimizer ranking. See the walkthrough's porting/worker table.
 
-The [workflow](../../.github/workflows/domain-evaluators.yml) builds current
-sibling `main` branches and runs both ports directly, as command jobs and as
-campaigns on PRs and weekly. It does not change `baseline-lock.json`, release
-versions, worker protocols or evaluator packages.
+The [workflow](../../.github/workflows/domain-evaluators.yml) builds the
+sibling repositories and runs both ports directly, as command jobs and as
+campaigns, on pull requests and weekly. It uses the siblings' `main` branches,
+except that a pull request uses a sibling branch with the pull request's own
+branch name where one exists. A change that spans repositories is therefore
+checked before any part of it is merged: push the same branch name to each
+repository involved. The workflow also checks each evaluator's `SHA256SUMS`.
+It does not change `baseline-lock.json`, release versions, worker protocols or
+evaluator packages.

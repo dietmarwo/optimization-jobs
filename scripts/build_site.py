@@ -179,8 +179,9 @@ def build() -> Path:
         "JSON_LD": structured_data(data),
         "LEARNING_PATHS": "\n".join(
             '<article><h3>' + html.escape(p["reader"]) + '</h3><p>' +
-            html.escape(p["summary"]) + '</p><a href="' + html.escape(p["url"], quote=True) +
-            '">Follow this track</a></article>' for p in data["learning_paths"]),
+            html.escape(p["summary"]) + '</p><p><a href="' + html.escape(p["url"], quote=True) +
+            '">Follow the ' + html.escape(p["reader"].lower()) + ' track</a></p></article>'
+            for p in data["learning_paths"]),
     })
     template = (SOURCE / "index.html").read_text(encoding="utf-8")
     rendered = re.sub(r"\{\{([A-Z_]+)\}\}", lambda m: substitutions[m[1]], template)
@@ -197,8 +198,9 @@ def build() -> Path:
              f'- [Human overview]({data["url"]})',
              f'- [Catalog with package availability]({data["url"]}catalog.json)',
              f'- [Comparison with other optimization systems for agents]({data["comparison"]})', '',
-             '## Project guides', '']
+             '## Learning paths', '']
     index += [f'- [{p["reader"]}]({p["url"]}): {p["summary"]}' for p in data["learning_paths"]]
+    index += ['', '## Project guides', '']
     index += [f'- [{p["name"]}]({p["guide"]}): {p["summary"]}' for p in data["projects"]]
     index += ['', 'Use runtime worker discovery for schemas, supported models and resource limits.',
               'This text index is a navigation aid, not a guarantee of search or agent discovery.', '']

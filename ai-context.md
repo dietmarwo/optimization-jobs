@@ -663,8 +663,7 @@ memory and how many tasks completed. CPU utilization alone is no result.
 
 ## Where to read next
 
-Choose a [learning track](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/learning-paths.md) by reader; the [domain-evaluator tutorial](https://github.com/dietmarwo/optimization-jobs/blob/main/tutorials/domain-evaluators/README.md) covers trusted shell commands, which MCP refuses.
-
+The [learning paths](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/learning-paths.md) order the material below for a Python user, a Rust user and an agent builder. The [domain-evaluator tutorials](https://github.com/dietmarwo/optimization-jobs/blob/main/tutorials/domain-evaluators/README.md) cover trusted command jobs, which need a shell because the MCP server refuses them.
 
 | Topic | Document |
 | --- | --- |

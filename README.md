@@ -85,6 +85,8 @@ For dependent steps and sweeps, see experiment-craft's
 
 The [eight CRN/CFD optimization tutorials](tutorials/simulators/README.md) add simulator-owned calibration, sensitivities, oscillator searches, rules inference, LP source allocation, sensor MIP, coupled-flow fidelity checks and a fixed-CPU campaign. They include runnable native examples and a trusted command-job driver.
 
+The [domain-evaluator tutorials](tutorials/domain-evaluators/README.md) run hydro-craft and thermo-craft evaluations, seeded searches and dependent CLI replays as trusted command jobs. These evaluators have no application worker, so this route needs a shell; the MCP server refuses command jobs.
+
 ## Install
 
 From 0.3.0 the crates are on crates.io. On Linux (the runner supervises
@@ -255,5 +257,3 @@ repository, with `JOB_API_TARGET` pointing at their own `target/release`
 ## License
 
 MIT, see [LICENSE](LICENSE).
-
-The [executed domain-evaluator tutorials](tutorials/domain-evaluators/README.md) run hydro/thermo evaluation, optimization and dependent CLI replay as trusted commands.

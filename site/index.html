@@ -22,6 +22,7 @@
     <a class="brand" href="./">fcmaes <span>&amp;</span> craft</a>
     <nav aria-label="Main navigation">
       <a href="#choose">Choose a tool</a>
+      <a href="#learn">Learn</a>
       <a href="#start">Run a job</a>
       <a href="#evidence">Evidence</a>
       <a href="https://github.com/dietmarwo/optimization-jobs">GitHub</a>
@@ -66,14 +67,17 @@
     </section>
 
     <section id="learn" aria-labelledby="learn-title">
-      <h2 id="learn-title">Learn by reader</h2>
+      <p class="eyebrow">02 / Follow a track</p>
+      <h2 id="learn-title">Three learning paths, by reader.</h2>
       <div class="decision-grid">
 {{LEARNING_PATHS}}
       </div>
+      <p class="note">Each track orders existing tutorials into five stages and
+        ends in a capstone that runs in continuous integration.</p>
     </section>
 
     <section id="projects" aria-labelledby="projects-title">
-      <p class="eyebrow">02 / Choose an interface</p>
+      <p class="eyebrow">03 / Choose an interface</p>
       <h2 id="projects-title">The {{PROJECT_COUNT}} repositories.</h2>
       <p>Optimizer libraries and simulators evaluate models in your program.
         The three stock solver workers and the optional CRN/CFD application
@@ -87,7 +91,7 @@
     </section>
 
     <section id="start" aria-labelledby="start-title">
-      <p class="eyebrow">03 / Run and inspect</p>
+      <p class="eyebrow">04 / Run and inspect</p>
       <h2 id="start-title">A shared job layer for a shell or MCP.</h2>
       <p>On Linux with Rust 1.88 or newer, start from one worker repository.
         Its locked build includes a compatible runner and MCP server.
@@ -123,7 +127,7 @@ python3 tutorials/job-api/run.py --root /tmp/fcmaes-job-tutorial</code></pre>
     </section>
 
     <section id="evidence" aria-labelledby="evidence-title">
-      <p class="eyebrow">04 / Check the evidence</p>
+      <p class="eyebrow">05 / Check the evidence</p>
       <h2 id="evidence-title">Integration is evidence. Ranking needs a benchmark.</h2>
       <p><a href="https://hub.optuna.org/samplers/fcmaes/">OptunaHub's FastCmaesSampler</a>,
         by Jacob Pfeil, integrates fcmaes CMA-ES into Optuna. It is an attributable

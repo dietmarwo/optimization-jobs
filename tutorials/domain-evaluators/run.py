@@ -33,12 +33,21 @@ def relative(root, name):
     return resolved
 
 
+def sibling(sources, name):
+    """Resolve "repository/path": the checkout may be a link, the path stays inside it."""
+    repository, _, rest = name.partition("/")
+    if not repository or repository.startswith(".") or not rest:
+        raise ValueError("unsafe catalog path: " + name)
+    repo = (sources / repository).resolve()
+    return repo, relative(repo, rest)
+
+
 def load(sources, evaluator):
-    path = relative(sources, CATALOG["evaluators"][evaluator])
+    repo, path = sibling(sources, CATALOG["evaluators"][evaluator])
     desc = json.loads(path.read_text())
     if desc.get("schema") != "domain-evaluator.tutorial/0.1" or desc.get("name") != evaluator:
         raise ValueError("unsupported or mismatched evaluator descriptor")
-    return sources / evaluator, path, desc
+    return repo, path, desc
 
 
 def wheel_identity(repo, desc):
@@ -65,7 +74,7 @@ def wheel_identity(repo, desc):
 def stage(sources, evaluator, folder, binary=None):
     repo, descriptor_path, desc = load(sources, evaluator)
     folder.mkdir(parents=True, exist_ok=False)
-    helpers = relative(sources, CATALOG["helpers"])
+    helpers = sibling(sources, CATALOG["helpers"])[1]
     paths = {"support.py": HERE / "support.py", "optimize.py": relative(repo, desc["optimize"]),
              "case.json": relative(repo, desc["case"]), "evaluator.json": descriptor_path,
              "wrap_cli.py": helpers / "wrap_cli.py", "check.py": helpers / "check.py",
