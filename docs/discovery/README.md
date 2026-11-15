@@ -106,15 +106,18 @@ ambiguous in an AI search. The word “jobs” alone can also mean employment.
 Availability recorded in the catalog on 2026-10-23, after installing each
 package from its registry (fcmaes-rust 0.2.1 on 2026-10-23, the others on
 2026-10-22; all versions rechecked against the registry APIs on
-2026-10-23):
+2026-10-23). The SQP-craft and optimization-jobs rows were updated on
+2026-11-15: `sqp-craft` 0.18.0 was installed from PyPI and
+`optimization-runner` 0.4.1 from crates.io, and a new crate was built against
+`optimization-job-api` 0.4.1:
 
 | Repository | Published | Still source-only |
 | --- | --- | --- |
 | fast-cma-es | PyPI `fcmaes` 2.1.0 | Changes after its latest release |
 | fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.2.1 | Job worker, surrogate and other internal crates |
 | LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.29.0 | Job worker |
-| SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.17.0 | Job worker |
-| optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.3.0 | — |
+| SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.18.0 | Job worker |
+| optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.4.1 | — |
 
 Use each repository's `RELEASING.md` and existing tested release workflows.
 The discovery changes touched no package version, release tag, dependency pin,
