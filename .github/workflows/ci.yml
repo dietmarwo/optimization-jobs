@@ -39,6 +39,12 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --release --locked
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
+      - name: Shared documentation tools and this repository's Markdown links
+        run: |
+          python3 scripts/test_docs_tools.py
+          python3 -O scripts/test_docs_tools.py
+          # The embedded guide is a copy whose links are relative to the root.
+          python3 scripts/check_markdown_links.py --exclude crates/optimization-runner/guide
       - name: Runner regressions and the MCP server with the protocol fixture worker
         run: |
           cargo build --release --locked -p optimization-runner

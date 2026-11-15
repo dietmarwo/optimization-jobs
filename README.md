@@ -44,6 +44,7 @@ Coding agents working on this repository start with [`AGENTS.md`](AGENTS.md).
 | [`docs/job-api/schemas`](docs/job-api/schemas/optimization.job-0.1.schema.json) | JSON Schemas of the job envelope and the result manifest |
 | [`docs/job-api/PLAN.md`](docs/job-api/PLAN.md) | Implementation plan and acceptance gates |
 | [`scripts/job-api`](scripts/job-api/test_integration.py) | Shared acceptance harness, runner regression tests and a protocol fixture worker |
+| [`docs/shared-workflows.md`](docs/shared-workflows.md) | Reusable GitHub Actions workflows for the related repositories: documentation sites and the domain evaluators' checks |
 
 The solvers live in their own repositories, each with a worker, a runnable
 tutorial and an `ai-context.md` for agents that model problems with it.

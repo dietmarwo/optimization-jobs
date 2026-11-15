@@ -1,0 +1,93 @@
+# Reusable documentation site: renders the pages that a repository lists in
+# book/SUMMARY.md with mdBook, checks the Markdown sources and the built pages,
+# and deploys to GitHub Pages when the caller asks for it. See
+# docs/shared-workflows.md. A caller needs book/book.toml, book/SUMMARY.md and:
+#
+#   jobs:
+#     site:
+#       uses: dietmarwo/optimization-jobs/.github/workflows/docs-site.yml@main
+#       permissions:
+#         contents: read
+#         pages: write
+#         id-token: write
+#       with:
+#         publish: ${{ vars.PUBLISH_DOCS_SITE == 'true' }}
+name: Documentation site
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        description: Deploy the built site to GitHub Pages (only from main, never from a pull request).
+        type: boolean
+        default: false
+      tools-ref:
+        description: Branch or commit of optimization-jobs that supplies the build scripts.
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+env:
+  # Not MDBOOK_*: mdBook reads environment variables with that prefix as
+  # configuration keys and rejects unknown ones.
+  PIN_MDBOOK: "0.5.4"
+
+jobs:
+  build:
+    name: Build and check the site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/optimization-jobs
+          ref: ${{ inputs.tools-ref }}
+          path: tools
+          sparse-checkout: scripts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the pinned mdBook
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL \
+            "https://github.com/rust-lang/mdBook/releases/download/v${PIN_MDBOOK}/mdbook-v${PIN_MDBOOK}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Relative links of the Markdown sources
+        run: python tools/scripts/check_markdown_links.py --root repo --exclude book
+      - name: Build the site and check its links (warnings fail)
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python tools/scripts/build_docs_site.py --repo repo --branch "${DEFAULT_BRANCH:-main}"
+      - name: Upload a preview for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-site-preview
+          path: repo/target/docs-site/book
+          retention-days: 7
+      - name: Upload the Pages artifact
+        if: inputs.publish && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: repo/target/docs-site/book
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: inputs.publish && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
