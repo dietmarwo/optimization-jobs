@@ -25,6 +25,10 @@ crates.io:
 | SQP-craft | PyPI `sqp-craft` 0.17.0, crates.io `sqp-craft`, `sqp-craft-parallel`, `sqp-craft-activeset`, `sqp-craft-clarabel`, `sqp-craft-solver` 0.17.0 (first release) |
 | optimization-jobs | crates.io `optimization-job-api` and `optimization-runner` 0.3.0 (first release) |
 
+Later releases, as of 15 November 2026: optimization-jobs 0.4.0 (29 October)
+and 0.4.1 (15 November), and SQP-craft 0.18.0 (10 November). The table above
+records the first releases and is not updated.
+
 Still open: step 5 (outreach with a compatibility example) and the MCP
 Registry checks in the [directory pack](directory-submissions.md). The
 inventory below is the state before these releases.

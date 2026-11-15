@@ -8,6 +8,10 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Changed
+
+- The registry records in `docs/discovery/` name the published versions: optimization-jobs 0.4.1 and SQP-craft 0.18.0, both installed from their registries on 15 November 2026.
+
 ## [0.4.1] - 2026-11-15
 
 A documentation and tutorial release. The command line, the MCP tools, the
