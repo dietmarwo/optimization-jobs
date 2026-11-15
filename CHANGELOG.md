@@ -8,6 +8,18 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-15
+
+A documentation and tutorial release. The command line, the MCP tools, the
+job envelope `optimization.job/0.1`, the worker protocol and the result
+contract `optimization.result/0.2` behave as in 0.4.0. The packages change in
+two ways: every public item of both crates is documented, and the guide that
+`get_guide` returns is current. It now covers CRN-craft and CFD-craft, routes
+structured smooth problems to SQP-craft's structured mode, and links the
+learning paths and the domain-evaluator tutorials. The tutorials and their
+workflows are in the repository, not in the packages. The solver workers
+still pin this repository by git revision.
+
 ### Added
 
 - [Domain-evaluator tutorials](tutorials/domain-evaluators/README.md): a descriptor-driven driver that runs hydro-craft and thermo-craft evaluations, seeded fcmaes searches and CLI replays directly and as trusted command jobs, with wheel and installed-file identity checks, an exact comparison helper and real-runner boundary tests. A workflow runs both ports and their experiment-craft campaigns on pull requests and weekly; a pull request uses same-named sibling branches where they exist, so a coordinated change is checked before it is merged. The ecosystem page and catalog link three learning paths by reader. The job API and the worker protocol are unchanged. Jobs set `OPENBLAS_CORETYPE=Nehalem`, record the loaded BLAS kernels and reject another kernel, so that the recorded summaries do not depend on the CPU model; `compare.py` lists the fields that differ.

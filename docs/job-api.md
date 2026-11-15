@@ -33,7 +33,7 @@ and [`optimization.result-0.2.schema.json`](job-api/schemas/optimization.result-
 
 The shared crates, this guide, the plan, the schemas and the shared test
 scripts live in this repository; until October 2026 the three worker
-repositories carried identical copies. The crates are at version 0.4.0; 0.3.0
+repositories carried identical copies. The crates are at version 0.4.1; 0.3.0
 was the first release on crates.io. Worker repositories depend on them
 through git at a pinned revision, which their `Cargo.lock` records (see the
 [README](../README.md)). 0.2.0 adds the result contract 0.2 (evidence,
