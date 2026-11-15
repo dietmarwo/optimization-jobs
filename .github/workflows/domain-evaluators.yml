@@ -69,6 +69,7 @@ jobs:
             sources/thermo-craft
       - name: Install and build
         run: |
+          lscpu | grep -E 'Model name|Flags' | cut -c1-400
           (cd sources/hydro-craft && sha256sum --check --quiet SHA256SUMS)
           (cd sources/thermo-craft && sha256sum --check --quiet SHA256SUMS)
           python -m pip install -r sources/optimization-jobs/tutorials/domain-evaluators/requirements.txt

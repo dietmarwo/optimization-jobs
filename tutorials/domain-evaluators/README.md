@@ -46,6 +46,16 @@ the model it was asked to evaluate. Checked-in smoke summaries are in each evalu
 `examples/jobs/outputs/smoke-summary.json`. A dependency update requires
 intentional baseline review; CI must not silently regenerate expected outputs.
 
+The recorded summaries are compared exactly, so the searches must not depend
+on the CPU model. Two things did: OpenBLAS selects its kernels by CPU, which
+changes fcmaes CMA-ES, and numpy selects its vector power by CPU, which changed
+thermo's decoded pressures. Every job therefore runs with
+`OPENBLAS_CORETYPE=Nehalem`, records the loaded kernels in `identity.json` and
+fails if another kernel was loaded, and the thermo adapter uses scalar powers.
+A test restricts numpy's instruction sets and requires identical searches.
+When `compare.py` finds a mismatch it lists the differing fields with both
+values.
+
 The real-runner regression suite needs the builds and wheels from setup:
 
 ```sh
