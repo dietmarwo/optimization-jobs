@@ -4,7 +4,7 @@ Job-interface baseline reviewed 2026-10-21 against `main` with the changes of an
 review of agent workflows: workers publish payload schemas and runnable
 examples in `describe`, the MCP server has `get_guide` and `put_input`, and
 `node doctor` reports the host's usable CPUs and memory. The crates are
-`optimization-job-api` and `optimization-runner` 0.4.0, the envelope is
+`optimization-job-api` and `optimization-runner` 0.4.1, the envelope is
 `optimization.job/0.1` and the result contract `optimization.result/0.2`.
 In another checkout, check `Cargo.toml`, the `describe_node`/`describe_worker`
 output and the linked guides before you rely on a command, option or claim.
