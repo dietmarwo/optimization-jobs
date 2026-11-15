@@ -1,0 +1,97 @@
+name: Domain evaluator tutorials
+on:
+  push:
+    branches: [main]
+    paths: ['tutorials/domain-evaluators/**', 'crates/**', '.github/workflows/domain-evaluators.yml']
+  pull_request:
+    paths: ['tutorials/domain-evaluators/**', 'crates/**', '.github/workflows/domain-evaluators.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '37 5 * * 1'
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: sources/optimization-jobs
+      # The tutorial spans four repositories. A pull request uses a sibling's
+      # branch of the same name where one exists, so a coordinated change is
+      # checked before any part of it is merged. Everything else uses main.
+      - name: Select sibling branches
+        id: siblings
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          for repository in hydro-craft thermo-craft experiment-craft; do
+            ref=main
+            if [ -n "$HEAD_REF" ] && git ls-remote --exit-code --heads \
+                "https://github.com/dietmarwo/$repository" "refs/heads/$HEAD_REF" > /dev/null; then
+              ref="$HEAD_REF"
+            fi
+            echo "$repository: $ref"
+            echo "$repository=$ref" >> "$GITHUB_OUTPUT"
+          done
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/hydro-craft
+          ref: ${{ steps.siblings.outputs.hydro-craft }}
+          path: sources/hydro-craft
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/thermo-craft
+          ref: ${{ steps.siblings.outputs.thermo-craft }}
+          path: sources/thermo-craft
+      - uses: actions/checkout@v4
+        with:
+          repository: dietmarwo/experiment-craft
+          ref: ${{ steps.siblings.outputs.experiment-craft }}
+          path: sources/experiment-craft
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            sources/optimization-jobs
+            sources/hydro-craft
+            sources/thermo-craft
+      - name: Install and build
+        run: |
+          (cd sources/hydro-craft && sha256sum --check --quiet SHA256SUMS)
+          (cd sources/thermo-craft && sha256sum --check --quiet SHA256SUMS)
+          python -m pip install -r sources/optimization-jobs/tutorials/domain-evaluators/requirements.txt
+          python -m pip install sources/hydro-craft/packages/*.whl sources/thermo-craft/packages/*.whl
+          python -m pip install -e sources/experiment-craft
+          cargo build --release --locked --manifest-path sources/optimization-jobs/Cargo.toml
+          cargo build --release --locked --manifest-path sources/hydro-craft/Cargo.toml --bin hydro-craft
+          cargo build --release --locked --manifest-path sources/thermo-craft/Cargo.toml --bin thermo-craft
+      - name: Real-runner boundaries, also under optimized Python
+        run: |
+          python -m unittest discover -s sources/optimization-jobs/tutorials/domain-evaluators/tests -v
+          python -O -m unittest discover -s sources/optimization-jobs/tutorials/domain-evaluators/tests -v
+      - name: Both ports, direct and command replay, recorded numerical baselines
+        run: |
+          for evaluator in hydro-craft thermo-craft; do
+            python sources/optimization-jobs/tutorials/domain-evaluators/run.py --sources sources --evaluator "$evaluator" --output "out/$evaluator-direct"
+            python sources/optimization-jobs/tutorials/domain-evaluators/run.py --sources sources --evaluator "$evaluator" --output "out/$evaluator-command" --workers 2 --command-jobs
+            python sources/optimization-jobs/tutorials/domain-evaluators/compare.py "out/$evaluator-direct/summary.json" "out/$evaluator-command/summary.json"
+            python sources/optimization-jobs/tutorials/domain-evaluators/compare.py "out/$evaluator-direct/summary.json" "sources/$evaluator/examples/jobs/outputs/smoke-summary.json"
+            python sources/experiment-craft/examples/campaigns/domain-evaluators/run.py --sources sources --evaluator "$evaluator" --output "out/$evaluator-campaign" --workers 2
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: domain-evaluator-evidence
+          path: out

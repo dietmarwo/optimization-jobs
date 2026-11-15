@@ -663,6 +663,8 @@ memory and how many tasks completed. CPU utilization alone is no result.
 
 ## Where to read next
 
+The [learning paths](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/learning-paths.md) order the material below for a Python user, a Rust user and an agent builder. The [domain-evaluator tutorials](https://github.com/dietmarwo/optimization-jobs/blob/main/tutorials/domain-evaluators/README.md) cover trusted command jobs, which need a shell because the MCP server refuses them.
+
 | Topic | Document |
 | --- | --- |
 | Black-box algorithm choice, parameters, constraints, MODE, MAP-Elites in Python | fast-cma-es [ai-context.md](https://github.com/dietmarwo/fast-cma-es/blob/master/ai-context.md) |

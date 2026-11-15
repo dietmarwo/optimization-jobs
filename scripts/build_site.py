@@ -36,6 +36,11 @@ def load_catalog() -> dict:
     require(https_url(data["guide"]), "invalid guide URL")
     require(https_url(data["comparison"]), "invalid comparison URL")
     datetime.date.fromisoformat(data["availability_checked"])
+    paths = data["learning_paths"]
+    require(len(paths) == 3 and {p["reader"] for p in paths} ==
+            {"Python user", "Rust user", "Agent builder"}, "three reader tracks required")
+    for path in paths:
+        require(https_url(path["url"]) and path["summary"].strip(), "invalid learning path")
     entries = data["projects"]
     require(len(entries) == len(PROJECTS) and {p["id"] for p in entries} == PROJECTS,
             "catalog must contain each project once")
@@ -172,6 +177,11 @@ def build() -> Path:
         "PROJECT_COUNT": str(len(data["projects"])),
         "PROJECTS": "\n".join(project_html(p) for p in data["projects"]),
         "JSON_LD": structured_data(data),
+        "LEARNING_PATHS": "\n".join(
+            '<article><h3>' + html.escape(p["reader"]) + '</h3><p>' +
+            html.escape(p["summary"]) + '</p><p><a href="' + html.escape(p["url"], quote=True) +
+            '">Follow the ' + html.escape(p["reader"].lower()) + ' track</a></p></article>'
+            for p in data["learning_paths"]),
     })
     template = (SOURCE / "index.html").read_text(encoding="utf-8")
     rendered = re.sub(r"\{\{([A-Z_]+)\}\}", lambda m: substitutions[m[1]], template)
@@ -188,7 +198,9 @@ def build() -> Path:
              f'- [Human overview]({data["url"]})',
              f'- [Catalog with package availability]({data["url"]}catalog.json)',
              f'- [Comparison with other optimization systems for agents]({data["comparison"]})', '',
-             '## Project guides', '']
+             '## Learning paths', '']
+    index += [f'- [{p["reader"]}]({p["url"]}): {p["summary"]}' for p in data["learning_paths"]]
+    index += ['', '## Project guides', '']
     index += [f'- [{p["name"]}]({p["guide"]}): {p["summary"]}' for p in data["projects"]]
     index += ['', 'Use runtime worker discovery for schemas, supported models and resource limits.',
               'This text index is a navigation aid, not a guarantee of search or agent discovery.', '']
