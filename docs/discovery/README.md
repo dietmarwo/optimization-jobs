@@ -111,7 +111,10 @@ package from its registry (fcmaes-rust 0.2.1 on 2026-10-23, the others on
 built against `optimization-job-api` 0.4.1. The SQP-craft row was updated on
 2026-11-16: `sqp-craft` 0.19.0 was installed from PyPI, and a new crate was
 built and run against `sqp-craft-solver`, `sqp-craft` and
-`sqp-craft-activeset` 0.19.0:
+`sqp-craft-activeset` 0.19.0. On 2026-11-16 every published package of the
+catalog was rechecked against the registry APIs, and the CFD-craft card gained
+`cfd-craft` on PyPI and `cfd-craft` and `cfd-craft-cli` on crates.io
+(0.2.0, published since 0.1.0):
 
 | Repository | Published | Still source-only |
 | --- | --- | --- |
