@@ -108,10 +108,12 @@ package from its registry (fcmaes-rust 0.2.1 on 2026-10-23, the others on
 2026-10-22; all versions rechecked against the registry APIs on
 2026-10-23). The optimization-jobs row was updated on 2026-11-15:
 `optimization-runner` 0.4.1 was installed from crates.io, and a new crate was
-built against `optimization-job-api` 0.4.1. The SQP-craft row was updated on
-2026-11-16: `sqp-craft` 0.19.0 was installed from PyPI, and a new crate was
-built and run against `sqp-craft-solver`, `sqp-craft` and
-`sqp-craft-activeset` 0.19.0. On 2026-11-16 every published package of the
+built against `optimization-job-api` 0.4.1. The SQP-craft, LP-IP-craft and
+fcmaes-rust rows were updated on 2026-11-16 after their releases of that day:
+`sqp-craft` 0.20.0 and `lp-ip-craft` 0.30.0 were installed from PyPI and run
+(the opt-in step safeguard and the MIP gap stop), and a new crate was built
+against `fcmaes-core` 0.3.0 and stopped a BiteOpt run with `optimize_until`.
+On 2026-11-16 every published package of the
 catalog was rechecked against the registry APIs, and the CFD-craft card gained
 `cfd-craft` on PyPI and `cfd-craft` and `cfd-craft-cli` on crates.io
 (0.2.0, published since 0.1.0):
@@ -119,9 +121,9 @@ catalog was rechecked against the registry APIs, and the CFD-craft card gained
 | Repository | Published | Still source-only |
 | --- | --- | --- |
 | fast-cma-es | PyPI `fcmaes` 2.1.0 | Changes after its latest release |
-| fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.2.1 | Job worker, surrogate and other internal crates |
-| LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.29.0 | Job worker |
-| SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.19.0 | Job worker |
+| fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.3.0 | Job worker, surrogate and other internal crates |
+| LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.30.0 | Job worker |
+| SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.20.0 | Job worker |
 | optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.4.1 | — |
 
 Use each repository's `RELEASING.md` and existing tested release workflows.
