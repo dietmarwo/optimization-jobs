@@ -15,6 +15,7 @@ revision. 0.3.0 is the first version on crates.io.
 ### Changed
 
 - The registry records in `docs/discovery/` name the published versions: optimization-jobs 0.4.1, installed from its registry on 15 November 2026, and SQP-craft 0.19.0, installed on 16 November 2026.
+- The CFD-craft card of the landing page describes release 0.2.0: gases and particles around buildings, city geometry, vegetation and mobile rides; the `cfd-craft` packages on PyPI and crates.io; both worker models (`app.cfd.source-allocation`, `app.cfd.wind-direction`); and links to the guide and the documentation site in place of two moved pages. The landing page no longer says that simulator entries describe source builds, and the registry availability date is 16 November 2026, when every published package in the catalog was rechecked.
 
 ## [0.4.1] - 2026-11-15
 

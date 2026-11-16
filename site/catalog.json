@@ -5,7 +5,7 @@
   "url": "https://dietmarwo.github.io/optimization-jobs/",
   "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
   "comparison": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/optimization-systems-for-ai-agents.md",
-  "availability_checked": "2026-10-23",
+  "availability_checked": "2026-11-16",
   "learning_paths": [
     {
       "reader": "Python user",
@@ -124,16 +124,21 @@
       "name": "CFD-craft",
       "repository": "https://github.com/dietmarwo/CFD-craft",
       "branch": "main",
-      "summary": "Rust incompressible-flow and passive-gas transport simulation, source inference and refinement studies, with an optional optimization application worker.",
-      "fit": "Transport studies and source-allocation optimization. fcmaes-cfd-worker registers app.cfd.source-allocation for scalar evaluate, retry and experimental surrogate jobs.",
-      "limits": "The application worker requires prescribed flow, three equal-base sources and one constituent; it does not optimize the coupled flow solver. Numerical acceptance is separate from physical validation. The older fcmaes-rust room-ventilation example uses a different model.",
-      "availability": "Build from the repository's locked sources. The optional fcmaes-cfd-worker lives in integrations/fcmaes-cfd-worker; integrations/README.md documents it and the command adapter.",
+      "summary": "Rust CFD research solver for incompressible flow and the dispersion of gases and particles around buildings on uniform grids, with city geometry, vegetation, mobile sensor rides, a Python API and an optional optimization application worker.",
+      "fit": "Dispersion studies around buildings and along routes, source inference from fixed or mobile sensors, refinement studies and cross-checks with a bounded OpenFOAM Foundation 13 backend. fcmaes-cfd-worker registers app.cfd.source-allocation and app.cfd.wind-direction for scalar evaluate, retry and experimental surrogate jobs.",
+      "limits": "Research prototype: constant density, uniform Cartesian grids on the CPU, buildings as whole cells. Numerical acceptance is separate from experimental validation, which is open. source-allocation requires prescribed flow, three equal-base sources and one constituent; wind-direction requires a neutral_rans case with one constituent and starts each evaluation cold. Neither optimizes the flow solver itself. The older fcmaes-rust room-ventilation example uses a different model.",
+      "availability": "PyPI: cfd-craft; crates.io: cfd-craft and cfd-craft-cli (since 0.1.0). The optional fcmaes-cfd-worker builds from integrations/fcmaes-cfd-worker; guide chapter 14 documents it and the command launcher. OpenFOAM is a separate, optional install.",
       "guide": "https://github.com/dietmarwo/CFD-craft/blob/main/docs/ai-context.md",
-      "tutorial": "https://github.com/dietmarwo/CFD-craft/blob/main/tutorials/README.md",
-      "documentation": "https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md",
+      "tutorial": "https://github.com/dietmarwo/CFD-craft/blob/main/docs/guide/README.md",
+      "documentation": "https://dietmarwo.github.io/CFD-craft/",
       "languages": ["Rust", "Python"],
-      "packages": [{"registry": "source", "name": "fcmaes-cfd-worker", "status": "source-only"}],
-      "topics": ["simulation", "computational-fluid-dynamics", "passive-scalar", "inverse-problems", "optimization", "rust", "python", "ai-agents"]
+      "packages": [
+        {"registry": "PyPI", "name": "cfd-craft", "url": "https://pypi.org/project/cfd-craft/", "status": "published"},
+        {"registry": "crates.io", "name": "cfd-craft", "url": "https://crates.io/crates/cfd-craft", "status": "published"},
+        {"registry": "crates.io", "name": "cfd-craft-cli", "url": "https://crates.io/crates/cfd-craft-cli", "status": "published"},
+        {"registry": "source", "name": "fcmaes-cfd-worker", "status": "source-only"}
+      ],
+      "topics": ["simulation", "computational-fluid-dynamics", "dispersion-modeling", "air-quality", "particulate-matter", "inverse-problems", "optimization", "rust", "python", "ai-agents"]
     },
     {
       "id": "optimization-jobs",
