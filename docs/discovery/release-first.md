@@ -26,9 +26,9 @@ crates.io:
 | optimization-jobs | crates.io `optimization-job-api` and `optimization-runner` 0.3.0 (first release) |
 
 Later releases, as of 16 November 2026: optimization-jobs 0.4.0 (29 October)
-and 0.4.1 (15 November), and SQP-craft 0.18.0 (10 November) and 0.19.0
-(16 November). The table above records the first releases and is not
-updated.
+and 0.4.1 (15 November); SQP-craft 0.18.0 (10 November), 0.19.0 and 0.20.0
+(16 November); LP-IP-craft 0.30.0 and fcmaes-rust 0.3.0 (16 November). The
+table above records the first releases and is not updated.
 
 Still open: step 5 (outreach with a compatibility example) and the MCP
 Registry checks in the [directory pack](directory-submissions.md). The
