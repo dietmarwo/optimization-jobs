@@ -45,6 +45,7 @@ Coding agents working on this repository start with [`AGENTS.md`](AGENTS.md).
 | [`docs/job-api/PLAN.md`](docs/job-api/PLAN.md) | Implementation plan and acceptance gates |
 | [`scripts/job-api`](scripts/job-api/test_integration.py) | Shared acceptance harness, runner regression tests and a protocol fixture worker |
 | [`docs/shared-workflows.md`](docs/shared-workflows.md) | Reusable GitHub Actions workflows for the related repositories: documentation sites and the domain evaluators' checks |
+| [`docs/bo-craft.md`](docs/bo-craft.md) | How BO-craft and experiment-craft's adaptive campaigns use the job layer without changing it |
 
 The solvers live in their own repositories, each with a worker, a runnable
 tutorial and an `ai-context.md` for agents that model problems with it.
@@ -53,7 +54,7 @@ maps problem classes to profiles:
 
 | Repository | Worker | Profiles |
 | --- | --- | --- |
-| [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | `fcmaes-job-worker` | `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.surrogate/1` (experimental), `fcmaes.evaluate/1` |
+| [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | `fcmaes-job-worker` | `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.surrogate/1` and `fcmaes.surrogate/2` (experimental), `fcmaes.evaluate/1` |
 | [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | `lp-ip-job-worker` | `lp-ip.solve/1`, `lp-ip.evaluate/1` |
 | [SQP-craft](https://github.com/dietmarwo/SQP-craft) | `sqp-job-worker` | `sqp.solve/1`, `sqp.evaluate/1` |
 
@@ -63,6 +64,12 @@ this job layer. It runs reproducible campaigns of these jobs through
 reports that keep each job's claim and evidence. Its baseline rebuilds the
 runner and the three workers at pinned revisions and tests them together. It
 is in early development.
+
+[BO-craft](https://github.com/dietmarwo/BO-craft) (experimental) computes
+Bayesian optimization proposals for experiment-craft's adaptive campaigns:
+noisy, constrained, multiobjective and mixed or conditional problems. The
+proposals run as trusted command jobs; see [BO-craft and adaptive
+campaigns](docs/bo-craft.md).
 
 [Nine prompt-driven tutorials](tutorials/agentic/README.md) cover trebuchet design, production policies, energy sizing, curve fitting, GTOC1 route screening, surrogate optimization, LP/IP allocation, constrained SQP and synthetic rail-traffic recovery, with optional native application workers and an executable validation driver.
 
