@@ -13,6 +13,10 @@ revision. 0.3.0 is the first version on crates.io.
 - `ai-context.md` (and the embedded guide): an entry for BO-craft and adaptive campaigns, deferred from the 16 November BO-craft delivery; LP-IP-craft's MIP gap stops (0.30) replace "no relative-gap stop"; the crates.io snippet names fcmaes-core 0.3, LP-IP-craft 0.30 and SQP-craft 0.20.
 - `docs/bo-craft.md`: BO-craft's mixed-space GPs, model answers and campaign answers, and a surrogate chooser with the measured results of BO-craft's 17 November benchmarks and fcmaes-rust's library comparison.
 
+### Fixed
+
+- The structured tutorials install sqp-craft 0.20.0, the release SQP-craft's recorded chapter summaries were made with. With 0.18.0 the fresh SQP1–SQP6 and X2 summaries lacked four report fields, so the comparison failed on `main` since 16 November.
+
 ### Added
 
 - Command progress: `execution.command/0.1` accepts an optional `progress` declaration (a JSON-lines file of 1 byte to 16 MiB), and `jobs progress JOB_ID [--offset N] [--limit L]` reads its complete lines while the command runs and afterwards ([`execution.command.progress/0.1`](docs/job-api/schemas/execution.command.progress-0.1.schema.json)). New error code `no_progress`. Specs without the field keep their identity; older runners refuse it as unknown. experiment-craft's adaptive campaigns use it to prune trials.
