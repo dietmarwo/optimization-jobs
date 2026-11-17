@@ -15,7 +15,7 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Fixed
 
-- The structured tutorials install sqp-craft 0.20.0, the release SQP-craft's recorded chapter summaries were made with. With 0.18.0 the fresh SQP1–SQP6 and X2 summaries lacked four report fields, so the comparison failed on `main` since 16 November.
+- The structured tutorials install sqp-craft 0.20.0, the release SQP-craft's recorded chapter summaries were made with. With 0.18.0 the fresh SQP1–SQP6 and X2 summaries lacked four report fields, so the comparison failed on `main` since 16 November. X1's recorded summaries gain the same four fields from a local 0.20.0 run; every recorded value is unchanged.
 
 ### Added
 
