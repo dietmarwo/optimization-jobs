@@ -8,6 +8,10 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Changed
+
+- `docs/bo-craft.md`: BO-craft's mixed-space GPs, model answers and campaign answers, and a surrogate chooser with the measured results of BO-craft's 17 November benchmarks and fcmaes-rust's library comparison.
+
 ### Added
 
 - [`docs/bo-craft.md`](docs/bo-craft.md) and a README entry for [BO-craft](https://github.com/dietmarwo/BO-craft), the experimental Bayesian optimization package that experiment-craft's adaptive campaigns call through trusted command jobs. The job layer is unchanged. The README lists fcmaes-rust's experimental `fcmaes.surrogate/2` profile. `ai-context.md` is not changed here: it is one of the files the workers' pin check compares, so its BO-craft entry waits for the next coordinated pin move.
