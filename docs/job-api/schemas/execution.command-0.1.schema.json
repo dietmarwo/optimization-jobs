@@ -155,6 +155,28 @@
           "required"
         ]
       }
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "An append-only JSON-lines file the command writes while it runs; read with `jobs progress`. Not a sealed output.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.)(?!.*//)(?!.*\\\\)(?!.*\\u0000).+[^/]$|^[A-Za-z0-9_-]$"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        }
+      },
+      "required": [
+        "path",
+        "max_bytes"
+      ]
     }
   },
   "required": [

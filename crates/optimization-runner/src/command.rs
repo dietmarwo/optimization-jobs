@@ -27,6 +27,11 @@ const MAX_EXECUTABLE: u64 = 1 << 30;
 const RESULT_SCHEMA: &str = "execution.command.result/0.1";
 const RESULT_FILE: &str = "command-result.json";
 const SEALED: &str = ".command-outputs";
+const PROGRESS_SCHEMA: &str = "execution.command.progress/0.1";
+/// A progress file is read whole on every request, so it stays small.
+pub(crate) const MAX_PROGRESS: u64 = 16 * 1024 * 1024;
+/// One progress record; longer lines are reported as invalid.
+const MAX_PROGRESS_LINE: usize = 64 * 1024;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Resources {
@@ -57,6 +62,14 @@ struct Output {
     max_bytes: u64,
     required: bool,
 }
+/// An append-only JSON-lines file the command writes while it runs. It is an
+/// observation channel (`jobs progress`), not a sealed output.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Progress {
+    path: String,
+    max_bytes: u64,
+}
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Request {
@@ -69,6 +82,10 @@ pub(crate) struct Request {
     replay: String,
     inputs: Vec<Input>,
     outputs: Vec<Output>,
+    // Absent from the identity of specs without it, so existing request
+    // keys and identities are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    progress: Option<Progress>,
 }
 fn invalid(message: impl Into<String>) -> optimization_job_api::Error {
     coded("invalid_command_spec", message)
@@ -148,6 +165,14 @@ pub(crate) fn validate(s: &Request) -> Result<()> {
         }
         total += o.max_bytes;
         paths.push(o.path.as_str());
+    }
+    if let Some(p) = &s.progress {
+        files::relative(&p.path)?;
+        if !(1..=MAX_PROGRESS).contains(&p.max_bytes) {
+            return Err(invalid("progress max_bytes must be 1..16 MiB"));
+        }
+        total += p.max_bytes;
+        paths.push(p.path.as_str());
     }
     if total > files::MAX_TOTAL {
         return Err(invalid("declared inputs and output limits exceed 256 MiB"));
@@ -324,12 +349,13 @@ pub(crate) fn prepare(
         fs::File::open(&dest)?.sync_all()?;
     }
     fs::create_dir(stage.join(SEALED))?;
-    for o in &s.outputs {
-        fs::create_dir_all(
-            files::beneath(&stage.join("work"), &o.path)?
-                .parent()
-                .unwrap(),
-        )?;
+    for path in s
+        .outputs
+        .iter()
+        .map(|o| &o.path)
+        .chain(s.progress.iter().map(|p| &p.path))
+    {
+        fs::create_dir_all(files::beneath(&stage.join("work"), path)?.parent().unwrap())?;
     }
     let unit = if detached {
         Some(format!("optimization-job-{id}.service"))
@@ -588,4 +614,59 @@ pub(crate) fn collect(dir: &Path, name: &str, dest: &Path) -> Result<Value> {
         bytes,
         Some((bytes, hash)),
     )
+}
+/// The complete JSON-object lines of a command's progress file, also while it
+/// runs. A trailing line without its newline is still being written and is
+/// not returned; bytes beyond `max_bytes` are ignored and reported.
+pub(crate) fn progress(dir: &Path, id: &str, offset: usize, limit: usize) -> Result<Value> {
+    use std::io::Read;
+    let spec: Request = serde_json::from_value(read(&dir.join("resolved.json"))?)?;
+    let declared = spec.progress.as_ref().ok_or_else(|| {
+        coded(
+            "no_progress",
+            format!("command job {id} declares no progress file"),
+        )
+    })?;
+    let state = read(&dir.join("job.json"))?["state"].clone();
+    let path = files::beneath(&dir.join("work"), &declared.path)?;
+    let mut data = Vec::new();
+    // Absent until the command writes its first line.
+    let available = fs::symlink_metadata(&path).is_ok();
+    if available {
+        files::open(&path)?
+            .take(declared.max_bytes + 1)
+            .read_to_end(&mut data)?;
+    }
+    let over_limit = data.len() as u64 > declared.max_bytes;
+    data.truncate(declared.max_bytes as usize);
+    let end = data.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    let mut records = Vec::new();
+    let mut invalid_lines = Vec::new();
+    if end > 0 {
+        for (line_number, line) in data[..end - 1].split(|&b| b == b'\n').enumerate() {
+            match serde_json::from_slice::<Value>(line) {
+                Ok(value) if value.is_object() && line.len() <= MAX_PROGRESS_LINE => {
+                    records.push(value)
+                }
+                _ => invalid_lines.push(line_number),
+            }
+        }
+    }
+    let total = records.len();
+    let start = offset.min(total);
+    let page: Vec<Value> = records.into_iter().skip(start).take(limit).collect();
+    let next = start + page.len();
+    Ok(json!({
+        "schema_version": PROGRESS_SCHEMA,
+        "id": id,
+        "state": state,
+        "available": available,
+        "bytes": end,
+        "over_limit": over_limit,
+        "records": total,
+        "offset": start,
+        "lines": page,
+        "next_offset": if next < total { json!(next) } else { Value::Null },
+        "invalid_lines": invalid_lines.into_iter().take(100).collect::<Vec<_>>(),
+    }))
 }

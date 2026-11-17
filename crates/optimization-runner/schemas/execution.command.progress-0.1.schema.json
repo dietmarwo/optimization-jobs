@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:optimization-jobs:schema:execution.command.progress-0.1",
+  "title": "execution.command.progress/0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "execution.command.progress/0.1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "state": {
+      "type": "string"
+    },
+    "available": {
+      "type": "boolean"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16777216
+    },
+    "over_limit": {
+      "type": "boolean"
+    },
+    "records": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lines": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object"
+      }
+    },
+    "next_offset": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "invalid_lines": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "state",
+    "available",
+    "bytes",
+    "over_limit",
+    "records",
+    "offset",
+    "lines",
+    "next_offset",
+    "invalid_lines"
+  ]
+}

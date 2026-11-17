@@ -195,6 +195,17 @@ enum Jobs {
     Repair {
         id: String,
     },
+    /// Read the complete JSON lines of a command job's declared progress
+    /// file, also while the job runs, a page at a time.
+    Progress {
+        id: String,
+        /// First record of the page.
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        /// Records of the page, 1 to 10000.
+        #[arg(long, default_value_t = 1000)]
+        limit: usize,
+    },
     /// Read an artifact, also while the job runs: its whole content (at
     /// most 1 MiB), or with `--offset`/`--limit` a page of the checked
     /// records of a `records` artifact.
@@ -1124,6 +1135,19 @@ fn main_result() -> Result<()> {
                 output(l)
             }
             Jobs::Repair { id } => output(repair(&root, &id)?),
+            Jobs::Progress { id, offset, limit } => {
+                if !(1..=10000).contains(&limit) {
+                    return Err(coded("invalid_command", "limit must be 1..10000"));
+                }
+                let dir = directory(&root, &id)?;
+                if !is_command(&dir)? {
+                    return Err(coded(
+                        "unsupported_job_kind",
+                        "progress files belong to command jobs; use jobs artifact for optimization jobs",
+                    ));
+                }
+                output(command::progress(&dir, &id, offset, limit)?)
+            }
             Jobs::Artifact {
                 id,
                 name,

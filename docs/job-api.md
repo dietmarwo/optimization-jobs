@@ -339,6 +339,7 @@ optimization-run --root NODE run --spec command.json
 optimization-run --root NODE jobs execution JOB_ID
 optimization-run --root NODE result JOB_DIRECTORY
 optimization-run --root NODE jobs collect JOB_ID OUTPUT_NAME --destination NEW_FILE
+optimization-run --root NODE jobs progress JOB_ID --offset 0 --limit 1000
 ```
 
 `submit --spec` also accepts commands when the systemd user manager is available.
@@ -405,6 +406,24 @@ claim or evaluation accounting. `result JOB_DIRECTORY` verifies the attachment
 against the terminal execution record; `jobs collect` verifies a sealed output
 before writing a new destination. Later changes to `work/` do not change a
 sealed output. Failed collection can be retried without re-executing the command.
+
+A runner after 0.4.1 lets a command declare `"progress": {"path": "progress.jsonl",
+"max_bytes": 65536}` (1 byte to 16 MiB; the path follows the output rules and
+may not overlap an input or output). The command appends one JSON object per
+line. `jobs progress JOB_ID` reads the file, also while the job runs, and
+returns
+[`execution.command.progress/0.1`](job-api/schemas/execution.command.progress-0.1.schema.json):
+
+- the job's `state`;
+- `available` (false until the file exists);
+- the complete lines as records, in pages (`--offset`, `--limit` 1–10,000; `next_offset`);
+- the numbers of invalid lines.
+
+A last line without its newline is still being written and is left out. Bytes
+beyond `max_bytes` are ignored, and `over_limit` reports them. Progress is an
+observation channel for decisions such as pruning. It is not sealed and has no
+digest: declare a separate output for evidence. An older runner refuses the
+field as unknown. Remote (`fleet`) jobs have no progress command.
 
 `replay: "never"` means no automatic execution retry. Repeating a request key
 with the same normalized spec, executable and input digests returns the same
@@ -730,7 +749,8 @@ missing subcommand prints the help text, also with status 2:
 | `commands_disabled` | The node has not enabled trusted command jobs | Owner uses `node commands --enable` |
 | `invalid_command_spec` | Malformed command, changed staged identity/executable or invalid declaration | Correct the request; use a new key for changed work |
 | `file_transfer_failed` | Unsafe path, hash/size/quota failure, or destination already exists | Inspect inputs/partials and retry transfer to a new destination |
-| `unsupported_job_kind` | Optimization-only operation given a command, including any command request over MCP | Use the CLI: `run`, `result`, `jobs collect` |
+| `unsupported_job_kind` | Optimization-only operation given a command, including any command request over MCP, or `jobs progress` given an optimization job | Use the CLI: `run`, `result`, `jobs collect`; `jobs artifact` for optimization jobs |
+| `no_progress` | `jobs progress` of a command that declared no progress file | Declare `progress` in a new request |
 | `invalid_command` | The command line does not parse, asks for pages of an artifact that is not `records`, or a page `limit` outside 1–10,000 | See `--help` |
 | `unknown_worker` | No worker is registered under that ID | `workers add` |
 | `unsupported_profile` | The worker does not accept the `payload_schema` | Another worker or profile |
