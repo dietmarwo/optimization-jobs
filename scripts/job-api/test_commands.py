@@ -158,6 +158,72 @@ class Commands(Node):
         # Runtime files live beside work/, so their names are ordinary there.
         spec=command();spec["outputs"]=[{"name":"out","path":"worker/run.json","max_bytes":10,"required":False}]
         path,_=self.write(spec);self.call("validate","--spec",path)
+        # A progress file is a declared path like an output, bounded to 16 MiB.
+        for progress in [{"path":"out","max_bytes":10},{"path":"p","max_bytes":0},{"path":"p","max_bytes":16777217},
+                         {"path":"../p","max_bytes":10},{"path":"p","max_bytes":10,"sealed":True}]:
+            with self.subTest(progress=progress):
+                spec=command();spec["outputs"]=[{"name":"out","path":"out","max_bytes":10,"required":False}]
+                spec["progress"]=progress
+                path,_=self.write(spec)
+                # Path errors carry the file layer's code, as for outputs.
+                self.assertIn(self.error("validate","--spec",path)["code"],["invalid_command_spec","file_transfer_failed"])
+
+    def test_progress_lines_while_running_and_after(self):
+        code = """import json, time
+from pathlib import Path
+with open('logs/progress.jsonl', 'a') as f:
+    for step in range(3):
+        f.write(json.dumps({'step': step, 'value': 1.0 / (step + 1)}) + '\\n')
+    f.write('not json\\n[1]\\n{"partial": ')
+    f.flush()
+    Path('wrote').write_text('1')
+    while not Path('release').exists():
+        time.sleep(0.02)
+    f.write('true}\\n')
+"""
+        spec = self.script(code)
+        spec["progress"] = {"path": "logs/progress.jsonl", "max_bytes": 4096}
+        self.validate_record("execution.command-0.1.schema.json", spec)
+        process, ident, directory = self.start(spec)
+        self.wait_for(lambda: (directory / "work/wrote").exists())
+        running = self.call("jobs", "progress", ident)
+        self.validate_record("execution.command.progress-0.1.schema.json", running)
+        self.assertEqual((running["state"], running["available"], running["records"]), ("running", True, 3))
+        self.assertEqual([line["step"] for line in running["lines"]], [0, 1, 2])
+        # Invalid complete lines are counted; the unfinished last line is not read yet.
+        self.assertEqual(running["invalid_lines"], [3, 4])
+        page = self.call("jobs", "progress", ident, "--offset", "1", "--limit", "1")
+        self.assertEqual((page["lines"], page["next_offset"]), ([{"step": 1, "value": 0.5}], 2))
+        self.assertEqual(self.error("jobs", "progress", ident, "--limit", "0")["code"], "invalid_command")
+        (directory / "work/release").write_text("1")
+        _, err = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, err)
+        done = self.call("jobs", "progress", ident)
+        self.validate_record("execution.command.progress-0.1.schema.json", done)
+        self.assertEqual((done["state"], done["records"], done["lines"][-1]), ("completed", 4, {"partial": True}))
+        self.assertIsNone(done["next_offset"])
+
+    def test_progress_absent_bounded_and_refused(self):
+        spec = command()
+        spec["request_key"] = "silent"
+        spec["progress"] = {"path": "progress.jsonl", "max_bytes": 64}
+        _, job, result, _ = self.run_command(spec)
+        silent = self.call("jobs", "progress", job["id"])
+        self.assertEqual((silent["available"], silent["records"], silent["bytes"]), (False, 0, 0))
+        # Lines beyond max_bytes are ignored and reported.
+        spec = self.script("open('p.jsonl','w').write(''.join('{\"step\": %d}\\n' % i for i in range(20)))")
+        spec["request_key"] = "bounded"
+        spec["progress"] = {"path": "p.jsonl", "max_bytes": 40}
+        _, job, _, _ = self.run_command(spec)
+        bounded = self.call("jobs", "progress", job["id"])
+        self.assertTrue(bounded["over_limit"])
+        self.assertEqual([line["step"] for line in bounded["lines"]], [0, 1, 2])
+        self.assertLessEqual(bounded["bytes"], 40)
+        _, plain, _, _ = self.run_command(command())
+        self.assertEqual(self.error("jobs", "progress", plain["id"])["code"], "no_progress")
+        path, key = self.write(envelope("fake", {"mode": "complete"}))
+        self.call("run", "--spec", path)
+        self.assertEqual(self.error("jobs", "progress", job_id(key))["code"], "unsupported_job_kind")
 
     def test_submitted_argv0_is_kept(self):
         # The verified file runs under the submitted name, as a venv's python needs.

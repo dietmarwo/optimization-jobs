@@ -64,6 +64,15 @@ For sweeps and dependent checks, use experiment-craft's
 [simulator campaign guidance](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md#simulator-campaigns)
 with the existing job envelopes.
 
+For expensive noisy experiments, mixed or conditional spaces, unknown
+constraints or several objectives, experiment-craft's
+[adaptive campaigns](https://github.com/dietmarwo/experiment-craft/blob/main/docs/adaptive-bo.md)
+take proposals from [BO-craft](https://github.com/dietmarwo/BO-craft) as
+trusted command jobs (CLI-only), answer with the best observed point plus
+fresh validation replicates, and can stop poor trials early from their
+progress files ([BO-craft page](docs/bo-craft.md)). For deterministic
+continuous boxes, `fcmaes.surrogate/1` is far cheaper and more precise.
+
 The [eight simulator optimization lessons](https://github.com/dietmarwo/optimization-jobs/blob/main/tutorials/simulators/README.md) provide executable CRN calibration/sensitivity/oscillator/rules examples, CFD LP/MIP/coupled-flow examples and a fixed-CPU campaign. Numerical evidence stays simulator-owned; new MO/QD and coupled-flow examples use libraries or trusted commands rather than inventing stock worker models.
 
 ## 1. Write a short problem card
@@ -105,7 +114,7 @@ Decide in this order, so that structure never overrides the requested output:
 
 | Structure | Solver | Limits to check |
 | --- | --- | --- |
-| Linear objective and constraints, continuous and/or integer variables | LP-IP-craft | A MIP needs finite bounds on every variable (or bounds presolve can infer); no QP/MIQP; no relative-gap stop; numerical statuses, no exact certificates. When peak speed decides, or for a large, hard industrial MIP, compare with a mature solver such as HiGHS under the same independent check |
+| Linear objective and constraints, continuous and/or integer variables | LP-IP-craft | A MIP needs finite bounds on every variable (or bounds presolve can infer); no QP/MIQP; optional MIP gap stops since 0.30 (`gap_limit` keeps a checked feasible point and claims no optimality); numerical statuses, no exact certificates. When peak speed decides, or for a large, hard industrial MIP, compare with a mature solver such as HiGHS under the same independent check |
 | Smooth nonlinear objective and constraints, continuous variables, at most 256, gradient and Jacobian available; a local optimum suffices or good starts exist | SQP-craft | Local method with dense BFGS. Use multistart for multimodal models. For larger models with small overlapping cliques, see the structured row below |
 | Expensive deterministic simulation (seconds to a minute per call), continuous box, 1–32 variables, at most 256 calls, few evaluations at a time | `fcmaes.surrogate/1` (fcmaes-rust job worker, experimental), compared with BiteOpt | Job-only: the simulation must be a Rust model in an fcmaes application worker; there is no Python surrogate. No constraints, noise or mixed variables. Prefer retry (BiteOpt first) for separable or many-modal problems with ten or more variables, and when many cores can evaluate in parallel. In Python, use fcmaes with a parallel population (fast-cma-es "Expensive objective") |
 | Black box: nonsmooth, noisy or multimodal, box bounds; integers or categories decoded from continuous variables | fcmaes retry: BiteOpt first; DE for robust exploration and integer decoding; CMA-ES with a good start (`guess` in `fcmaes.retry/1`); CR-FM-NES for higher dimensions; PGPE for noise and very high dimensions | Benchmark at least two choices on equal budgets and seeds. Constraints become penalties or repairs: check the raw constraints separately ([Results](#results-claims-and-evidence)) |
@@ -285,18 +294,18 @@ and in Rust use git dependencies ([below](#rust-crates)).
 
 ```toml
 [dependencies]
-fcmaes-core = "0.2"          # 0.2.0 or later has the MODE fixes and ParetoArchive2D
+fcmaes-core = "0.3"          # 0.2.0 or later has the MODE fixes and ParetoArchive2D
 # LP/MIP: the model, options and checks, and the solver
-lp-ip-craft = "0.29"
-lp-ip-craft-native = "0.29"
+lp-ip-craft = "0.30"
+lp-ip-craft-native = "0.30"
 # Smooth NLP: the core (ProblemSpec, NlpProblem), the solver and a QP backend
-sqp-craft = "0.17"
-sqp-craft-solver = "0.17"
-sqp-craft-clarabel = "0.17"  # or sqp-craft-activeset
+sqp-craft = "0.20"
+sqp-craft-solver = "0.20"
+sqp-craft-clarabel = "0.20"  # or sqp-craft-activeset
 ```
 
-These are the first crates.io releases of LP-IP-craft and SQP-craft (October
-2026). If a version is not on crates.io yet, or for changes after the latest
+LP-IP-craft and SQP-craft are on crates.io since October 2026; the versions
+above are those of 17 November 2026. If a version is not on crates.io yet, or for changes after the latest
 release, use git dependencies, ideally with a pinned `rev`, for example
 `lp-ip-craft = { git = "https://github.com/dietmarwo/LP-IP-craft", rev = "..." }`.
 
@@ -450,7 +459,9 @@ opt-in trusted local commands, enabled kinds, binary file transfer limits and
 CLI-only command/file interfaces. Commands use `execution.command/0.1` with
 literal argv, explicit environment, hashed inputs, declared bounded outputs and
 no automatic replay; enable with `node commands --enable`. Use `files put/get`
-and `jobs collect` for binary transfer. Their separate `command-result.json`
+and `jobs collect` for binary transfer. A command may declare a `progress`
+file of JSON lines that `jobs progress JOB_ID` reads while it runs (runners
+after 0.4.1); it is an observation channel, not a sealed output. Their separate `command-result.json`
 records process/output facts, never mathematical claims. MCP submission and
 result summaries remain optimization-only. Commands share admission/cancellation
 but are not a sandbox or kernel resource limits
@@ -674,6 +685,7 @@ The [learning paths](https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/lea
 | Chemical reaction networks, reusable parameters and CRN application jobs | CRN-craft [agent guide](https://github.com/dietmarwo/CRN-craft/blob/main/docs/ai-context.md), [parameter interface](https://github.com/dietmarwo/CRN-craft/blob/main/docs/reusable-parameters.md), [job integration](https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md) |
 | Flow/transport models, source inference and CFD application jobs | CFD-craft [agent guide](https://github.com/dietmarwo/CFD-craft/blob/main/docs/ai-context.md), [tutorials](https://github.com/dietmarwo/CFD-craft/blob/main/tutorials/README.md), [job integration](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md) |
 | Campaigns, dependent validation steps and complete reports | experiment-craft [campaign guide](https://github.com/dietmarwo/experiment-craft/blob/main/docs/campaigns.md) |
+| Bayesian optimization proposals, adaptive campaigns, pruning | BO-craft [agent guide](https://github.com/dietmarwo/BO-craft/blob/main/ai-context.md), [this repository's page](docs/bo-craft.md) |
 | Envelope, resources, lifecycle, errors, results, artifacts, MCP | [docs/job-api.md](docs/job-api.md) |
 | JSON Schemas of the job and the result | [docs/job-api/schemas](docs/job-api/schemas/optimization.job-0.1.schema.json) |
 | A worker of your own | [crates/optimization-job-api](crates/optimization-job-api) and the guide's [Extending and testing](docs/job-api.md#extending-and-testing) |
