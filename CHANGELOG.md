@@ -10,6 +10,8 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Added
 
+- [`docs/bo-craft.md`](docs/bo-craft.md) and a README entry for [BO-craft](https://github.com/dietmarwo/BO-craft), the experimental Bayesian optimization package that experiment-craft's adaptive campaigns call through trusted command jobs. The job layer is unchanged. The README lists fcmaes-rust's experimental `fcmaes.surrogate/2` profile. `ai-context.md` is not changed here: it is one of the files the workers' pin check compares, so its BO-craft entry waits for the next coordinated pin move.
+
 - Two [reusable workflows](docs/shared-workflows.md) for the related repositories, with their scripts and tests. `docs-site.yml` renders the pages a repository lists in `book/SUMMARY.md` with mdBook, turns links to unrendered files into GitHub links, checks the built pages and deploys to GitHub Pages only when the caller's variable `PUBLISH_DOCS_SITE` is `true`. `evaluator-checks.yml` gives the five domain evaluators a build, their tests and validation scripts, a `SHA256SUMS` check and a link check. `scripts/check_markdown_links.py` checks the relative links and heading anchors of a repository's tracked Markdown files; CI runs it on this repository.
 
 ### Changed
