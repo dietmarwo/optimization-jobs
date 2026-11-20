@@ -8,26 +8,35 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
-### Changed
+## [0.5.0] - 2026-11-20
 
-- `ai-context.md` (and the embedded guide): an entry for BO-craft and adaptive campaigns, deferred from the 16 November BO-craft delivery; LP-IP-craft's MIP gap stops (0.30) replace "no relative-gap stop"; the crates.io snippet names fcmaes-core 0.3, LP-IP-craft 0.30 and SQP-craft 0.20.
-- `docs/bo-craft.md`: BO-craft's mixed-space GPs, model answers and campaign answers, and a surrogate chooser with the measured results of BO-craft's 17 November benchmarks and fcmaes-rust's library comparison.
-
-### Fixed
-
-- The structured tutorials install sqp-craft 0.20.0, the release SQP-craft's recorded chapter summaries were made with. With 0.18.0 the fresh SQP1–SQP6 and X2 summaries lacked four report fields, so the comparison failed on `main` since 16 November. X1's recorded summaries gain the same four fields from a local 0.20.0 run; every recorded value is unchanged.
+A runner feature release. Command jobs may declare a progress file that
+`jobs progress` reads while they run; experiment-craft's adaptive campaigns
+need it to prune trials and refuse a 0.4.1 runner. The worker SDK
+`optimization-job-api` is unchanged, and the job envelope
+`optimization.job/0.1`, the worker protocol and the result contract
+`optimization.result/0.2` behave as in 0.4.1. The guide that `get_guide`
+returns covers BO-craft, fcmaes 2.2.0, fcmaes-rust 0.4.0, LP-IP-craft's MIP
+gap stops and CFD-craft's wind-direction model. The worker repositories
+still pin this repository by git revision and move to this release next.
 
 ### Added
 
 - Command progress: `execution.command/0.1` accepts an optional `progress` declaration (a JSON-lines file of 1 byte to 16 MiB), and `jobs progress JOB_ID [--offset N] [--limit L]` reads its complete lines while the command runs and afterwards ([`execution.command.progress/0.1`](docs/job-api/schemas/execution.command.progress-0.1.schema.json)). New error code `no_progress`. Specs without the field keep their identity; older runners refuse it as unknown. experiment-craft's adaptive campaigns use it to prune trials.
-- [`docs/bo-craft.md`](docs/bo-craft.md) and a README entry for [BO-craft](https://github.com/dietmarwo/BO-craft), the experimental Bayesian optimization package that experiment-craft's adaptive campaigns call through trusted command jobs. The job layer is unchanged. The README lists fcmaes-rust's experimental `fcmaes.surrogate/2` profile. `ai-context.md` is not changed here: it is one of the files the workers' pin check compares, so its BO-craft entry waits for the next coordinated pin move.
-
+- [`docs/bo-craft.md`](docs/bo-craft.md) and a README entry for [BO-craft](https://github.com/dietmarwo/BO-craft), the experimental Bayesian optimization package that experiment-craft's adaptive campaigns call through trusted command jobs. The job layer is unchanged. The README lists fcmaes-rust's experimental `fcmaes.surrogate/2` profile. The guide's BO-craft entry followed with the next change to the shared files (see Changed).
 - Two [reusable workflows](docs/shared-workflows.md) for the related repositories, with their scripts and tests. `docs-site.yml` renders the pages a repository lists in `book/SUMMARY.md` with mdBook, turns links to unrendered files into GitHub links, checks the built pages and deploys to GitHub Pages only when the caller's variable `PUBLISH_DOCS_SITE` is `true`. `evaluator-checks.yml` gives the five domain evaluators a build, their tests and validation scripts, a `SHA256SUMS` check and a link check. `scripts/check_markdown_links.py` checks the relative links and heading anchors of a repository's tracked Markdown files; CI runs it on this repository.
 
 ### Changed
 
+- The guide (`ai-context.md` and the copy `get_guide` returns), `docs/job-api.md` and the README name the releases of 20 November 2026: the crates.io snippet uses `fcmaes-core = "0.4"`; jSO, the jSO→CMA sequence and the CMA-ES option `repair_z` need fcmaes 2.2.0 or fcmaes-rust 0.4.0, as do the PGPE fixes of fcmaes 2.2.0 and the `fcmaes.retry/1` kinds `jso` and `crfmnes_bite`; the fcmaes-rust worker lists `fcmaes.surrogate/2` (experimental); CFD-craft's worker lists `app.cfd.wind-direction` (from 0.2.0). Command progress is documented as available from runner 0.5.0 instead of "after 0.4.1".
+- `ai-context.md` (and the embedded guide): an entry for BO-craft and adaptive campaigns, deferred from the 16 November BO-craft delivery; LP-IP-craft's MIP gap stops (0.30) replace "no relative-gap stop"; the crates.io snippet names LP-IP-craft 0.30 and SQP-craft 0.20.
+- `docs/bo-craft.md`: BO-craft's mixed-space GPs, model answers and campaign answers, and a surrogate chooser with the measured results of BO-craft's 17 November benchmarks and fcmaes-rust's library comparison.
 - The registry records in `docs/discovery/` name the published versions: optimization-jobs 0.4.1, installed from its registry on 15 November 2026, and SQP-craft 0.20.0, LP-IP-craft 0.30.0 and fcmaes-rust 0.3.0, installed on 16 November 2026.
 - The CFD-craft card of the landing page describes release 0.2.0: gases and particles around buildings, city geometry, vegetation and mobile rides; the `cfd-craft` packages on PyPI and crates.io; both worker models (`app.cfd.source-allocation`, `app.cfd.wind-direction`); and links to the guide and the documentation site in place of two moved pages. The landing page no longer says that simulator entries describe source builds, and the registry availability date is 16 November 2026, when every published package in the catalog was rechecked.
+
+### Fixed
+
+- The structured tutorials install sqp-craft 0.20.0, the release SQP-craft's recorded chapter summaries were made with. With 0.18.0 the fresh SQP1–SQP6 and X2 summaries lacked four report fields, so the comparison failed on `main` since 16 November. X1's recorded summaries gain the same four fields from a local 0.20.0 run; every recorded value is unchanged.
 
 ## [0.4.1] - 2026-11-15
 

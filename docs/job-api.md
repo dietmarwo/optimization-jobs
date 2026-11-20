@@ -27,13 +27,13 @@ and [`optimization.result-0.2.schema.json`](job-api/schemas/optimization.result-
 | `optimization-job-api` | Strict versioned envelope, resources, input hashes, checked journals, result contract and worker SDK |
 | `optimization-runner` / `optimization-run` | Worker discovery, staging, idempotency, admission, process supervision, cancellation, deadlines, journal recovery and coded errors |
 | `optimization-runner` / `optimization-mcp` | MCP server over stdio for agents: tools and tasks over `optimization-run` ([Agents and MCP](#agents-and-mcp)) |
-| `fcmaes-job-worker` | `fcmaes.retry/1` (BiteOpt or DE, serial or with parallel delayed-feedback batches, CMA-ES with optional IPOP/BIPOP restarts, CR-FM-NES or PGPE retries on registered scalar models), `fcmaes.mode/1` (MODE Pareto fronts), `fcmaes.map-elites/1` (MAP-Elites grid or CVT archives, optional CMA-ME/CMA-MAE emitters), `fcmaes.surrogate/1` (experimental exact-GP Bayesian optimization of expensive deterministic scalar models, including cancellable `Scalar::simulation` callbacks) and `fcmaes.evaluate/1` (given points): deterministic task seeds, exact or declared evaluation budgets, parallel population evaluation; application workers register their own models with parameters and hashed inputs |
+| `fcmaes-job-worker` | `fcmaes.retry/1` (BiteOpt or DE, serial or with parallel delayed-feedback batches, CMA-ES with optional IPOP/BIPOP restarts, CR-FM-NES or PGPE retries on registered scalar models, and from fcmaes-rust 0.4.0 jSO and the CR-FM-NES → BiteOpt sequence), `fcmaes.mode/1` (MODE Pareto fronts), `fcmaes.map-elites/1` (MAP-Elites grid or CVT archives, optional CMA-ME/CMA-MAE emitters), `fcmaes.surrogate/1` (experimental exact-GP Bayesian optimization of expensive deterministic scalar models, including cancellable `Scalar::simulation` callbacks), `fcmaes.surrogate/2` (experimental, from 0.4.0: a larger archive, asynchronous callbacks and an optional BiteOpt handoff) and `fcmaes.evaluate/1` (given points): deterministic task seeds, exact or declared evaluation budgets, parallel population evaluation; application workers register their own models with parameters and hashed inputs |
 | `lp-ip-job-worker` | `lp-ip.solve/1`: sparse LP/MIP artifacts, candidate starts, node/pivot budgets and numerical checks; `lp-ip.evaluate/1`: given points |
 | `sqp-job-worker` | `sqp.solve/1`: registered smooth Rust models, initial points, active-set/Clarabel backends and independent KKT checks; `sqp.evaluate/1`: given points |
 
 The shared crates, this guide, the plan, the schemas and the shared test
 scripts live in this repository; until October 2026 the three worker
-repositories carried identical copies. The crates are at version 0.4.1; 0.3.0
+repositories carried identical copies. The crates are at version 0.5.0; 0.3.0
 was the first release on crates.io. Worker repositories depend on them
 through git at a pinned revision, which their `Cargo.lock` records (see the
 [README](../README.md)). 0.2.0 adds the result contract 0.2 (evidence,
@@ -101,7 +101,8 @@ provides `crn-job-worker` with `app.crn.fit-moments` and
 `app.crn.circuit-score`.
 [CFD-craft](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md)
 provides `fcmaes-cfd-worker` with `app.cfd.source-allocation` for prescribed-flow
-passive transport. These optional executables register scalar models using
+passive transport and, from CFD-craft 0.2.0, `app.cfd.wind-direction` for the
+wind direction of a city block. These optional executables register scalar models using
 `fcmaes.evaluate/1`, `fcmaes.retry/1` and `fcmaes.surrogate/1` (experimental).
 They use the existing `optimization.job/0.1` envelope and result contract.
 
@@ -407,7 +408,7 @@ against the terminal execution record; `jobs collect` verifies a sealed output
 before writing a new destination. Later changes to `work/` do not change a
 sealed output. Failed collection can be retried without re-executing the command.
 
-A runner after 0.4.1 lets a command declare `"progress": {"path": "progress.jsonl",
+From 0.5.0 a runner lets a command declare `"progress": {"path": "progress.jsonl",
 "max_bytes": 65536}` (1 byte to 16 MiB; the path follows the output rules and
 may not overlap an input or output). The command appends one JSON object per
 line. `jobs progress JOB_ID` reads the file, also while the job runs, and

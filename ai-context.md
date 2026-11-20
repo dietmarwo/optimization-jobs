@@ -4,7 +4,7 @@ Job-interface baseline reviewed 2026-10-21 against `main` with the changes of an
 review of agent workflows: workers publish payload schemas and runnable
 examples in `describe`, the MCP server has `get_guide` and `put_input`, and
 `node doctor` reports the host's usable CPUs and memory. The crates are
-`optimization-job-api` and `optimization-runner` 0.4.1, the envelope is
+`optimization-job-api` and `optimization-runner` 0.5.0, the envelope is
 `optimization.job/0.1` and the result contract `optimization.result/0.2`.
 In another checkout, check `Cargo.toml`, the `describe_node`/`describe_worker`
 output and the linked guides before you rely on a command, option or claim.
@@ -29,7 +29,7 @@ model ([where to read next](#where-to-read-next)).
 | Repository | Solves | Libraries | Job worker: profiles | Registries |
 | --- | --- | --- | --- | --- |
 | [fast-cma-es](https://github.com/dietmarwo/fast-cma-es) | Black-box, nonsmooth, multimodal, multi-objective and quality-diversity problems, with the objective in Python | `fcmaes` (Python, C++ backend) | none | PyPI `fcmaes` |
-| [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | The same algorithms in pure Rust, plus experimental exact-GP Bayesian optimization of expensive simulations | `fcmaes-core` (Rust), `fcmaes_rust` (Python binding) | `fcmaes-job-worker`: `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.surrogate/1` (experimental), `fcmaes.evaluate/1` | crates.io `fcmaes-core`, PyPI `fcmaes-rust`; worker and surrogate from source |
+| [fcmaes-rust](https://github.com/dietmarwo/fcmaes-rust) | The same algorithms in pure Rust, plus experimental exact-GP Bayesian optimization of expensive simulations | `fcmaes-core` (Rust), `fcmaes_rust` (Python binding) | `fcmaes-job-worker`: `fcmaes.retry/1`, `fcmaes.mode/1`, `fcmaes.map-elites/1`, `fcmaes.surrogate/1` and `fcmaes.surrogate/2` (experimental), `fcmaes.evaluate/1` | crates.io `fcmaes-core`, PyPI `fcmaes-rust`; worker and surrogate from source |
 | [LP-IP-craft](https://github.com/dietmarwo/LP-IP-craft) | LP and MIP (linear objective, linear rows, continuous and integer variables) | `lp-ip-craft`, `lp-ip-craft-native` (Rust), `lp_ip_craft` (Python) | `lp-ip-job-worker`: `lp-ip.solve/1`, `lp-ip.evaluate/1` | crates.io `lp-ip-craft`, `lp-ip-craft-native`, PyPI `lp-ip-craft` (from 0.29.0) |
 | [SQP-craft](https://github.com/dietmarwo/SQP-craft) | Smooth constrained NLP with derivatives. Dense up to 256, experimental sparse modes above | `sqp-craft` (core), `sqp-craft-solver`, the backends `sqp-craft-clarabel` and `sqp-craft-activeset` (Rust), `sqp_craft` (Python) | `sqp-job-worker`: `sqp.solve/1`, `sqp.evaluate/1` | crates.io `sqp-craft` and its solver and backend crates, PyPI `sqp-craft` (from 0.17.0) |
 | optimization-jobs (this one) | No solver of its own: the job envelope, result contract, worker SDK, runner and MCP server | `optimization-job-api` (worker SDK) | runner `optimization-run`, MCP server `optimization-mcp` | crates.io `optimization-job-api`, `optimization-runner` (from 0.3.0) |
@@ -47,7 +47,7 @@ with the simulators and build from separate source workspaces.
 | Repository | Numerical scope | Application worker and registered models |
 | --- | --- | --- |
 | [CRN-craft](https://github.com/dietmarwo/CRN-craft) | Chemical reaction networks: stochastic simulation, finite-state projection, approximate tau methods and optional deterministic kinetics; separate dynamic-species rules engine | `crn-job-worker`: `app.crn.fit-moments` and `app.crn.circuit-score`; [job integration](https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md) |
-| [CFD-craft](https://github.com/dietmarwo/CFD-craft) | Incompressible flow and passive-gas transport, source inference and refinement studies | `fcmaes-cfd-worker`: `app.cfd.source-allocation`, restricted to prescribed flow, three equal-base sources and one constituent; [job integration](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md) |
+| [CFD-craft](https://github.com/dietmarwo/CFD-craft) | Incompressible flow and passive-gas transport, source inference and refinement studies | `fcmaes-cfd-worker`: `app.cfd.source-allocation`, restricted to prescribed flow, three equal-base sources and one constituent, and from CFD-craft 0.2.0 `app.cfd.wind-direction`, the wind direction of a city block with buildings that maximizes a receptor concentration, each evaluation a cold-started steady solution; [job integration](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md) |
 
 Their current scalar application models use `fcmaes.evaluate/1`,
 `fcmaes.retry/1` and `fcmaes.surrogate/1` (experimental). Register the separate
@@ -284,7 +284,11 @@ or later (`pip install "fcmaes>=2.1"`, `"fcmaes-rust>=0.2"`). Earlier
 releases (fcmaes 2.0.3, fcmaes-rust and `fcmaes-core` 0.1.5) predate the
 October 2026 MODE fixes (correct SBX and polynomial mutation, non-dominated
 sorting, feasibility first; fast-cma-es #31, fcmaes-rust #1) and the exact
-two-objective archives (`fcmaes.pareto`, `ParetoArchive2D`). Check the
+two-objective archives (`fcmaes.pareto`, `ParetoArchive2D`). jSO, the
+jSO→CMA sequence and the CMA-ES option `repair_z` need fcmaes 2.2.0 or
+fcmaes-rust/`fcmaes-core` 0.4.0 (`"fcmaes>=2.2"`, `"fcmaes-rust>=0.4"`); so do
+the PGPE fixes of fcmaes 2.2.0 and, in the fcmaes-rust job worker, the
+`fcmaes.retry/1` kinds `jso` and `crfmnes_bite` (CR-FM-NES → BiteOpt). Check the
 registry for the installed version; for changes after the latest release,
 build from source, for example
 `python -m pip install "git+https://github.com/dietmarwo/fast-cma-es" --config-settings=cmake.define.FCMAES_FETCH_EIGEN=ON`,
@@ -294,7 +298,7 @@ and in Rust use git dependencies ([below](#rust-crates)).
 
 ```toml
 [dependencies]
-fcmaes-core = "0.3"          # 0.2.0 or later has the MODE fixes and ParetoArchive2D
+fcmaes-core = "0.4"          # 0.4.0 or later has jSO, crfmnes_bite and repair_z
 # LP/MIP: the model, options and checks, and the solver
 lp-ip-craft = "0.30"
 lp-ip-craft-native = "0.30"
@@ -305,7 +309,7 @@ sqp-craft-clarabel = "0.20"  # or sqp-craft-activeset
 ```
 
 LP-IP-craft and SQP-craft are on crates.io since October 2026; the versions
-above are those of 17 November 2026. If a version is not on crates.io yet, or for changes after the latest
+above are those of 20 November 2026. If a version is not on crates.io yet, or for changes after the latest
 release, use git dependencies, ideally with a pinned `rev`, for example
 `lp-ip-craft = { git = "https://github.com/dietmarwo/LP-IP-craft", rev = "..." }`.
 
@@ -460,8 +464,8 @@ CLI-only command/file interfaces. Commands use `execution.command/0.1` with
 literal argv, explicit environment, hashed inputs, declared bounded outputs and
 no automatic replay; enable with `node commands --enable`. Use `files put/get`
 and `jobs collect` for binary transfer. A command may declare a `progress`
-file of JSON lines that `jobs progress JOB_ID` reads while it runs (runners
-after 0.4.1); it is an observation channel, not a sealed output. Their separate `command-result.json`
+file of JSON lines that `jobs progress JOB_ID` reads while it runs (runner
+0.5.0 or later); it is an observation channel, not a sealed output. Their separate `command-result.json`
 records process/output facts, never mathematical claims. MCP submission and
 result summaries remain optimization-only. Commands share admission/cancellation
 but are not a sandbox or kernel resource limits
