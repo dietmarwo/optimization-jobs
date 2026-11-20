@@ -120,7 +120,12 @@ catalog was rechecked against the registry APIs, and the CFD-craft card gained
 updated on 2026-11-20 after their releases of that day: `fcmaes` 2.2.0 and
 `fcmaes-rust` 0.4.0 were installed from PyPI into a clean environment and
 ran jSO (both) and CMA-ES with `repair_z` (`fcmaes`), and a new crate was
-built against `fcmaes-core` 0.4.0 from crates.io and ran jSO:
+built against `fcmaes-core` 0.4.0 from crates.io and ran jSO. The
+optimization-jobs row followed the same day: `cargo install optimization-runner
+--version 0.5.0 --locked` installed both binaries, `jobs progress` is present,
+the MCP server answered `initialize`, `tools/list` (15 tools) and
+`get_guide` with the current guide, and a new crate was built against
+`optimization-job-api` 0.5.0:
 
 | Repository | Published | Still source-only |
 | --- | --- | --- |
@@ -128,7 +133,7 @@ built against `fcmaes-core` 0.4.0 from crates.io and ran jSO:
 | fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.4.0 | Job worker, surrogate and other internal crates |
 | LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.30.0 | Job worker |
 | SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.20.0 | Job worker |
-| optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.4.1 | — |
+| optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.5.0 | — |
 
 Use each repository's `RELEASING.md` and existing tested release workflows.
 The discovery changes touched no package version, release tag, dependency pin,
