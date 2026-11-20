@@ -81,7 +81,7 @@ Build and register these workers separately from the stock solver workers above.
 | Repository | Application worker and models | Start here |
 | --- | --- | --- |
 | [CRN-craft](https://github.com/dietmarwo/CRN-craft) | `crn-job-worker`: `app.crn.fit-moments` and `app.crn.circuit-score`, for reaction-network parameter fitting and a synthetic circuit objective | [Agent guide](https://github.com/dietmarwo/CRN-craft/blob/main/docs/ai-context.md), [job integration and validation](https://github.com/dietmarwo/CRN-craft/blob/main/docs/campaign/M6.md) |
-| [CFD-craft](https://github.com/dietmarwo/CFD-craft) | `fcmaes-cfd-worker`: `app.cfd.source-allocation`, for three-source allocation in prescribed-flow passive transport | [Agent guide](https://github.com/dietmarwo/CFD-craft/blob/main/docs/ai-context.md), [job integration](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md), [tutorials](https://github.com/dietmarwo/CFD-craft/blob/main/tutorials/README.md) |
+| [CFD-craft](https://github.com/dietmarwo/CFD-craft) | `fcmaes-cfd-worker`: `app.cfd.source-allocation`, for three-source allocation in prescribed-flow passive transport, and `app.cfd.wind-direction` (from CFD-craft 0.2.0) for the wind direction of a city block | [Agent guide](https://github.com/dietmarwo/CFD-craft/blob/main/docs/ai-context.md), [job integration](https://github.com/dietmarwo/CFD-craft/blob/main/integrations/README.md), [tutorials](https://github.com/dietmarwo/CFD-craft/blob/main/tutorials/README.md) |
 
 Both application workers use `fcmaes.evaluate/1`, `fcmaes.retry/1` and
 `fcmaes.surrogate/1` (experimental) through the existing job envelope. Read the
