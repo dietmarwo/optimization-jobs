@@ -2,6 +2,6 @@
 numpy==2.3.5
 scipy==1.17.0
 matplotlib==3.10.8
-fcmaes-rust==0.2.1
+fcmaes-rust==0.4.0
 lp-ip-craft==0.29.0
 sqp-craft==0.17.0

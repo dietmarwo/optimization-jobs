@@ -8,6 +8,11 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Changed
+
+- The tutorials install the releases of 20 November 2026: the domain-evaluator tutorials `fcmaes` 2.2.0 (was 2.1.0), the structured and simulator tutorials `fcmaes-rust` 0.4.0 (was 0.2.1). The recorded summaries are unchanged: CI compares the domain-evaluator smoke summaries and both presets of the structured chapters with them.
+- The landing page and the registry records in `docs/discovery/` name fcmaes 2.2.0 and fcmaes-rust 0.4.0, installed from PyPI and crates.io on 20 November 2026, and the availability date 2026-11-20.
+
 ## [0.5.0] - 2026-11-20
 
 A runner feature release. Command jobs may declare a progress file that
