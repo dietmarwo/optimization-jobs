@@ -116,12 +116,16 @@ against `fcmaes-core` 0.3.0 and stopped a BiteOpt run with `optimize_until`.
 On 2026-11-16 every published package of the
 catalog was rechecked against the registry APIs, and the CFD-craft card gained
 `cfd-craft` on PyPI and `cfd-craft` and `cfd-craft-cli` on crates.io
-(0.2.0, published since 0.1.0):
+(0.2.0, published since 0.1.0). The fast-cma-es and fcmaes-rust rows were
+updated on 2026-11-20 after their releases of that day: `fcmaes` 2.2.0 and
+`fcmaes-rust` 0.4.0 were installed from PyPI into a clean environment and
+ran jSO (both) and CMA-ES with `repair_z` (`fcmaes`), and a new crate was
+built against `fcmaes-core` 0.4.0 from crates.io and ran jSO:
 
 | Repository | Published | Still source-only |
 | --- | --- | --- |
-| fast-cma-es | PyPI `fcmaes` 2.1.0 | Changes after its latest release |
-| fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.3.0 | Job worker, surrogate and other internal crates |
+| fast-cma-es | PyPI `fcmaes` 2.2.0 | Changes after its latest release |
+| fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.4.0 | Job worker, surrogate and other internal crates |
 | LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.30.0 | Job worker |
 | SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.20.0 | Job worker |
 | optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.4.1 | — |
