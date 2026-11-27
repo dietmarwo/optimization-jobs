@@ -125,14 +125,23 @@ optimization-jobs row followed the same day: `cargo install optimization-runner
 --version 0.5.0 --locked` installed both binaries, `jobs progress` is present,
 the MCP server answered `initialize`, `tools/list` (15 tools) and
 `get_guide` with the current guide, and a new crate was built against
-`optimization-job-api` 0.5.0:
+`optimization-job-api` 0.5.0. The fast-cma-es, fcmaes-rust, LP-IP-craft and
+SQP-craft rows were updated on 2026-11-27 after their releases of that day:
+`fcmaes` 2.3.0, `fcmaes-rust` 0.5.0, `lp-ip-craft` 0.33.0 and `sqp-craft`
+0.21.0 were installed from PyPI into one clean environment and ran CMA-ES and
+CR-FM-NES within the budget (`fcmaes`), CR-FM-NES with population 31
+(`fcmaes-rust`), the decimal-data MIP `15x + 0.1y = 29.8` (`lp-ip-craft`) and
+the README example (`sqp-craft`); a new crate built against `fcmaes-core`
+0.5.0, `lp-ip-craft` and `lp-ip-craft-native` 0.33.0 and `sqp-craft`,
+`sqp-craft-solver` and `sqp-craft-clarabel` 0.21.0 from crates.io ran their
+README examples:
 
 | Repository | Published | Still source-only |
 | --- | --- | --- |
-| fast-cma-es | PyPI `fcmaes` 2.2.0 | Changes after its latest release |
-| fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.4.0 | Job worker, surrogate and other internal crates |
-| LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.30.0 | Job worker |
-| SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.20.0 | Job worker |
+| fast-cma-es | PyPI `fcmaes` 2.3.0 | Changes after its latest release |
+| fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.5.0 | Job worker, surrogate and other internal crates |
+| LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.33.0 | Job worker |
+| SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.21.0 | Job worker |
 | optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.5.0 | — |
 
 Use each repository's `RELEASING.md` and existing tested release workflows.

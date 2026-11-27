@@ -10,6 +10,8 @@ revision. 0.3.0 is the first version on crates.io.
 
 ### Changed
 
+- The tutorials install the releases of 27 November 2026: the domain-evaluator tutorials `fcmaes` 2.3.0 (was 2.2.0), the structured tutorials `lp-ip-craft` 0.33.0 (was 0.29.0), `sqp-craft` 0.21.0 (was 0.20.0) and `fcmaes-rust` 0.5.0 (was 0.4.0), the simulator tutorial the same three (`sqp-craft` was 0.17.0). CI compares the domain-evaluator smoke summaries and both presets of the structured chapters with their recorded summaries.
+- The guide's Rust snippet names `fcmaes-core` 0.5, `lp-ip-craft` 0.33 and `sqp-craft` 0.21, and says what changes with fcmaes 2.3.0 and fcmaes-rust 0.5.0. The catalog, the landing page's availability lines and the registry records in `docs/discovery/` name the four releases, installed from PyPI and crates.io on 27 November 2026.
 - The tutorials install the releases of 20 November 2026: the domain-evaluator tutorials `fcmaes` 2.2.0 (was 2.1.0), the structured and simulator tutorials `fcmaes-rust` 0.4.0 (was 0.2.1). The recorded summaries are unchanged: CI compares the domain-evaluator smoke summaries and both presets of the structured chapters with them.
 - The landing page and the registry records in `docs/discovery/` name fcmaes 2.2.0 and fcmaes-rust 0.4.0, installed from PyPI and crates.io on 20 November 2026, and the availability date 2026-11-20. The optimization-jobs row names 0.5.0, installed from crates.io the same day.
 
