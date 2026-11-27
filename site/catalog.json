@@ -5,7 +5,7 @@
   "url": "https://dietmarwo.github.io/optimization-jobs/",
   "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
   "comparison": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/optimization-systems-for-ai-agents.md",
-  "availability_checked": "2026-11-20",
+  "availability_checked": "2026-11-27",
   "learning_paths": [
     {
       "reader": "Python user",
@@ -32,7 +32,7 @@
       "summary": "Parallel gradient-free optimization for Python: black-box, multi-objective and quality-diversity search.",
       "fit": "Python objectives and simulations; parallel retries or population evaluation; CMA-ES, DE, BiteOpt, MODE and MAP-Elites.",
       "limits": "Heuristic search, with constraints handled by the selected method. No stock job worker or MCP server in this package.",
-      "availability": "PyPI: fcmaes (2.1.0 and later include the MODE fixes and fcmaes.pareto; 2.2.0 adds jSO and the CMA-ES option repair_z). Build from source for changes after the latest release.",
+      "availability": "PyPI: fcmaes (2.1.0 and later include the MODE fixes and fcmaes.pareto; 2.2.0 adds jSO and the CMA-ES option repair_z; 2.3.0 is faster, no longer stops CMA-ES early and keeps CR-FM-NES, PGPE and Dual Annealing to the budget). Build from source for changes after the latest release.",
       "guide": "https://github.com/dietmarwo/fast-cma-es/blob/master/ai-context.md",
       "tutorial": "https://dietmarwo.github.io/fast-cma-es/tutorials/",
       "documentation": "https://dietmarwo.github.io/fast-cma-es/",
@@ -48,7 +48,7 @@
       "summary": "Native Rust parallel black-box optimization, Python bindings, and a worker for durable optimization jobs.",
       "fit": "Rust objectives, parallel global search, Pareto search and quality diversity. Application workers run registered Rust models as jobs.",
       "limits": "Python callbacks do not gain native Rust parallelism. The experimental surrogate targets small deterministic continuous-box problems; consult its limits before use.",
-      "availability": "crates.io: fcmaes-core; PyPI: fcmaes-rust (0.2.0 and later include the MODE fixes and ParetoArchive2D; 0.2.1 accepts list arguments and validates inputs; 0.4.0 adds jSO, the CR-FM-NES → BiteOpt sequence and repair_z). Job worker and experimental surrogate: source only.",
+      "availability": "crates.io: fcmaes-core; PyPI: fcmaes-rust (0.2.0 and later include the MODE fixes and ParetoArchive2D; 0.2.1 accepts list arguments and validates inputs; 0.4.0 adds jSO, the CR-FM-NES → BiteOpt sequence and repair_z; 0.5.0 is faster and runs CR-FM-NES with an odd population). Job worker and experimental surrogate: source only.",
       "guide": "https://github.com/dietmarwo/fcmaes-rust/blob/main/ai-context.md",
       "tutorial": "https://github.com/dietmarwo/fcmaes-rust/blob/main/tutorials/job-api/README.md",
       "documentation": "https://dietmarwo.github.io/fcmaes-rust/",

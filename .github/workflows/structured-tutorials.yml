@@ -96,6 +96,14 @@ jobs:
           # Floats to 1e-6: SciPy reference values vary in the last digits between CPUs.
           compare = src / "SQP-craft/tutorials/_support/compare_results.py"
 
+          def comparer(repo):
+              # A repository's own comparison where it has one: LP-IP-craft's
+              # ignores the version label of its native backend (a release
+              # changes that label, not the arithmetic), as SQP-craft's does
+              # for its active-set backend. Other chapters use SQP-craft's.
+              own = src / repo / "tutorials/_support/compare_results.py"
+              return own if own.exists() else compare
+
           def stable(chapter, preset, summary):
               # Drop the parts whose solver path follows last-digit differences
               # of the CPU-specific NumPy and OpenBLAS kernels; with other
@@ -141,7 +149,7 @@ jobs:
                           reduced.parent.mkdir(parents=True, exist_ok=True)
                           reduced.write_text(json.dumps(stable(chapter, preset, json.loads(path.read_text()))))
                           pair.append(reduced)
-                      r = subprocess.run([sys.executable, compare, *pair], capture_output=True, text=True)
+                      r = subprocess.run([sys.executable, comparer(repo), *pair], capture_output=True, text=True)
                       print(r.stdout, end="", flush=True)
                       if r.returncode:
                           if "::error" not in r.stdout:

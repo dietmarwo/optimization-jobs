@@ -288,7 +288,11 @@ two-objective archives (`fcmaes.pareto`, `ParetoArchive2D`). jSO, the
 jSO→CMA sequence and the CMA-ES option `repair_z` need fcmaes 2.2.0 or
 fcmaes-rust/`fcmaes-core` 0.4.0 (`"fcmaes>=2.2"`, `"fcmaes-rust>=0.4"`); so do
 the PGPE fixes of fcmaes 2.2.0 and, in the fcmaes-rust job worker, the
-`fcmaes.retry/1` kinds `jso` and `crfmnes_bite` (CR-FM-NES → BiteOpt). Check the
+`fcmaes.retry/1` kinds `jso` and `crfmnes_bite` (CR-FM-NES → BiteOpt).
+fcmaes 2.3.0 and fcmaes-rust 0.5.0 (27 November 2026) spend less time per
+evaluation. fcmaes 2.3.0 also changes results at equal settings: CMA-ES no
+longer stops early, and CR-FM-NES, PGPE and Dual Annealing keep to the
+evaluation budget. Check the
 registry for the installed version; for changes after the latest release,
 build from source, for example
 `python -m pip install "git+https://github.com/dietmarwo/fast-cma-es" --config-settings=cmake.define.FCMAES_FETCH_EIGEN=ON`,
@@ -298,18 +302,18 @@ and in Rust use git dependencies ([below](#rust-crates)).
 
 ```toml
 [dependencies]
-fcmaes-core = "0.4"          # 0.4.0 or later has jSO, crfmnes_bite and repair_z
+fcmaes-core = "0.5"          # 0.4.0 or later has jSO, crfmnes_bite and repair_z
 # LP/MIP: the model, options and checks, and the solver
-lp-ip-craft = "0.30"
-lp-ip-craft-native = "0.30"
+lp-ip-craft = "0.33"
+lp-ip-craft-native = "0.33"
 # Smooth NLP: the core (ProblemSpec, NlpProblem), the solver and a QP backend
-sqp-craft = "0.20"
-sqp-craft-solver = "0.20"
-sqp-craft-clarabel = "0.20"  # or sqp-craft-activeset
+sqp-craft = "0.21"
+sqp-craft-solver = "0.21"
+sqp-craft-clarabel = "0.21"  # or sqp-craft-activeset
 ```
 
 LP-IP-craft and SQP-craft are on crates.io since October 2026; the versions
-above are those of 20 November 2026. If a version is not on crates.io yet, or for changes after the latest
+above are those of 27 November 2026. If a version is not on crates.io yet, or for changes after the latest
 release, use git dependencies, ideally with a pinned `rev`, for example
 `lp-ip-craft = { git = "https://github.com/dietmarwo/LP-IP-craft", rev = "..." }`.
 
