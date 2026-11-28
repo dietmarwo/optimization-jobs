@@ -13,12 +13,11 @@ use sha2::Sha256;
 use std::{
     fs::{self, File},
     io::{self, Read, Write},
-    net::IpAddr,
+    net::{Ipv4Addr, Ipv6Addr},
     os::unix::fs::{DirBuilderExt, PermissionsExt},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
-use url::Url;
 
 pub(super) const EXTENSION: &str = "io.modelcontextprotocol/files";
 pub(super) const TOOL: &str = "upload_input";
@@ -26,7 +25,8 @@ const TARGET_SECONDS: u64 = 300;
 const STATE_SECONDS: u64 = 900;
 
 pub(super) struct Uploads {
-    origin: Url,
+    /// `scheme://host[:port]`, without a trailing slash.
+    origin: String,
     staging: PathBuf,
     key: [u8; 32],
 }
@@ -91,6 +91,61 @@ fn bad_config(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
 
+/// The transfer origin in normal form, or `None` unless `endpoint` is
+/// `https://host[:port]`, or `http://` with a loopback host, and nothing
+/// else: no user information, path, query or fragment. A host is an ASCII
+/// DNS name, an IPv4 address or a bracketed IPv6 address.
+fn origin(endpoint: &str) -> Option<String> {
+    let (scheme, authority) = endpoint
+        .strip_suffix('/')
+        .unwrap_or(endpoint)
+        .split_once("://")?;
+    let (host, port, loopback) = if let Some(rest) = authority.strip_prefix('[') {
+        let (address, port) = rest.split_once(']')?;
+        let address: Ipv6Addr = address.parse().ok()?;
+        let port = match port {
+            "" => None,
+            port => Some(port.strip_prefix(':')?),
+        };
+        (format!("[{address}]"), port, address.is_loopback())
+    } else {
+        let (host, port) = match authority.rsplit_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        };
+        let label = |label: &str| {
+            (1..=63).contains(&label.len())
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+        };
+        if host.len() > 253 || !host.split('.').all(label) {
+            return None;
+        }
+        let host = host.to_ascii_lowercase();
+        let loopback = host == "localhost"
+            || host
+                .parse::<Ipv4Addr>()
+                .is_ok_and(|address| address.is_loopback());
+        (host, port, loopback)
+    };
+    if let Some(port) = port {
+        let digits = (1..=5).contains(&port.len()) && port.bytes().all(|b| b.is_ascii_digit());
+        if !digits || port.parse::<u16>().ok()? == 0 {
+            return None;
+        }
+    }
+    if !(scheme == "https" || (scheme == "http" && loopback)) {
+        return None;
+    }
+    Some(match port {
+        Some(port) => format!("{scheme}://{host}:{port}"),
+        None => format!("{scheme}://{host}"),
+    })
+}
+
 fn valid_token(token: &str) -> bool {
     token.len() == 32
         && token
@@ -126,27 +181,9 @@ fn load_key(directory: &Path) -> io::Result<[u8; 32]> {
 
 impl Uploads {
     pub fn new(root: &Path, endpoint: &str) -> io::Result<Self> {
-        let origin =
-            Url::parse(endpoint).map_err(|_| bad_config("invalid Files endpoint origin"))?;
-        let loopback = origin.host_str().is_some_and(|host| {
-            host == "localhost"
-                || host
-                    .trim_matches(['[', ']'])
-                    .parse::<IpAddr>()
-                    .is_ok_and(|address| address.is_loopback())
-        });
-        if origin.host().is_none()
-            || !(origin.scheme() == "https" || (origin.scheme() == "http" && loopback))
-            || origin.path() != "/"
-            || origin.query().is_some()
-            || origin.fragment().is_some()
-            || !origin.username().is_empty()
-            || origin.password().is_some()
-        {
-            return Err(bad_config(
-                "Files endpoint must be an HTTPS origin or an HTTP loopback origin",
-            ));
-        }
+        let origin = origin(endpoint).ok_or_else(|| {
+            bad_config("Files endpoint must be an HTTPS origin or an HTTP loopback origin")
+        })?;
         let directory = root.join("mcp");
         fs::create_dir_all(&directory)?;
         let staging = directory.join("uploads");
@@ -171,7 +208,7 @@ impl Uploads {
     fn mac(&self, token: &str, expires_at: u64, args: &Arguments) -> Hmac<Sha256> {
         let mut mac = Hmac::new_from_slice(&self.key).expect("32-byte HMAC key");
         // Bind the signed state to the complete validated arguments and target.
-        let bound = serde_json::to_vec(&(TOOL, self.origin.as_str(), token, expires_at, args))
+        let bound = serde_json::to_vec(&(TOOL, &self.origin, token, expires_at, args))
             .expect("serializable upload state");
         mac.update(&bound);
         mac
@@ -200,11 +237,11 @@ impl Uploads {
             target_expires_at: now + TARGET_SECONDS,
             expires_at: now + STATE_SECONDS,
         };
+        // Staged files of expired grants would otherwise stay until the
+        // next server start.
+        self.clean();
         let token = tools::task_token()?;
-        let target = self
-            .origin
-            .join(&format!("uploads/{token}"))
-            .expect("valid Files target from an HTTP origin");
+        let target = format!("{}/uploads/{token}", self.origin);
         let signature = URL_SAFE_NO_PAD.encode(
             self.mac(&token, grant.expires_at, args)
                 .finalize()
@@ -214,7 +251,7 @@ impl Uploads {
         Ok(json!({
             "resultType": "upload_required",
             "uploads": [{
-                "fileId": args.file.id, "url": target.as_str(), "method": "PUT",
+                "fileId": args.file.id, "url": target, "method": "PUT",
                 "credentials": "omit", "expiresAt": tasks::iso(grant.target_expires_at as f64),
             }],
             "requestState": format!("{token}.{}.{signature}", grant.expires_at),
@@ -392,6 +429,54 @@ pub(super) fn definition() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_bare_https_or_loopback_http_origin_is_accepted() {
+        for (endpoint, normal) in [
+            ("https://files.example.org", "https://files.example.org"),
+            (
+                "https://Files.Example.org:8443/",
+                "https://files.example.org:8443",
+            ),
+            ("https://203.0.113.7", "https://203.0.113.7"),
+            ("https://[2001:db8::1]:8443", "https://[2001:db8::1]:8443"),
+            ("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
+            ("http://localhost:9/", "http://localhost:9"),
+            ("http://[::1]:8000", "http://[::1]:8000"),
+        ] {
+            assert_eq!(origin(endpoint).as_deref(), Some(normal), "{endpoint}");
+        }
+        for endpoint in [
+            "http://files.example.org",
+            "http://192.0.2.1:8000",
+            "http://[2001:db8::1]",
+            "HTTPS://files.example.org",
+            "ftp://files.example.org",
+            "files.example.org",
+            "https://",
+            "https:///uploads",
+            "https://user@files.example.org",
+            "https://user:secret@files.example.org",
+            "https://files.example.org/uploads",
+            "https://files.example.org//",
+            "https://files.example.org?x=1",
+            "https://files.example.org#x",
+            "https://files.example.org:",
+            "https://files.example.org:0",
+            "https://files.example.org:65536",
+            "https://files.example.org:+80",
+            "https://files.example.org:80:80",
+            "https://-files.example.org",
+            "https://files..example.org",
+            "https://files_1.example.org",
+            "https://[::1",
+            "https://[::1]8443",
+            "https://[not-an-address]",
+            "https://files.example.org /",
+        ] {
+            assert_eq!(origin(endpoint), None, "{endpoint}");
+        }
+    }
 
     #[test]
     fn a_correctly_signed_state_cannot_be_used_after_expiry() {

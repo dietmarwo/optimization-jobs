@@ -1148,9 +1148,10 @@ for the process; after an `initialize` with 2025-03-26, JSON-RPC batches are
 answered as batches. Another version
 gets `UnsupportedProtocolVersion` (`-32022`) listing the supported ones.
 The July revision adds Resources and Skills. `subscriptions/listen` delivers
-task notifications. Modern tool listings are immediately stale and private
-because extension capabilities can vary by request. Discovery and static
-resources have public one-hour freshness hints.
+task notifications. Discovery, static resources and the general tool
+listing have public one-hour freshness hints. A request that declares the
+Apps or Files extension gets a listing with one more tool; that listing is
+private and immediately stale, so it is not reused for another request.
 `notifications/cancelled` stops a request that only reads, such as a long
 `wait_job`, without stopping its job. A request that changes a job
 (`submit_job`, `cancel_job`, `kill_job`, `repair_job`) runs to its end
@@ -1208,6 +1209,12 @@ hash and returns the same input reference fields as `put_input`.
 An invalid or expired retry state returns `-32602`. A valid retry requires a
 staged file and follows the shared input store quota. The grant expires
 after five minutes and the signed retry state after fifteen minutes.
+A retry may be repeated while its state is valid and returns the same
+reference. The staged copy stays in `NODE/mcp/uploads/` until then and is
+removed when the server issues its next grant or starts. Staged copies do
+not count toward the input store quota. `--files-endpoint` takes a bare
+origin, `https://HOST[:PORT]` or `http://` on a loopback host, with an
+ASCII host name or an IP address.
 Use the ordinary `get_artifact` interface for outputs.
 
 ### Interoperability checks

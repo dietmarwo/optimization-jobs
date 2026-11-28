@@ -367,8 +367,15 @@ class Protocol(Server):
 
     def test_tool_definitions(self):
         result = self.client.request("tools/list")["result"]
-        self.assertEqual(result["cacheScope"], "private")
-        self.assertEqual(result["ttlMs"], 0)
+        # The general listing is the same for every client and stays cacheable.
+        self.assertEqual(result["cacheScope"], "public")
+        self.assertEqual(result["ttlMs"], 3_600_000)
+        # A listing extended for a declared extension is not to be reused.
+        extended = self.client.request("tools/list", extra_meta={
+            "io.modelcontextprotocol/clientCapabilities": {"extensions": {"io.modelcontextprotocol/ui": {}}},
+        })["result"]
+        self.assertEqual([t["name"] for t in extended["tools"]], [*TOOLS, "view_result_page"])
+        self.assertEqual((extended["cacheScope"], extended["ttlMs"]), ("private", 0))
         tools = {t["name"]: t for t in result["tools"]}
         self.assertEqual(list(tools), TOOLS)
         self.assertEqual(result, self.client.request("tools/list")["result"])

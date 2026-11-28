@@ -327,15 +327,17 @@ pub fn definitions(modern: bool) -> Vec<Value> {
 pub(super) fn output_schema(name: &str) -> Option<Value> {
     let sha256 = json!({"type":"string","pattern":"^[0-9a-f]{64}$"});
     let success = match name {
-        "put_input" | "upload_input" => object(
-            json!({
+        // Both success shapes stay open, so the runner can add fields.
+        "put_input" | "upload_input" => json!({
+            "type": "object",
+            "required": ["file", "sha256", "bytes", "input_dir"],
+            "properties": {
                 "file": sha256,
                 "sha256": sha256,
                 "bytes": {"type":"integer","minimum":0,"maximum":MAX_INPUT_BYTES},
                 "input_dir": {"type":"string","minLength":1},
-            }),
-            &["file", "sha256", "bytes", "input_dir"],
-        ),
+            },
+        }),
         // Older optimization jobs use completed_retries instead of
         // completed_tasks. Job state, ID and directory are common to both.
         "get_job" | "wait_job" => json!({

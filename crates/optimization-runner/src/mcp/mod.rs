@@ -448,6 +448,7 @@ impl Server {
             (_, "tools/list") => {
                 let mut list = tools::definitions(ctx.modern);
                 list.push(apps::definition(false));
+                let general = list.len();
                 let app = ctx.modern && extension(params, apps::EXTENSION).is_object();
                 if app {
                     list.push(apps::definition(true));
@@ -456,12 +457,19 @@ impl Server {
                 if files_enabled && extension(params, uploads::EXTENSION).is_object() {
                     list.push(uploads::definition());
                 }
+                let extended = list.len() > general;
                 let mut result = json!({"tools": list});
                 if ctx.modern {
-                    // A connection can list tools with different extension
-                    // capabilities. Avoid reusing the filtered listing.
-                    result["ttlMs"] = json!(0);
-                    result["cacheScope"] = json!("private");
+                    // The general listing is the same for every client. A
+                    // listing extended for a declared extension must not be
+                    // reused for a request that declares another set.
+                    let (ttl, scope) = if extended {
+                        (0, "private")
+                    } else {
+                        (CACHE_MS, "public")
+                    };
+                    result["ttlMs"] = json!(ttl);
+                    result["cacheScope"] = json!(scope);
                 }
                 Reply::Ok(result)
             }
