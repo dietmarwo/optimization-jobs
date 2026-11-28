@@ -42,12 +42,13 @@ MCP = TARGET / "optimization-mcp"
 FAKE = Path(__file__).resolve().parent / "fake_worker.py"
 GUIDE = REPO / "crates/optimization-runner/guide/ai-context.md"
 TASKS = "io.modelcontextprotocol/tasks"
+SKILLS = "io.modelcontextprotocol/skills"
 VERSION = "2026-07-28"
 TERMINAL = {"completed", "failed", "cancelled", "timed_out", "interrupted"}
 WORKER = next((name for name, (binary, _, _) in REAL.items() if (TARGET / binary).exists()), None)
 TOOLS = ["get_guide", "describe_node", "describe_worker", "put_input", "validate_job", "submit_job", "get_job",
          "wait_job", "get_result", "get_events", "get_artifact", "list_jobs", "cancel_job", "kill_job",
-         "repair_job"]
+         "repair_job", "view_result"]
 
 
 def job_id(key):
@@ -128,15 +129,20 @@ class Client:
         self.notifications = []
         self.responses = {}
         self.next_id = 0
+        self.sent_bytes = 0
+        self.received_bytes = 0
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
         for line in self.process.stdout:
+            self.received_bytes += len(line.encode())
             self.messages.put(json.loads(line))
         self.messages.put(None)
 
     def send(self, message):
-        self.process.stdin.write(json.dumps(message) + "\n")
+        wire = json.dumps(message) + "\n"
+        self.sent_bytes += len(wire.encode())
+        self.process.stdin.write(wire)
         self.process.stdin.flush()
 
     def start(self, method, params=None, modern=True, tasks=False, extra_meta=None):
@@ -284,8 +290,9 @@ class Protocol(Server):
         self.assertEqual(result["resultType"], "complete")
         self.assertEqual(result["supportedVersions"][0], VERSION)
         self.assertIn("2025-11-25", result["supportedVersions"])
-        self.assertEqual(result["capabilities"]["extensions"], {TASKS: {}})
+        self.assertEqual(result["capabilities"]["extensions"], {TASKS: {}, SKILLS: {}})
         self.assertIn("tools", result["capabilities"])
+        self.assertIn("resources", result["capabilities"])
         self.assertEqual(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "optimization-mcp")
         self.assertIn("submit_job", result["instructions"])
         self.assertIn("call get_guide first", result["instructions"])
@@ -360,8 +367,15 @@ class Protocol(Server):
 
     def test_tool_definitions(self):
         result = self.client.request("tools/list")["result"]
+        # The general listing is the same for every client and stays cacheable.
         self.assertEqual(result["cacheScope"], "public")
-        self.assertGreater(result["ttlMs"], 0)
+        self.assertEqual(result["ttlMs"], 3_600_000)
+        # A listing extended for a declared extension is not to be reused.
+        extended = self.client.request("tools/list", extra_meta={
+            "io.modelcontextprotocol/clientCapabilities": {"extensions": {"io.modelcontextprotocol/ui": {}}},
+        })["result"]
+        self.assertEqual([t["name"] for t in extended["tools"]], [*TOOLS, "view_result_page"])
+        self.assertEqual((extended["cacheScope"], extended["ttlMs"]), ("private", 0))
         tools = {t["name"]: t for t in result["tools"]}
         self.assertEqual(list(tools), TOOLS)
         self.assertEqual(result, self.client.request("tools/list")["result"])
@@ -379,6 +393,209 @@ class Protocol(Server):
         self.assertEqual((error["code"], error["message"]), (-32602, "Unknown tool: nope"))
         error = self.client.request("tools/call", {"name": "get_job", "arguments": [1]})["error"]
         self.assertEqual(error["code"], -32602)
+
+
+class ModernFeatures(Server):
+    def test_handshake_versions_use_the_job_handle_workflow(self):
+        for version in ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"):
+            with self.subTest(version=version):
+                client = self.connect()
+                params = {"protocolVersion": version, "capabilities": {},
+                          "clientInfo": {"name": "handshake test", "version": "1"}}
+                initialized = client.request("initialize", params, modern=False)["result"]
+                self.assertEqual(initialized["protocolVersion"], version)
+                self.assertEqual(initialized["capabilities"], {"tools": {"listChanged": False}})
+                for method in ("skills/list", "resources/list"):
+                    self.assertEqual(client.request(method, modern=False)["error"]["code"], -32601)
+                tools = client.request("tools/list", modern=False)["result"]["tools"]
+                self.assertEqual([tool["name"] for tool in tools], TOOLS)
+                self.assertFalse(any("outputSchema" in tool for tool in tools))
+                client.ok("get_guide", {"section": "The MCP server"}, modern=False)
+                stored = client.ok("put_input", {"content": "fixture"}, modern=False)
+                self.assertEqual(stored["bytes"], 7)
+                handle = client.ok("submit_job", {"job": fake(version, {"mode": "complete"})}, modern=False)
+                self.assertIn("job_id", handle)
+                state = client.ok("wait_job", {"job_id": handle["job_id"]}, modern=False)
+                self.assertEqual(state["state"], "completed")
+                self.assertEqual(client.ok("get_result", {"job_id": handle["job_id"]},
+                                           modern=False)["claims"], {"best_found": 1})
+
+    def test_output_schemas_match_runner_state_snapshots_and_coded_errors(self):
+        if discovery.jsonschema is None:
+            if discovery.schema_checks_required():
+                self.fail("jsonschema is required")
+            self.skipTest("jsonschema is unavailable")
+        definitions = self.client.request("tools/list")["result"]["tools"]
+        schemas = {d["name"]: d["outputSchema"] for d in definitions if "outputSchema" in d}
+        self.assertEqual(set(schemas), {"put_input", "get_job", "wait_job"})
+        self.assertEqual(schemas["get_job"], schemas["wait_job"])
+        validators = {}
+        for name, schema in schemas.items():
+            discovery.jsonschema.Draft202012Validator.check_schema(schema)
+            validators[name] = discovery.jsonschema.Draft202012Validator(schema)
+
+        def check(name, arguments, error=False):
+            result = self.client.tool(name, arguments)
+            self.assertEqual(result["isError"], error)
+            validators[name].validate(result["structuredContent"])
+            return result["structuredContent"]
+
+        check("put_input", {"content": "a model"})
+        check("put_input", {}, error=True)
+        check("get_job", {"job_id": "f" * 32}, error=True)
+        job_id = self.client.ok("submit_job", {"job": fake("schema-states", {"mode": "complete"})})["job_id"]
+        state = self.wait(job_id)
+        check("wait_job", {"job_id": job_id})
+        snapshot = Path(state["directory"]) / "job.json"
+        recorded = snapshot.read_bytes()
+        try:
+            # Replay persisted states through the real read path. Seeding a
+            # snapshot makes transient states observable on every machine.
+            for value in ("submitted", "starting", "waiting", "running", *sorted(TERMINAL)):
+                fixture = {**json.loads(recorded), "state": value}
+                snapshot.write_text(json.dumps(fixture))
+                with self.subTest(state=value):
+                    self.assertEqual(check("get_job", {"job_id": job_id})["state"], value)
+            snapshot.write_text(json.dumps({**json.loads(recorded), "state": "waiting", "boot_id": "old"}))
+            observed = check("wait_job", {"job_id": job_id})
+            self.assertEqual(observed["observed_state"], "interrupted_after_reboot")
+        finally:
+            snapshot.write_bytes(recorded)
+
+    def test_skills_catalog_without_client_opt_in(self):
+        listing = self.client.request("skills/list")["result"]
+        self.assertEqual(listing["resultType"], "complete")
+        self.assertEqual(listing["cacheScope"], "public")
+        self.assertGreater(listing["ttlMs"], 0)
+        self.assertNotIn("nextCursor", listing)
+        entries = listing["skills"]
+        self.assertEqual(len(entries), 3)
+        resource_listing = self.client.request("resources/list")["result"]
+        listed = {entry["uri"] for entry in resource_listing["resources"]}
+        for entry in entries:
+            self.assertEqual(self.client.request("skills/get", {"uri": entry["uri"]})["result"]["skill"], entry)
+            for file in entry["resources"]:
+                self.assertIn(file["uri"], listed)
+                content, = self.client.request("resources/read", {"uri": file["uri"]})["result"]["contents"]
+                self.assertEqual(content["mimeType"], "text/markdown")
+                body = content["text"].encode()
+                self.assertEqual(file["size"], len(body))
+                self.assertEqual(file["digest"], "sha256:" + hashlib.sha256(body).hexdigest())
+        unknown = "skill://optimization-jobs/choose-optimization-solver/unserved.md"
+        support = entries[0]["resources"][1]["uri"]
+        for method, arguments in [
+            ("skills/list", {"cursor": "skills:16"}), ("resources/list", {"cursor": "resources:0"}),
+            ("skills/get", {"uri": unknown}), ("skills/get", {"uri": support}),
+            ("resources/read", {"uri": unknown}),
+        ]:
+            self.assertEqual(self.client.request(method, arguments)["error"]["code"], -32602)
+        self.assertEqual(self.client.request("resources/templates/list")["result"]["resourceTemplates"], [])
+
+    def test_result_viewer_supports_tool_only_clients(self):
+        view = next(t for t in self.client.request("tools/list")["result"]["tools"] if t["name"] == "view_result")
+        uri = view["_meta"]["ui"]["resourceUri"]
+        resource, = self.client.request("resources/read", {"uri": uri})["result"]["contents"]
+        self.assertEqual(resource["mimeType"], "text/html;profile=mcp-app")
+        self.assertIn("ui/initialize", resource["text"])
+        job_id = self.client.ok("submit_job", {"job": fake("text-view", {"mode": "complete"})})["job_id"]
+        state = self.wait(job_id)
+        self.assertEqual(state["state"], "completed")
+        args = {"job_id": job_id, "task_id": 0}
+        result = self.client.tool("view_result", args)
+        self.assertFalse(result["isError"])
+        self.assertEqual(result["structuredContent"]["kind"], "summary")
+        self.assertIn("best_found", result["content"][0]["text"])
+        self.assertEqual(self.client.request("tools/call", {"name":"view_result_page", "arguments":args})
+                         ["error"]["code"], -32602)
+
+
+class SkillWorkflows(Server):
+    def read_skill(self, name):
+        uri = f"skill://optimization-jobs/{name}/SKILL.md"
+        return self.client.request("resources/read", {"uri": uri})["result"]["contents"][0]["text"]
+
+    def example(self, worker, profile):
+        binary = TARGET / REAL[worker][0]
+        if not binary.is_file():
+            self.skipTest(f"{worker} worker unavailable")
+        if WORKER != worker:
+            self.call("workers", "add", "--id", worker, "--executable", str(binary))
+        description = self.client.ok("describe_worker", {"worker": worker})
+        return next(example for example in description["examples"] if example["profile"] == profile)
+
+    def test_choose_lp_and_run_a_linear_model(self):
+        self.assertIn("sparse linear model", self.read_skill("choose-optimization-solver"))
+        example = self.example("lp-ip", "lp-ip.solve/1")
+        args = mcp_only(self.client, "lp-ip", example, "skill-linear")
+        self.client.ok("validate_job", args)
+        job_id = self.client.ok("submit_job", args)["job_id"]
+        self.assertEqual(self.wait(job_id)["state"], "completed")
+        record = self.client.ok("get_result", {"job_id": job_id})["tasks"][0]
+        self.assertEqual(record["claim"], "numerical_optimum")
+        self.assertEqual(record["evidence"], "rechecked")
+
+    def test_run_eight_single_threaded_fcmaes_retries(self):
+        self.assertIn("eight single-threaded outer retries", self.read_skill("run-optimization-job"))
+        self.assertEqual(self.client.ok("describe_node")["capacity"], 8)
+        example = self.example("fcmaes", "fcmaes.retry/1")
+        args = mcp_only(self.client, "fcmaes", example, "skill-eight-retries")
+        args["job"]["resources"] = {"cpu_slots": 8, "outer_workers": 8, "inner_threads": 1}
+        args["job"]["payload"]["retries"] = 8
+        validation = self.client.ok("validate_job", args)
+        self.assertEqual(validation["resolved"]["task_count"], 8)
+        handle = self.client.ok("submit_job", args)
+        self.assertEqual(self.wait(handle["job_id"])["state"], "completed")
+        self.assertEqual(self.client.ok("submit_job", args)["job_id"], handle["job_id"])
+        summary = self.client.ok("get_result", {"job_id": handle["job_id"]})
+        self.assertEqual(summary["completed_tasks"], 8)
+        self.assertTrue(summary["accounting_complete"])
+
+    def test_interpret_a_time_limited_run(self):
+        self.assertIn("work is known if accounting is incomplete", self.read_skill("interpret-optimization-result"))
+        job = fake("skill-time-limited", {"mode": "sleep", "seconds": 5}, wall=1)
+        job_id = self.client.ok("submit_job", {"job": job})["job_id"]
+        self.assertEqual(self.wait(job_id)["state"], "timed_out")
+        summary = self.client.ok("get_result", {"job_id": job_id})
+        self.assertEqual(summary["completed_tasks"], 0)
+        self.assertEqual(summary["claims"], {})
+        self.assertEqual(summary["tasks"], [])
+        self.assertFalse(summary["accounting_complete"])
+
+    def test_view_real_mode_and_map_elites_results(self):
+        ui = {"io.modelcontextprotocol/clientCapabilities": {
+            "extensions": {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}}
+        }}
+        tools = self.client.request("tools/list", extra_meta=ui)["result"]["tools"]
+        pager = next(t for t in tools if t["name"] == "view_result_page")
+        self.assertEqual(pager["_meta"]["ui"]["visibility"], ["app"])
+        for profile in ("fcmaes.mode/1", "fcmaes.map-elites/1"):
+            with self.subTest(profile=profile):
+                example = self.example("fcmaes", profile)
+                args = mcp_only(self.client, "fcmaes", example, f"view-{profile.split('/')[0]}")
+                if profile == "fcmaes.map-elites/1":
+                    args["job"]["payload"]["archive"]["capacity"] = 400
+                    args["job"]["payload"]["generations"] = 100
+                    args["job"]["payload"]["optimizer"]["parameters"]["chunk_size"] = 50
+                job_id = self.client.ok("submit_job", args)["job_id"]
+                self.assertEqual(self.wait(job_id)["state"], "completed")
+                record, = self.client.ok("get_result", {"job_id": job_id, "tasks": [0]})["tasks"]
+                details = record["outcome"]["details"]
+                command = {"job_id": job_id, "task_id": 0}
+                result = self.client.tool("view_result", command)["structuredContent"]
+                if profile == "fcmaes.mode/1":
+                    self.assertEqual(result["items"], [r["objectives"] for r in details["front"]])
+                    self.assertEqual(result["hypervolume"]["reference"], details["hypervolume"]["reference_point"])
+                    self.assertEqual(result["hypervolume"]["value"], details["hypervolume"]["value"])
+                else:
+                    self.assertGreater(result["total"], 128)
+                    self.assertEqual(result["total"], details["occupied"])
+                    self.assertEqual(result["grid"], details["grid"])
+                    self.assertEqual(result["qd_score"], details["qd_score"])
+                    self.assertEqual(result["coverage"], details["coverage"])
+                    second = self.client.tool("view_result_page", {**command, "offset": 128},
+                                              extra_meta=ui)["structuredContent"]
+                    self.assertEqual(second["items"][0]["niche"], details["elites"][128]["niche"])
+                    self.assertEqual(second["items"][0]["fitness"], details["elites"][128]["fitness"])
 
 
 class Jobs(Server):

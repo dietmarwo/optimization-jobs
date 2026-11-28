@@ -19,7 +19,7 @@ solver or simulator of its own.
 ![Pure Rust](https://img.shields.io/badge/runner-100%25%20Rust-brightgreen)
 [![crates.io](https://img.shields.io/crates/v/optimization-runner.svg?cacheSeconds=300)](https://crates.io/crates/optimization-runner)
 [![docs.rs](https://docs.rs/optimization-job-api/badge.svg)](https://docs.rs/optimization-job-api)
-![MCP server](https://img.shields.io/badge/MCP-server%20over%20stdio-blueviolet)
+![MCP 2026-07-28](https://img.shields.io/badge/MCP-2026--07--28%20over%20stdio-blueviolet)
 ![Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
 [![Ecosystem overview](https://img.shields.io/badge/ecosystem-overview-blue)](https://dietmarwo.github.io/optimization-jobs/)
 [![AI agent guide](https://img.shields.io/badge/guide-AI%20agents-blue)](ai-context.md)
@@ -162,7 +162,7 @@ initialized node with registered workers, for example Claude Code:
 claude mcp add optimization-jobs -- "$PWD/target/release/optimization-mcp" --root /tmp/node
 ```
 
-Its fifteen tools serve the guide for agents (`get_guide`, this repository's
+Its sixteen general tools serve the guide for agents (`get_guide`, this repository's
 [`ai-context.md`](ai-context.md)), describe the node (with the CPUs and
 memory the host gives it) and its workers (with JSON Schemas of their
 payloads and runnable examples), store input files such as a new LP model
@@ -181,6 +181,26 @@ black-box models with the native solvers' Python APIs, check each answer
 against an independent reference, and can run as trusted command jobs.
 
 The eight [simulator tutorials](tutorials/simulators/README.md) connect CRN-craft and CFD-craft to native optimization and complete local campaigns, with numerical checks separate from execution status.
+
+### MCP protocol support
+
+`optimization-mcp` implements **MCP 2026-07-28** over stdio, the stateless
+revision informally called “MCP 2.0”. Requests carry their protocol version
+and client capabilities. Use `server/discover` to inspect the server.
+Handshake clients connect with `initialize`.
+
+| Feature | Revision or extension | Availability |
+| --- | --- | --- |
+| Stateless discovery, tools and cache hints | 2026-07-28 | Since 0.3.0 |
+| Durable tasks and task notifications | `io.modelcontextprotocol/tasks` | Since 0.3.0 on 2026-07-28 |
+| Handshake clients | 2025-11-25 through 2024-11-05 | Since 0.3.0 |
+| Output schemas for `put_input`, `get_job` and `wait_job` | 2026-07-28 | 0.6.0 |
+| Discoverable solver, job and result workflows | `io.modelcontextprotocol/skills` beta | 0.6.0 |
+| Read-only MODE and MAP-Elites viewer | `io.modelcontextprotocol/ui` | 0.6.0 on supporting 2026-07-28 hosts |
+| Out-of-band model input upload | `io.modelcontextprotocol/files` draft | 0.6.0 experimental, enabled through `--files-endpoint` |
+
+[Agents and MCP](docs/job-api.md#agents-and-mcp) describes the wire contract
+and client setup.
 
 ## Depending on this repository
 
@@ -248,12 +268,17 @@ python3 scripts/job-api/test_remote.py            # helper/dispatch fault tests;
 # With all three worker binaries in JOB_API_TARGET:
 python3 scripts/job-api/test_remote_ssh.py        # real OpenSSH; simulated manager
 python3 scripts/job-api/test_mcp.py               # the MCP server
+python3 scripts/job-api/test_mcp_files.py         # experimental upload, real LP worker when available
+python3 scripts/job-api/generate_skills.py --check
+npm ci --prefix scripts/job-api/sdk-client --ignore-scripts
+npm test --prefix scripts/job-api/sdk-client
 python3 scripts/job-api/test_integration.py \
   --fcmaes /path/to/fcmaes-job-worker \
   --lp-ip /path/to/lp-ip-job-worker --sqp /path/to/sqp-job-worker
 ```
 
-The schema checks need `pip install "jsonschema>=4.18,<5"`; CI sets
+The SDK and Inspector tests use Node 24.22.3. The binaries run independently
+of Node. The schema checks need `pip install "jsonschema>=4.18,<5"`; CI sets
 `JOB_API_REQUIRE_SCHEMA=1` so they cannot be skipped. `test_remote_ssh.py`
 also needs `pip install "asyncssh>=2.24,<3"` and the OpenSSH client (`ssh`,
 `ssh-keygen`). CI also builds the three

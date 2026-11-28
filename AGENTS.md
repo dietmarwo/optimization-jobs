@@ -35,6 +35,11 @@ python3 -m pip install "jsonschema>=4.18,<5" "asyncssh>=2.24,<3"
 JOB_API_REQUIRE_SCHEMA=1 python3 scripts/job-api/test_review.py   # runner regressions, fake worker
 JOB_API_REQUIRE_SCHEMA=1 python3 scripts/job-api/test_commands.py # command jobs and file transfers
 python3 scripts/job-api/test_mcp.py                               # MCP server
+python3 scripts/job-api/test_mcp_files.py                         # Files upload
+python3 scripts/job-api/generate_skills.py --check
+# Node 24.22.3 is used by these MCP interoperability tests.
+npm ci --prefix scripts/job-api/sdk-client --ignore-scripts
+npm test --prefix scripts/job-api/sdk-client
 python3 scripts/job-api/test_remote.py                            # simulated transport/manager
 # All three real worker binaries in JOB_API_TARGET:
 python3 scripts/job-api/test_remote_ssh.py                        # OpenSSH loopback, simulated manager

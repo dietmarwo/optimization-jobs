@@ -13,10 +13,13 @@
 //!
 //! See the guide's section [Agents and MCP](https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md#agents-and-mcp) for the tools
 //! and their mapping onto the runner.
+mod apps;
 mod guide;
 mod inputs;
+mod resources;
 mod tasks;
 mod tools;
+mod uploads;
 
 use clap::{Parser, ValueEnum};
 use serde_json::{Map, Value, json};
@@ -112,6 +115,9 @@ struct Args {
     /// in bytes.
     #[arg(long, default_value_t = inputs::DEFAULT_STORE_BYTES)]
     input_store_bytes: u64,
+    /// Experimental Files transfer origin. Requires a separate endpoint.
+    #[arg(long)]
+    files_endpoint: Option<String>,
 }
 
 /// How `submit_job` starts jobs (`--launch`).
@@ -158,6 +164,7 @@ pub struct Server {
     pub input_dir: PathBuf,
     /// Limit of the input store's total size.
     pub input_store_bytes: u64,
+    uploads: Option<uploads::Uploads>,
     out: Mutex<io::Stdout>,
     inflight: Mutex<HashMap<String, Arc<AtomicBool>>>,
     initialized: AtomicBool,
@@ -216,6 +223,10 @@ impl Ctx {
 
 fn supported() -> Vec<&'static str> {
     MODERN.iter().chain(LEGACY.iter()).copied().collect()
+}
+
+fn extension<'a>(params: &'a Value, id: &str) -> &'a Value {
+    &params["_meta"][CLIENT_CAPABILITIES]["extensions"][id]
 }
 
 fn server_info() -> Value {
@@ -405,13 +416,19 @@ impl Server {
 
     fn dispatch(&self, method: &str, params: &Value, ctx: &Ctx) -> Reply {
         match (ctx.modern, method) {
-            (true, "server/discover") => Reply::Ok(json!({
-                "supportedVersions": supported(),
-                "capabilities": {"tools": {}, "extensions": {TASKS: {}}},
-                "instructions": INSTRUCTIONS,
-                "ttlMs": CACHE_MS,
-                "cacheScope": "public",
-            })),
+            (true, "server/discover") => {
+                let mut extensions = json!({TASKS: {}, resources::SKILLS: {}});
+                if self.uploads.is_some() {
+                    extensions[uploads::EXTENSION] = json!({"upload":{}});
+                }
+                Reply::Ok(json!({
+                    "supportedVersions": supported(),
+                    "capabilities": {"tools": {}, "resources": {}, "extensions": extensions},
+                    "instructions": resources::instructions(),
+                    "ttlMs": CACHE_MS,
+                    "cacheScope": "public",
+                }))
+            }
             (false, "initialize") => {
                 let version = params["protocolVersion"]
                     .as_str()
@@ -429,10 +446,30 @@ impl Server {
             }
             (false, "ping") => Reply::Ok(json!({})),
             (_, "tools/list") => {
-                let mut result = json!({"tools": tools::definitions()});
+                let mut list = tools::definitions(ctx.modern);
+                list.push(apps::definition(false));
+                let general = list.len();
+                let app = ctx.modern && extension(params, apps::EXTENSION).is_object();
+                if app {
+                    list.push(apps::definition(true));
+                }
+                let files_enabled = ctx.modern && self.uploads.is_some();
+                if files_enabled && extension(params, uploads::EXTENSION).is_object() {
+                    list.push(uploads::definition());
+                }
+                let extended = list.len() > general;
+                let mut result = json!({"tools": list});
                 if ctx.modern {
-                    result["ttlMs"] = json!(CACHE_MS);
-                    result["cacheScope"] = json!("public");
+                    // The general listing is the same for every client. A
+                    // listing extended for a declared extension must not be
+                    // reused for a request that declares another set.
+                    let (ttl, scope) = if extended {
+                        (0, "private")
+                    } else {
+                        (CACHE_MS, "public")
+                    };
+                    result["ttlMs"] = json!(ttl);
+                    result["cacheScope"] = json!(scope);
                 }
                 Reply::Ok(result)
             }
@@ -444,6 +481,14 @@ impl Server {
                 self.task_method(method, params, ctx)
             }
             (true, "subscriptions/listen") => self.listen(params, ctx),
+            (
+                true,
+                "skills/list"
+                | "skills/get"
+                | "resources/list"
+                | "resources/read"
+                | "resources/templates/list",
+            ) => resources::dispatch(method, params),
             _ => Reply::Err(
                 METHOD_NOT_FOUND,
                 format!("Method not found: {method}"),
@@ -467,6 +512,35 @@ impl Server {
                 );
             }
         };
+        if ctx.modern
+            && name == uploads::TOOL
+            && let Some(uploads) = &self.uploads
+        {
+            let supported = extension(params, uploads::EXTENSION)["upload"].is_object();
+            return uploads::call(
+                self,
+                uploads,
+                arguments,
+                params.get("requestState"),
+                supported,
+            );
+        }
+        if ctx.modern && params.get("requestState").is_some() {
+            return Reply::Err(
+                INVALID_PARAMS,
+                "unexpected requestState for this tool".into(),
+                None,
+            );
+        }
+        let paging =
+            name == apps::PAGE && ctx.modern && extension(params, apps::EXTENSION).is_object();
+        if name == apps::VIEW || paging {
+            return match apps::view(self, &arguments, ctx, paging) {
+                Ok(view) => Reply::Ok(view),
+                Err(tools::Fail::Tool(error)) => Reply::Ok(tools::tool_result(error.value(), true)),
+                Err(tools::Fail::Cancelled) => Reply::Silent,
+            };
+        }
         if !tools::exists(name) {
             return Reply::Err(INVALID_PARAMS, format!("Unknown tool: {name}"), None);
         }
@@ -825,6 +899,10 @@ pub fn main() {
         .unwrap_or_else(|e| fail(format!("input directory: {e}")));
     tools::clean_staging(&root);
     inputs::clean(&root);
+    let uploads = args.files_endpoint.as_deref().map(|endpoint| {
+        uploads::Uploads::new(&root, endpoint)
+            .unwrap_or_else(|e| fail(format!("Files endpoint: {e}")))
+    });
     eprintln!(
         "optimization-mcp {}: node {}, runner {}, launch {}",
         env!("CARGO_PKG_VERSION"),
@@ -838,6 +916,7 @@ pub fn main() {
         launch: args.launch,
         input_dir,
         input_store_bytes: args.input_store_bytes,
+        uploads,
         out: Mutex::new(io::stdout()),
         inflight: Mutex::new(HashMap::new()),
         initialized: AtomicBool::new(false),

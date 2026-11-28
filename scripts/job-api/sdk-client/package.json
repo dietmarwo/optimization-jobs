@@ -1,0 +1,15 @@
+{
+  "name": "optimization-jobs-mcp-tests",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "^22.23.4 || ^24.22.1 || >=26.12.1" },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test-stdio.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/ext-apps": "2.0.4",
+    "@modelcontextprotocol/ext-tasks": "0.2.3",
+    "@modelcontextprotocol/inspector": "2.17.0"
+  }
+}

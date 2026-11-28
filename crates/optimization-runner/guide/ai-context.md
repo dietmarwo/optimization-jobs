@@ -600,8 +600,11 @@ The server's limits:
 - A message is at most 64 MiB.
 - At most 64 requests run at a time, of which at most 32 may wait.
 
-Protocol: the server supports MCP 2026-07-28 statelessly (`server/discover`)
-and 2025-11-25 back to 2024-11-05 after `initialize`. It offers tools only.
+Protocol support is MCP 2026-07-28 through `server/discover` and
+per-request metadata, and 2025-11-25 back to 2024-11-05 after `initialize`.
+Every revision offers tools. The July revision also offers Tasks and lets
+clients discover workflows for solver selection, job execution and result
+interpretation with `skills/list`.
 
 Trust: the server cannot register workers, change the node or run code.
 `put_input` stores data, never code. Every connected client acts for the

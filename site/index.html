@@ -110,7 +110,9 @@ python3 tutorials/job-api/run.py --root /tmp/fcmaes-job-tutorial</code></pre>
         <article><h3>Connect an agent</h3><p>Configure its MCP client to launch
           <code>optimization-mcp --root /absolute/path/to/node</code> over stdio,
           using the absolute executable path. The owner must initialize the node
-          and register workers first.</p><p>Then call <code>get_guide</code>,
+          and register workers first.</p><p>From runner 0.6.0, a July MCP client
+          can discover workflows with <code>skills/list</code>. Any client can
+          call <code>get_guide</code>,
           <code>describe_node</code> and <code>describe_worker</code>. Use the returned
           schemas and examples to validate and submit a job.</p></article>
         <article><h3>Budget the CPU explicitly</h3><p>Discover the host and worker

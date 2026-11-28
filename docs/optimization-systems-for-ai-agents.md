@@ -68,7 +68,7 @@ The closest systems match parts of it:
 These strengths are established from source and documentation:
 
 - **Fit for agents.** One routing guide chooses the solver by mathematical
-  structure. The MCP server's 15 tools serve that guide, JSON Schemas and
+  structure. The MCP server's 16 general tools serve that guide, JSON Schemas and
   runnable examples, check a job before it runs, and turn a submitted job into
   an MCP task. Objectives run inside native workers, so no agent or Python
   round trip happens per evaluation.
@@ -122,7 +122,7 @@ measured comparison on fixed workloads ([Section 7](#7-how-to-establish-measured
 
 | System | Agent access | Mathematical scope | Execution and persistence | Compared with fcmaes & craft |
 |---|---|---|---|---|
-| **fcmaes & craft** | MCP server (15 tools, MCP Tasks), CLI, Python and Rust libraries, one routing guide | LP/MILP; smooth constrained NLP up to 256 variables; black-box global; constrained multiobjective; quality diversity; exact-GP surrogate (1-32 variables) | Local Linux node; CPU slots shared by concurrent jobs; hashed inputs, journals and records that outlive the MCP server; repair of interrupted records; explicit placement on registered SSH nodes; campaigns over these jobs (experiment-craft, early) | — |
+| **fcmaes & craft** | MCP 2026-07-28 server (16 general tools, Tasks and Skills), CLI, Python and Rust libraries, one routing guide | LP/MILP; smooth constrained NLP up to 256 variables; black-box global; constrained multiobjective; quality diversity; exact-GP surrogate (1-32 variables) | Local Linux node; CPU slots shared by concurrent jobs; hashed inputs, journals and records that outlive the MCP server; repair of interrupted records; explicit placement on registered SSH nodes; campaigns over these jobs (experiment-craft, early) | — |
 | [GEMSEO](https://gemseo.org/) | Python through a shell; no first-party MCP route found | Broad: LP/MILP (HiGHS, SciPy), SLSQP/NLopt, Ipopt plugin, pymoo, surrogates | Parallel multistart and configurable parallel workflows | Broader engineering modeling and solver plugins; no agent job service, no QD |
 | [libEnsemble](https://github.com/Libensemble/libensemble) + [Ensemble Agent](https://github.com/Libensemble/ensemble_agent) | Agent application with an MCP script-generation server; Python | Generators and simulations the user connects | CPU/GPU/node assignment across nodes, monitoring, cancellation | Much stronger distributed execution; fewer built-in solvers, less packaged agent layer |
 | [Optees](https://github.com/Pablo-gitub/optees) | CLI, REST, MCP, desktop UI | LP/MILP, convex QP, robust linear, packing, knapsack, restricted nonlinear expressions | Asynchronous queue, one dispatch worker, in-memory job records | Closest contract design and adds QP; no shared CPU budget, records do not survive the process |

@@ -10,7 +10,10 @@ Two binaries for versioned optimization jobs on one node:
   (`outer_workers * inner_threads <= cpu_slots`), process supervision,
   cancellation, deadlines, journal recovery and coded errors.
 - `optimization-mcp`: a Model Context Protocol server over stdio that gives
-  agents the same jobs as tools and tasks.
+  agents the same jobs as tools and tasks. It serves MCP 2026-07-28
+  statelessly and supports handshake clients back to 2024-11-05.
+  On 2026-07-28 it offers Tasks and discoverable optimization workflows
+  through the Skills extension.
 
 Install on Linux with Rust 1.88 or newer, from crates.io or, for changes
 after the latest release, from a source checkout:

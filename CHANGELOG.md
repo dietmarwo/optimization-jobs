@@ -8,8 +8,55 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-28
+
+An MCP feature release. On MCP 2026-07-28, informally "MCP 2.0",
+`optimization-mcp` now serves three skills, output schemas for three tools
+and a result viewer, and has an experimental file upload that is off by
+default. The worker SDK `optimization-job-api` is unchanged, and the job
+envelope `optimization.job/0.1`, the worker protocol and the result contract
+`optimization.result/0.2` behave as in 0.5.0. `optimization-run` is
+unchanged. Handshake clients keep their tools and gain `view_result`. The
+worker repositories still pin this repository by git revision.
+
+### Added
+
+- MCP 2026-07-28 serves Resources and three Skills beta workflows generated
+  from the agent guide: `choose-optimization-solver`, `run-optimization-job`
+  and `interpret-optimization-result`. `skills/list` and `skills/get` need
+  no client capability. The existing guide tool stays available on each
+  revision.
+- Publish output schemas for `put_input`, `get_job` and `wait_job` on
+  2026-07-28. Each describes the success shape and the coded error, and
+  leaves room for further fields.
+- `view_result` reports one selected task and serves a read-only MCP App
+  for a MODE Pareto front or MAP-Elites archive. Apps clients can page
+  through larger results with the app-only `view_result_page`. The server
+  now has sixteen general tools.
+- `--files-endpoint` enables draft Files uploads over a separate data
+  connection, through `upload_input`, for clients that declare the
+  extension. Uploads are verified before they enter the input store. The
+  option takes a bare `https` origin, or `http` on a loopback host; the
+  transfer endpoint is a separate process and none is shipped. The draft
+  can change, and so can this tool.
+- A CI job runs the official TypeScript client 2.4.0, the Tasks extension
+  0.2.3 and MCP Inspector 2.17.0 against the release binary. They need Node
+  for tests only.
+
+### Fixed
+
+- Include the required result discriminator on tool results nested inside
+  completed MCP Tasks. Test recovery and cancellation with the official client.
+
 ### Changed
 
+- Name the MCP 2026-07-28 stateless protocol, Tasks and the handshake
+  revisions supported since 0.3.0 in the README, crate README and agent guide.
+- On 2026-07-28, a `tools/list` request that declares the Apps or Files
+  extension gets a listing with one more tool, marked private and
+  immediately stale. The general listing keeps its public one-hour hint.
+- `optimization-runner` depends on `base64` and `hmac` for the upload's
+  signed retry state.
 - The tutorials install the releases of 27 November 2026: the domain-evaluator tutorials `fcmaes` 2.3.0 (was 2.2.0), the structured tutorials `lp-ip-craft` 0.33.0 (was 0.29.0), `sqp-craft` 0.21.0 (was 0.20.0) and `fcmaes-rust` 0.5.0 (was 0.4.0), the simulator tutorial the same three (`sqp-craft` was 0.17.0). The domain-evaluator smoke summaries match; in the structured chapters only labels change. X1 and LP10 record `lp-ip-craft` 0.33.0 and the three effective options that LP-IP-craft added since 0.29.0 (`adaptive_root`, `integer_equality_presolve`, `diagnostics.unweighted_node_retries`); every other recorded value is unchanged.
 - The structured-tutorials workflow compares each repository's chapters with that repository's own `compare_results.py` where it has one, so LP-IP-craft's chapters ignore the version label of its native backend, as its own CI does. Other chapters still use SQP-craft's.
 - The guide's Rust snippet names `fcmaes-core` 0.5, `lp-ip-craft` 0.33 and `sqp-craft` 0.21, and says what changes with fcmaes 2.3.0 and fcmaes-rust 0.5.0. The catalog, the landing page's availability lines and the registry records in `docs/discovery/` name the four releases, installed from PyPI and crates.io on 27 November 2026.

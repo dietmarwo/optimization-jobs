@@ -54,6 +54,13 @@ without it, it runs every check on a tag and skips the upload.
 
 ## Pre-release checks
 
+Run `python3 scripts/job-api/generate_skills.py --check` alongside the
+guide checks. With Node 24.22.3 and the release-mode binaries built, run
+`npm ci --prefix scripts/job-api/sdk-client --ignore-scripts` and
+`npm test --prefix scripts/job-api/sdk-client` for Tasks, tool schemas and
+Skills interoperability. See [Agents and MCP](docs/job-api.md#agents-and-mcp)
+for the tested routes and configurations.
+
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings

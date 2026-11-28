@@ -145,6 +145,11 @@ README examples:
 | optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.5.0 | — |
 
 Use each repository's `RELEASING.md` and existing tested release workflows.
+On 2026-11-28, the 0.6.0 source archives were installed locally with
+the matching SDK archive. From a separate working directory, the installed
+runner initialized a node and MCP Inspector 2.17.0 verified all three
+skills. The published versions in the table above are registry observations.
+
 The discovery changes touched no package version, release tag, dependency pin,
 publication permission or solver behavior. Do not mark a package published just
 because a workflow or crates.io URL exists in a README.

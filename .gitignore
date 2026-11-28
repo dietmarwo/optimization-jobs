@@ -1,2 +1,4 @@
 target/
 __pycache__/
+
+/scripts/job-api/sdk-client/node_modules/
