@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optimization result</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: #172a3a;
+    --muted: #526778;
+    --border: #ccd9e2;
+    --panel: #f3f7fa;
+    --point: #007f83;
+    --reference: #a54519;
+    --hot: #005e66;
+    font: 14px/1.45 system-ui, sans-serif;
+  }
+  :root[data-theme="dark"] {
+    --fg: #ecf4fa;
+    --muted: #b6c7d7;
+    --border: #475d6c;
+    --panel: #202c36;
+    --point: #5cdbd4;
+    --reference: #ff986b;
+    --hot: #70dfcf;
+  }
+  body { margin: 0; color: var(--fg); }
+  main { margin: auto; max-width: 760px; padding: 14px; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  p { margin: 5px 0; }
+  #meta, #counts, #note { color: var(--muted); }
+  #metrics { margin: 9px 0; }
+  #axes, #pages { display: flex; gap: 8px 14px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  #axes[hidden], #pages[hidden] { display: none; }
+  select, button { color: inherit; border: 1px solid var(--border); background: var(--panel); padding: 4px 8px; border-radius: 5px; font: inherit; }
+  button:disabled { opacity: .5; }
+  canvas { display: block; width: 100%; height: 245px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; }
+  canvas[hidden] { display: none; }
+  #table { max-height: 320px; overflow: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  th { background: var(--panel); }
+  @media (max-width: 400px) { main { padding: 8px; } canvas { height: 210px; } th, td { padding: 4px; } }
+</style>
+<main>
+  <h1 id="title">Optimization result</h1>
+  <p id="meta" role="status">Waiting for the job result</p>
+  <p id="metrics"></p>
+  <div id="axes" hidden>
+    <label>Horizontal <select id="x-axis"></select></label>
+    <label>Vertical <select id="y-axis"></select></label>
+  </div>
+  <canvas id="chart" aria-label="Optimization result plot" role="img" hidden></canvas>
+  <div id="table" hidden></div>
+  <p id="note"></p>
+  <div id="pages" hidden>
+    <button id="previous" type="button">Previous</button>
+    <button id="next" type="button">Next</button>
+  </div>
+  <p id="counts"></p>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const chart = $("chart");
+  const pending = new Map();
+  const formatter = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 7 });
+  const fmt = (number) => typeof number === "number" ? formatter.format(number) : "unavailable";
+  let nextId = 0;
+  let data;
+  let connected = false;
+  let busy = false;
+
+  function send(message) {
+    parent.postMessage({ jsonrpc: "2.0", ...message }, "*");
+  }
+
+  function request(method, params) {
+    const id = ++nextId;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error("The host did not answer."));
+      }, 15000);
+      pending.set(id, (reply) => {
+        clearTimeout(timer);
+        pending.delete(id);
+        if (reply.error) reject(new Error(reply.error.message));
+        else resolve(reply.result);
+      });
+      send({ id, method, params });
+    });
+  }
+
+  function setTheme(context) {
+    document.documentElement.dataset.theme = context?.theme ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    draw();
+  }
+
+  window.addEventListener("message", ({source, data: message}) => {
+    if (source !== parent || message?.jsonrpc !== "2.0") return;
+    if (!message.method) {
+      pending.get(message.id)?.(message);
+    } else if (message.method === "ui/notifications/tool-result") {
+      receive(message.params);
+    } else if (message.method === "ui/notifications/host-context-changed") {
+      setTheme(message.params);
+    } else if (message.method === "ui/notifications/tool-cancelled") {
+      $("meta").textContent = "The tool call was cancelled.";
+    } else if (message.method === "ping" || message.method === "ui/resource-teardown") {
+      send({id: message.id, result: {}});
+    }
+  });
+
+  request("ui/initialize", {
+    appInfo: { name: "optimization-jobs result viewer", version: "0.6.0" },
+    appCapabilities: { availableDisplayModes: ["inline"] },
+    protocolVersion: "2026-01-26",
+  }).then((result) => {
+    connected = true;
+    setTheme(result.hostContext);
+    send({ method: "ui/notifications/initialized" });
+    reportSize();
+  }).catch((error) => { $("meta").textContent = error.message; });
+
+  let lastHeight;
+  function reportSize() {
+    const height = Math.ceil(document.querySelector("main").getBoundingClientRect().height);
+    if (connected && height !== lastHeight) {
+      lastHeight = height;
+      send({ method: "ui/notifications/size-changed", params: { height } });
+    }
+  }
+  new ResizeObserver(() => { draw(); reportSize(); }).observe(document.querySelector("main"));
+
+  function receive(result) {
+    if (result?.isError || !result?.structuredContent) {
+      $("meta").textContent = result?.content?.[0]?.text || "No result is available.";
+      return;
+    }
+    data = result.structuredContent;
+    render();
+  }
+
+  function render() {
+    $("title").textContent = data.label;
+    $("meta").textContent = "Task " + data.task_id + " · Job " + data.state +
+      " · " + data.claim + " · " + data.termination + " · " + data.evidence;
+    const hasItems = data.items.length > 0;
+    const from = data.offset + (hasItems ? 1 : 0);
+    const to = data.offset + data.items.length;
+    $("counts").textContent = data.kind === "summary" ? "" :
+      "Showing " + (hasItems ? from + "–" + to : "0") + " of " + data.total +
+      (data.kind === "mode" ? " front points" : " occupied cells");
+    const progress = data.requested_generations == null ? "" :
+      " · " + fmt(data.generations) + " of " + fmt(data.requested_generations) + " generations";
+    const mode = data.kind === "mode";
+    const map = data.kind === "map-elites";
+    $("axes").hidden = !(mode && data.objective_count > 2 && hasItems);
+    $("note").textContent = "";
+    if (mode) {
+      const hv = data.hypervolume;
+      const volume = hv?.value == null ? "" :
+        " · Hypervolume " + fmt(hv.value) + " (" + hv.dimension + " objectives, " +
+        (hv.exact ? "exact" : hv.method || "estimated") + ")" +
+        (hv.standard_error == null ? "" : " ± " + fmt(hv.standard_error) + " SE");
+      $("metrics").textContent = (data.front_source ? "Front source " + data.front_source + " · " : "") +
+        data.total + " feasible front points" + volume + progress;
+      if (hv?.reference?.length === 2) {
+        $("note").textContent = "Reference point on plotted axes (" + hv.reference.map(fmt).join(", ") + ")";
+      }
+      if (!hasItems) $("note").textContent = "No feasible front points in this task.";
+      if (!$("axes").hidden) setAxisControls();
+    } else if (map) {
+      const coverage = typeof data.coverage === "number" ? fmt(100 * data.coverage) + "%" : "unavailable";
+      $("metrics").textContent = "Coverage " + coverage + " · QD score " +
+        fmt(data.qd_score) + " · " + data.archive_kind + " · " + fmt(data.capacity) + " niches" + progress;
+      if (data.grid && hasItems) {
+        $("note").textContent = "Descriptor 1 [" + data.descriptor_lower.map(fmt)[0] + ", " +
+          data.descriptor_upper.map(fmt)[0] + "] · Descriptor 2 [" + data.descriptor_lower.map(fmt)[1] +
+          ", " + data.descriptor_upper.map(fmt)[1] + "] · Color shows fitness on this page.";
+      } else if (hasItems) {
+        $("note").textContent = data.descriptor_count > 4 ? "First four descriptor coordinates are shown." : "";
+      } else {
+        $("note").textContent = "This task recorded no occupied niches.";
+      }
+    } else {
+      $("metrics").textContent = "Read the selected task with get_result for its full evidence.";
+    }
+
+    chart.hidden = !(hasItems && (mode || data.grid));
+    if (!chart.hidden) {
+      chart.setAttribute("aria-label", mode ? "Pareto front objectives " +
+        data.axes.map((axis) => axis + 1).join(" and ") : "MAP-Elites fitness grid");
+    }
+    $("table").hidden = !(hasItems && map && !data.grid);
+    $("table").replaceChildren();
+    if (!$("table").hidden) descriptorTable();
+    $("pages").hidden = data.total <= data.page_size;
+    $("previous").disabled = busy || data.offset === 0;
+    $("next").disabled = busy || to >= data.total;
+    draw();
+    reportSize();
+  }
+
+  function setAxisControls() {
+    ["x-axis", "y-axis"].forEach((id, axis) => {
+      const selector = $(id);
+      selector.replaceChildren();
+      for (let n = 0; n < data.objective_count; n++) {
+        selector.add(new Option("Objective " + (n + 1), n, false, n === data.axes[axis]));
+      }
+      selector.disabled = busy;
+    });
+  }
+
+  function descriptorTable() {
+    const table = document.createElement("table");
+    const header = table.createTHead().insertRow();
+    const columns = Math.min(data.descriptor_count, 4);
+    const labels = ["Niche", "Fitness", ...Array.from({length: columns}, (_, i) => "Descriptor " + (i + 1))];
+    for (const label of labels) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = label;
+      header.append(th);
+    }
+    const body = table.createTBody();
+    for (const item of data.items) {
+      const row = body.insertRow();
+      for (const value of [item.niche, item.fitness, ...item.descriptor]) row.insertCell().textContent = fmt(value);
+    }
+    $("table").append(table);
+  }
+
+  function draw() {
+    if (chart.hidden || !data) return;
+    const width = chart.clientWidth;
+    const height = chart.clientHeight;
+    if (width < 120 || height < 100) return;
+    const dpi = devicePixelRatio || 1;
+    chart.width = Math.round(width * dpi);
+    chart.height = Math.round(height * dpi);
+    const ctx = chart.getContext("2d");
+    ctx.scale(dpi, dpi);
+    const styles = getComputedStyle(document.documentElement);
+    ctx.font = "11px system-ui";
+    const area = {left: 46, right: width - 16, top: 12, bottom: height - 38};
+    if (data.kind === "mode") drawFront(ctx, styles, area);
+    else drawGrid(ctx, styles, area);
+  }
+
+  function drawFront(ctx, styles, box) {
+    const reference = data.hypervolume?.reference ?? [];
+    const values = reference.length === 2 ? [...data.items, reference] : data.items;
+    const ranges = [0, 1].map((axis) => {
+      const coordinates = values.map((point) => point[axis]);
+      return [Math.min(...coordinates), Math.max(...coordinates)];
+    });
+    const fraction = (v, [low, high]) => {
+      if (low === high) return 0.5;
+      const scale = Math.max(Math.abs(low), Math.abs(high), 1);
+      return 0.04 + 0.92 * ((v / scale - low / scale) / (high / scale - low / scale));
+    };
+    const x = (v) => box.left + (box.right - box.left) * fraction(v, ranges[0]);
+    const y = (v) => box.bottom - (box.bottom - box.top) * fraction(v, ranges[1]);
+    ctx.strokeStyle = styles.getPropertyValue("--border");
+    ctx.strokeRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+    ctx.fillStyle = styles.getPropertyValue("--point");
+    for (const [fx, fy] of data.items) {
+      ctx.beginPath();
+      ctx.arc(x(fx), y(fy), 3, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    if (reference.length === 2) {
+      ctx.strokeStyle = styles.getPropertyValue("--reference");
+      const [fx, fy] = reference;
+      ctx.strokeRect(x(fx) - 3, y(fy) - 3, 6, 6);
+    }
+    ctx.fillStyle = styles.getPropertyValue("--muted");
+    ctx.textAlign = "left";
+    ctx.fillText(fmt(ranges[0][0]), box.left, box.bottom + 14);
+    ctx.textAlign = "right";
+    ctx.fillText(fmt(ranges[0][1]), box.right, box.bottom + 14);
+    ctx.fillText(fmt(ranges[1][0]), box.left - 4, box.bottom);
+    ctx.fillText(fmt(ranges[1][1]), box.left - 4, box.top + 10);
+    ctx.textAlign = "center";
+    ctx.fillText("Objective " + (data.axes[0] + 1), (box.left + box.right) / 2, box.bottom + 30);
+    ctx.save();
+    ctx.translate(12, (box.top + box.bottom) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText("Objective " + (data.axes[1] + 1), 0, 0);
+    ctx.restore();
+  }
+
+  function drawGrid(ctx, styles, box) {
+    const {rows, base_columns: base, extra_columns: extra} = data.grid;
+    if (!(rows > 0 && base > 0)) return;
+    const width = box.right - box.left;
+    const rowHeight = (box.bottom - box.top) / rows;
+    ctx.strokeStyle = styles.getPropertyValue("--border");
+    ctx.strokeRect(box.left, box.top, width, box.bottom - box.top);
+    const fitness = data.items.map((item) => item.fitness);
+    const low = Math.min(...fitness);
+    const high = Math.max(...fitness);
+    const scale = Math.max(Math.abs(low), Math.abs(high), 1);
+    ctx.fillStyle = styles.getPropertyValue("--hot");
+    for (const item of data.items) {
+      const wideCells = extra * (base + 1);
+      const wide = item.niche < wideCells;
+      const index = wide ? item.niche : item.niche - wideCells;
+      const columns = wide ? base + 1 : base;
+      const row = Math.floor(index / columns) + (wide ? 0 : extra);
+      const column = index % columns;
+      if (row >= rows) continue;
+      const intensity = low === high ? 1 : (item.fitness / scale - low / scale) / (high / scale - low / scale);
+      ctx.globalAlpha = 0.24 + 0.76 * intensity;
+      const cellWidth = width / columns;
+      ctx.fillRect(box.left + column * cellWidth, box.bottom - (row + 1) * rowHeight, cellWidth, rowHeight);
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = styles.getPropertyValue("--muted");
+    ctx.textAlign = "center";
+    ctx.fillText("Descriptor 1", (box.left + box.right) / 2, box.bottom + 16);
+    ctx.fillText("Page fitness " + fmt(low) + " to " + fmt(high), (box.left + box.right) / 2, box.bottom + 30);
+    ctx.save();
+    ctx.translate(16, (box.top + box.bottom) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText("Descriptor 2", 0, 0);
+    ctx.restore();
+  }
+
+  async function page(offset, axes = data.axes) {
+    if (busy) return;
+    busy = true;
+    render();
+    try {
+      const args = {job_id: data.job_id, task_id: data.task_id, offset};
+      if (axes) args.axes = axes;
+      const result = await request("tools/call", {name: "view_result_page", arguments: args});
+      receive(result);
+    } catch (error) {
+      $("meta").textContent = error.message;
+    } finally {
+      busy = false;
+      $("previous").disabled = data.offset === 0;
+      $("next").disabled = data.offset + data.items.length >= data.total;
+      $("x-axis").disabled = false;
+      $("y-axis").disabled = false;
+    }
+  }
+  $("previous").onclick = () => page(Math.max(0, data.offset - data.page_size));
+  $("next").onclick = () => page(data.offset + data.page_size);
+  for (const id of ["x-axis", "y-axis"]) {
+    $(id).onchange = () => {
+      const axes = [Number($("x-axis").value), Number($("y-axis").value)];
+      if (axes[0] === axes[1]) setAxisControls();
+      else page(0, axes);
+    };
+  }
+</script>
+</html>

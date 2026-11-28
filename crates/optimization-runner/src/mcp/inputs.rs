@@ -20,7 +20,7 @@ use std::{
     borrow::Cow,
     collections::BTreeMap,
     fs,
-    io::Write,
+    io::{self, Write},
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
@@ -56,11 +56,14 @@ fn older_than(entry: &fs::DirEntry, age: Duration) -> bool {
 /// Removes stored files not modified for 7 days and temporary files older
 /// than a day.
 pub fn clean(root: &Path) {
-    for entry in fs::read_dir(directory(root))
-        .into_iter()
-        .flatten()
-        .flatten()
-    {
+    let directory = directory(root);
+    if !directory.is_dir() {
+        return;
+    }
+    let Ok(_guard) = lock(&root.join("mcp/inputs.lock")) else {
+        return;
+    };
+    for entry in fs::read_dir(directory).into_iter().flatten().flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         let stale = if content_name(&name) {
@@ -276,8 +279,8 @@ fn artifact(server: &Server, source: &Value, ctx: &Ctx) -> Result<Vec<u8>, Fail>
 }
 
 /// True if `path` is a regular file holding exactly the content of `sha256`.
-fn intact(path: &Path, sha256: &str, size: usize) -> bool {
-    fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && m.len() == size as u64)
+fn intact(path: &Path, sha256: &str, size: u64) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && m.len() == size)
         && digest_file(path).is_ok_and(|(_, found)| found == sha256)
 }
 
@@ -300,53 +303,124 @@ fn io_error(path: &Path, e: std::io::Error) -> Fail {
     tools::fail("runner_error", format!("{}: {e}", path.display()))
 }
 
-/// Writes `bytes` to the store, atomically, or refreshes the modification
-/// time of the identical file already there.
-fn store(server: &Server, bytes: &[u8]) -> Result<Value, Fail> {
+fn check_quota(server: &Server, directory: &Path, target: &Path, size: u64) -> Result<(), Fail> {
+    let used = used(directory, target).map_err(|e| io_error(directory, e))?;
+    let limit = server.input_store_bytes;
+    if used.saturating_add(size) > limit {
+        return Err(tools::fail(
+            "input_store_full",
+            format!(
+                "the input store {} holds {used} bytes; {size} more would exceed its limit of {limit} bytes (--input-store-bytes). Files not stored again for 7 days are removed when the server starts",
+                directory.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn lock_store(server: &Server) -> Result<(PathBuf, fs::File), Fail> {
     let directory = directory(&server.root);
     fs::create_dir_all(&directory).map_err(|e| io_error(&directory, e))?;
-    let sha256 = digest(bytes);
-    let target = directory.join(&sha256);
-    let lock_path = server.root.join("mcp").join("inputs.lock");
-    let _guard = lock(&lock_path).map_err(|e| io_error(&lock_path, e))?;
-    if intact(&target, &sha256, bytes.len()) {
+    let path = server.root.join("mcp/inputs.lock");
+    let guard = lock(&path).map_err(|e| io_error(&path, e))?;
+    Ok((directory, guard))
+}
+
+pub(super) fn check_upload(server: &Server, sha256: &str, size: u64) -> Result<(), Fail> {
+    let (directory, _guard) = lock_store(server)?;
+    let target = directory.join(sha256);
+    if !intact(&target, sha256, size) {
+        check_quota(server, &directory, &target, size)?;
+    }
+    Ok(())
+}
+
+/// Publishes a verified input with the common quota, lock and deduplication.
+fn publish(
+    server: &Server,
+    sha256: &str,
+    size: u64,
+    prepare: impl FnOnce(&mut dyn Write) -> Result<(), Fail>,
+) -> Result<Value, Fail> {
+    let (directory, _guard) = lock_store(server)?;
+    let target = directory.join(sha256);
+    if intact(&target, sha256, size) {
+        prepare(&mut io::sink())?;
         fs::File::options()
             .write(true)
             .open(&target)
             .and_then(|f| f.set_modified(SystemTime::now()))
             .map_err(|e| io_error(&target, e))?;
     } else {
-        let used = used(&directory, &target).map_err(|e| io_error(&directory, e))?;
-        let limit = server.input_store_bytes;
-        if used.saturating_add(bytes.len() as u64) > limit {
-            return Err(tools::fail(
-                "input_store_full",
-                format!(
-                    "the input store {} holds {used} bytes; {} more would exceed its limit of {limit} bytes (--input-store-bytes). Files not stored again for 7 days are removed when the server starts",
-                    directory.display(),
-                    bytes.len()
-                ),
-            ));
-        }
-        let temporary = directory.join(format!(".{sha256}.{}.tmp", std::process::id()));
-        let written = (|| {
-            let mut file = fs::File::create(&temporary)?;
-            file.write_all(bytes)?;
-            file.sync_all()?;
-            fs::rename(&temporary, &target)?;
-            fs::File::open(&directory)?.sync_all()
-        })();
-        if let Err(e) = written {
-            let _ = fs::remove_file(&temporary);
-            return Err(io_error(&target, e));
-        }
+        check_quota(server, &directory, &target, size)?;
+        let mut temporary = tempfile::Builder::new()
+            .prefix(".input-")
+            .tempfile_in(&directory)
+            .map_err(|e| io_error(&directory, e))?;
+        prepare(temporary.as_file_mut())?;
+        temporary
+            .as_file()
+            .sync_all()
+            .map_err(|e| io_error(&target, e))?;
+        temporary
+            .persist(&target)
+            .map_err(|e| io_error(&target, e.error))?;
+        fs::File::open(&directory)
+            .and_then(|dir| dir.sync_all())
+            .map_err(|e| io_error(&directory, e))?;
     }
-    Ok(json!({
-        "file": sha256,
-        "sha256": sha256,
-        "bytes": bytes.len(),
-        "input_dir": directory.to_string_lossy(),
-    }))
+    Ok(json!({"file":sha256,"sha256":sha256,"bytes":size,"input_dir":directory}))
+}
+
+fn store(server: &Server, bytes: &[u8]) -> Result<Value, Fail> {
+    publish(server, &digest(bytes), bytes.len() as u64, |writer| {
+        writer
+            .write_all(bytes)
+            .map_err(|e| tools::fail("runner_error", format!("cannot write stored input: {e}")))
+    })
+}
+
+pub(super) fn store_upload(
+    server: &Server,
+    staged: &Path,
+    sha256: &str,
+    size: u64,
+) -> Result<Value, Fail> {
+    let mut source = crate::files::open(staged).map_err(|error| {
+        if error
+            .downcast_ref::<io::Error>()
+            .is_some_and(|e| e.kind() == io::ErrorKind::NotFound)
+        {
+            tools::fail("upload_not_received", "the staged file has not arrived")
+        } else {
+            tools::fail(
+                "upload_invalid",
+                "the staged file is not readable as a regular file",
+            )
+        }
+    })?;
+    publish(
+        server,
+        sha256,
+        size,
+        |mut writer| match crate::files::stream(&mut source, &mut writer, size) {
+            Ok((n, hash)) if n == size && hash == sha256 => Ok(()),
+            _ => Err(tools::fail(
+                "upload_invalid",
+                "the staged file could not be verified against its byte count and SHA-256",
+            )),
+        },
+    )
+}
+
+pub(super) fn store_empty(server: &Server, sha256: &str) -> Result<Value, Fail> {
+    if digest(&[]) != sha256 {
+        return Err(tools::fail(
+            "upload_invalid",
+            "the SHA-256 does not match an empty input",
+        ));
+    }
+    store(server, &[])
 }
 
 #[cfg(test)]

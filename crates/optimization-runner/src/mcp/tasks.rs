@@ -180,10 +180,12 @@ fn describe(task_id: &str, created: Option<f64>, job: &Value, note: Option<Strin
 /// is a manifest that cannot be read (the job's state stays in the result).
 fn final_result(job: &Value) -> Value {
     let failed = matches!(job["state"].as_str(), Some("failed" | "interrupted"));
-    match tools::read_manifest(job).and_then(|bytes| tools::summary(job, &bytes)) {
+    let mut result = match tools::read_manifest(job).and_then(|bytes| tools::summary(job, &bytes)) {
         Ok(summary) => tools::tool_result(json!({"job":job,"result":summary}), failed),
         Err(error) => tools::tool_result(json!({"job":job,"error":error.value()["error"]}), true),
-    }
+    };
+    result["resultType"] = json!("complete");
+    result
 }
 
 /// RFC 3339 UTC time of a Unix timestamp, with milliseconds.

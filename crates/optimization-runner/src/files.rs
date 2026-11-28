@@ -74,7 +74,11 @@ pub(crate) fn fingerprint(path: &Path, limit: u64) -> Result<(u64, String)> {
     let mut sink = std::io::sink();
     stream(&mut source, &mut sink, limit)
 }
-fn stream(source: &mut impl Read, sink: &mut impl Write, limit: u64) -> Result<(u64, String)> {
+pub(crate) fn stream(
+    source: &mut impl Read,
+    sink: &mut impl Write,
+    limit: u64,
+) -> Result<(u64, String)> {
     let mut hash = Sha256::new();
     let mut count = 0;
     let mut buf = [0u8; 65536];

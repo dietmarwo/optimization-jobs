@@ -1052,12 +1052,14 @@ Claude Desktop. The options are `--root` (or `OPTIMIZATION_RUN_ROOT`), the node;
 server); `--launch process|systemd` (see below); `--input-dir`, the
 directory that relative input files of inline jobs are read from (by default
 the working directory); and `--input-store-bytes`, the size limit of the
-[input store](#input-files-and-the-guide) (1 GiB by default). The server
+[input store](#input-files-and-the-guide) (1 GiB by default). The optional
+`--files-endpoint` configures an [experimental upload origin](#experimental-files-upload).
+The server
 logs one line to stderr when it starts.
 
 ### Tools
 
-The server has fifteen tools:
+The server has sixteen general tools:
 
 | Tool | Runner command | Answer |
 | --- | --- | --- |
@@ -1076,6 +1078,7 @@ The server has fifteen tools:
 | `cancel_job` | `jobs cancel` | Graceful stop; completed tasks stay in the result |
 | `kill_job` | `jobs cancel --now` | Immediate stop |
 | `repair_job` | `jobs repair` | Finalizes a job whose launcher was lost or that a reboot interrupted |
+| `view_result` | `result` | Text summary and a bounded preview of one committed task, with a [viewer](#mode-and-map-elites-viewer) on Apps hosts |
 
 A tool that takes a job accepts it inline, as `job` (an envelope object whose
 relative input files are read from `input_dir`, by default the server's
@@ -1084,7 +1087,10 @@ input schema embeds the envelope schema. An input file is copied for staging
 only after its SHA-256 matches, so a job can carry only files whose content
 its author already knows.
 
-Results carry `structuredContent` and the same JSON as text. A failed call is
+Ordinary tools return `structuredContent` and the same JSON as text.
+`view_result` also supplies a short human-readable text summary. On the July
+revision `put_input`, `get_job` and `wait_job` publish output schemas covering
+both successful and coded-error payloads. A failed call is
 a tool result with `isError: true` and `{"error":{"code","message","retryable"}}`:
 one of the [runner's codes](#errors) or one of these:
 
@@ -1095,6 +1101,8 @@ one of the [runner's codes](#errors) or one of these:
 | `not_finished` | `get_result` before the job ended | `wait_job` |
 | `result_too_large` | `full` on a manifest over 1 MiB, or any read of a manifest over 256 MiB | `tasks`, or `run.json` in the job directory |
 | `mcp_timeout` | A runner call, or the confirmation that a submitted job exists, exceeded its deadline; retryable | `get_job` before submitting again |
+| `upload_not_received` | The Files endpoint has yet to stage a complete input | Check the configured endpoint and the transfer's HTTP response |
+| `upload_invalid` | A staged input is unreadable or differs from its declared size or SHA-256 | Verify the input and start a new upload |
 
 ### Input files and the guide
 
@@ -1133,18 +1141,92 @@ it first.
 
 The server is dual-era. A request that carries
 `io.modelcontextprotocol/protocolVersion` in `_meta` is served statelessly
-under revision 2026-07-28 (`server/discover` answers without a handshake); an
+under revision 2026-07-28 (`server/discover` answers without a handshake).
+This revision is sometimes called MCP 2.0. An
 `initialize` request selects 2025-11-25, 2025-06-18, 2025-03-26 or 2024-11-05
 for the process; after an `initialize` with 2025-03-26, JSON-RPC batches are
 answered as batches. Another version
-gets `UnsupportedProtocolVersion` (`-32022`) listing the supported ones. The
-server offers tools only: no resources, prompts, sampling, elicitation or
-logging, and `subscriptions/listen` delivers task notifications only.
+gets `UnsupportedProtocolVersion` (`-32022`) listing the supported ones.
+The July revision adds Resources and Skills. `subscriptions/listen` delivers
+task notifications. Modern tool listings are immediately stale and private
+because extension capabilities can vary by request. Discovery and static
+resources have public one-hour freshness hints.
 `notifications/cancelled` stops a request that only reads, such as a long
 `wait_job`, without stopping its job. A request that changes a job
 (`submit_job`, `cancel_job`, `kill_job`, `repair_job`) runs to its end
 regardless and only loses its response: stopping the runner halfway could
 leave a job half created.
+
+### Resources and skills
+
+Call `server/discover` on 2026-07-28 to see the Resources capability and
+`io.modelcontextprotocol/skills`. List workflows with `skills/list`. The
+three entrypoints are:
+
+- `skill://optimization-jobs/choose-optimization-solver/SKILL.md`
+- `skill://optimization-jobs/run-optimization-job/SKILL.md`
+- `skill://optimization-jobs/interpret-optimization-result/SKILL.md`
+
+`skills/get` returns one manifest by its entrypoint URI. Each manifest
+lists the frontmatter and the size and SHA-256 of every bundled file.
+Fetch an entrypoint or a needed reference with `resources/read` and
+verify its size and digest. `resources/list` lists the supplied files.
+Invalid cursors and unknown skill or resource URIs return `-32602`.
+Resources and skills are packaged in the binary. `get_guide(section)`
+is available to handshake clients.
+
+### MODE and MAP-Elites viewer
+
+Select a committed task ID from `get_result` and pass it with the job ID
+to `view_result`. It returns a text summary and up to 128 entries. The
+tool points to the packaged HTML at
+`ui://optimization-jobs/job-result.html`. On 2026-07-28 clients declaring
+`io.modelcontextprotocol/ui`, the app can change MODE axes and request
+more entries with the app-only `view_result_page` tool. The plot shows
+the worker's front source and hypervolume in its original dimension.
+MAP-Elites displays coverage and QD score, and a grid or descriptor
+table based on the archive geometry. Clients can fetch full records
+through the existing `get_result` tool.
+
+### Experimental Files upload
+
+Enable the draft `io.modelcontextprotocol/files` upload capability with
+`--files-endpoint https://YOUR-TRANSFER-ORIGIN`. The configured origin
+receives the file on a separate connection. Keep the stdio connection for
+metadata and results. A client must opt in and be able to reach the origin.
+Conforming clients require operator allowlisting for private HTTPS
+addresses and for loopback HTTP. The repository's test endpoint uses
+allowlisted loopback HTTP with the same private node staging directory.
+
+The Files tool `upload_input` takes a file descriptor with a size of up to
+64 MiB and a SHA-256 digest encoded as unpadded base64url. For a nonempty file,
+the tool returns a temporary PUT target and `requestState`. The endpoint
+uses the server-issued grant metadata in `NODE/mcp/uploads/` and stages
+the complete body for the retry. Echo the original arguments and
+`requestState` after HTTP success. The server verifies the staged size and
+hash and returns the same input reference fields as `put_input`.
+An invalid or expired retry state returns `-32602`. A valid retry requires a
+staged file and follows the shared input store quota. The grant expires
+after five minutes and the signed retry state after fifteen minutes.
+Use the ordinary `get_artifact` interface for outputs.
+
+### Interoperability checks
+
+The 0.6.0 source was exercised with the official TypeScript client 2.4.0
+and Tasks extension 0.2.3 on stateless stdio. The Skills SDK and MCP
+Inspector CLI 2.17.0 both verified the three embedded skills. Inspector
+Web 2.17.0 in modern mode rendered MODE and MAP-Elites worker results
+using Apps revision 2026-01-26. The SDK test locks Apps 2.0.4 for its
+metadata check.
+
+Run the SDK and Inspector CLI checks with `npm test --prefix
+scripts/job-api/sdk-client` after installing the test dependencies. To
+check rendering, give `scripts/job-api/test_mcp_app_host.py` the runner
+and fcmaes worker binaries through `JOB_API_TARGET`, and install
+Playwright and Chromium. For Files, run `scripts/job-api/test_mcp_files.py`
+with the LP-IP worker available through the same variable. That test uses
+a loopback allowlist and compares an uploaded 64 MiB model with the
+unpadded model.
 
 ### Tasks
 

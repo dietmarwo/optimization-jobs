@@ -20,7 +20,7 @@
     {
       "reader": "Agent builder",
       "url": "https://github.com/dietmarwo/fcmaes-rust/blob/main/docs/learning-paths.md#agent-builder",
-      "summary": "Choose a solver, connect MCP, run and interpret checked results."
+      "summary": "Choose a solver, connect MCP, discover skills and interpret checked results."
     }
   ],
   "projects": [
@@ -148,7 +148,7 @@
       "summary": "Durable optimization jobs for AI agents: local Rust runner, worker SDK and MCP server with a shared CPU budget.",
       "fit": "An agent needs to discover workers, validate, submit, follow or cancel jobs and read results and artifacts through MCP or a shell.",
       "limits": "Linux, one local node, cooperative CPU accounting. Install and register workers first. No distributed scheduler or exact optimizer-state resume.",
-      "availability": "crates.io: optimization-job-api and optimization-runner (since 0.3.0); cargo install optimization-runner --locked installs optimization-run and optimization-mcp. No solver is bundled: workers build in their repositories.",
+      "availability": "crates.io: optimization-job-api and optimization-runner. The 0.6.0 source adds Skills over MCP, output schemas and a result viewer. Workers build in their repositories.",
       "guide": "https://github.com/dietmarwo/optimization-jobs/blob/main/ai-context.md",
       "tutorial": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md",
       "documentation": "https://github.com/dietmarwo/optimization-jobs/blob/main/docs/job-api.md",

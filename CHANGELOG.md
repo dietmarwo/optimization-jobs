@@ -8,7 +8,26 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Added
+
+- MCP 2026-07-28 serves Resources and three Skills beta workflows generated
+  from the agent guide. The existing guide tool stays available on each revision.
+- Publish modern output schemas for `put_input`, `get_job` and `wait_job`.
+- `view_result` reports one selected task and serves a read-only MCP App
+  for a MODE Pareto front or MAP-Elites archive. Apps clients can page
+  through larger results.
+- `--files-endpoint` enables draft Files uploads over a separate data
+  connection. Uploads are verified before they enter the input store.
+
+### Fixed
+
+- Include the required result discriminator on tool results nested inside
+  completed MCP Tasks. Test recovery and cancellation with the official client.
+
 ### Changed
+
+- Name the MCP 2026-07-28 stateless protocol, Tasks and the handshake
+  revisions supported since 0.3.0 in the README, crate README and agent guide.
 
 - The tutorials install the releases of 27 November 2026: the domain-evaluator tutorials `fcmaes` 2.3.0 (was 2.2.0), the structured tutorials `lp-ip-craft` 0.33.0 (was 0.29.0), `sqp-craft` 0.21.0 (was 0.20.0) and `fcmaes-rust` 0.5.0 (was 0.4.0), the simulator tutorial the same three (`sqp-craft` was 0.17.0). The domain-evaluator smoke summaries match; in the structured chapters only labels change. X1 and LP10 record `lp-ip-craft` 0.33.0 and the three effective options that LP-IP-craft added since 0.29.0 (`adaptive_root`, `integer_equality_presolve`, `diagnostics.unweighted_node_retries`); every other recorded value is unchanged.
 - The structured-tutorials workflow compares each repository's chapters with that repository's own `compare_results.py` where it has one, so LP-IP-craft's chapters ignore the version label of its native backend, as its own CI does. Other chapters still use SQP-craft's.

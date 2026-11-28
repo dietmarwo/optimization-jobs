@@ -122,7 +122,7 @@ fn object(properties: Value, required: &[&str]) -> Value {
     json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})
 }
 
-fn job_id_property() -> Value {
+pub(super) fn job_id_property() -> Value {
     json!({"type":"string","pattern":"^[0-9a-f]{32}$","description":"Job ID, as returned by submit_job or list_jobs."})
 }
 
@@ -153,7 +153,7 @@ fn job_properties() -> Value {
 }
 
 /// Tool name, title, annotations, description and input schema.
-pub fn definitions() -> Vec<Value> {
+pub fn definitions(modern: bool) -> Vec<Value> {
     let read = json!({"readOnlyHint":true,"openWorldHint":false});
     let job_id = job_id_property();
     let tools = [
@@ -314,13 +314,59 @@ pub fn definitions() -> Vec<Value> {
         .map(|(name, title, annotations, description, schema)| {
             let mut annotations = annotations;
             annotations["title"] = json!(title);
-            json!({"name":name,"title":title,"description":description,"inputSchema":schema,"annotations":annotations})
+            let mut tool = json!({"name":name,"title":title,"description":description,"inputSchema":schema,"annotations":annotations});
+            if modern && let Some(schema) = output_schema(name) {
+                tool["outputSchema"] = schema;
+            }
+            tool
         })
         .collect()
 }
 
+/// Success and coded tool errors both occupy structuredContent.
+pub(super) fn output_schema(name: &str) -> Option<Value> {
+    let sha256 = json!({"type":"string","pattern":"^[0-9a-f]{64}$"});
+    let success = match name {
+        "put_input" | "upload_input" => object(
+            json!({
+                "file": sha256,
+                "sha256": sha256,
+                "bytes": {"type":"integer","minimum":0,"maximum":MAX_INPUT_BYTES},
+                "input_dir": {"type":"string","minLength":1},
+            }),
+            &["file", "sha256", "bytes", "input_dir"],
+        ),
+        // Older optimization jobs use completed_retries instead of
+        // completed_tasks. Job state, ID and directory are common to both.
+        "get_job" | "wait_job" => json!({
+            "type": "object",
+            "required": ["job_id", "state", "directory"],
+            "properties": {
+                "job_id": job_id_property(),
+                "state": {"enum":["submitted","starting","waiting","running","completed",
+                                   "failed","cancelled","timed_out","interrupted"]},
+                "directory": {"type":"string","minLength":1},
+                "observed_state": {"type":["string","null"]},
+                "completed_tasks": {"type":"integer","minimum":0},
+                "requested_tasks": {"type":"integer","minimum":0},
+                "artifact_index": {"type":"object"},
+            },
+        }),
+        _ => return None,
+    };
+    let error = object(
+        json!({"error":{
+            "type":"object",
+            "properties":{"code":{"type":"string"},"message":{"type":"string"},"retryable":{"type":"boolean"}},
+            "required":["code","message","retryable"],
+        }}),
+        &["error"],
+    );
+    Some(json!({"type":"object","anyOf":[success,error]}))
+}
+
 pub fn exists(name: &str) -> bool {
-    definitions().iter().any(|t| t["name"] == name)
+    definitions(false).iter().any(|t| t["name"] == name)
 }
 
 pub fn call(server: &Server, name: &str, args: &Value, ctx: &Ctx) -> Outcome {
@@ -1068,6 +1114,29 @@ pub fn summary(job: &Value, bytes: &[u8]) -> Result<Value, ToolError> {
     Ok(summary)
 }
 
+fn record_id(raw: &RawValue) -> Option<u64> {
+    #[derive(Deserialize)]
+    struct Id {
+        task_id: Option<u64>,
+    }
+    serde_json::from_str::<Id>(raw.get()).ok()?.task_id
+}
+
+pub(super) fn result_record(bytes: &[u8], task: u64) -> Result<(Value, &RawValue), Fail> {
+    let manifest = view(bytes).map_err(Fail::Tool)?;
+    let record = manifest
+        .results
+        .into_iter()
+        .find(|r| record_id(r) == Some(task))
+        .ok_or_else(|| {
+            fail(
+                "invalid_arguments",
+                "the result has no committed record for this task_id",
+            )
+        })?;
+    Ok((manifest.payload_schema, record))
+}
+
 fn get_result(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
     let id = job_id(args)?;
     let job = server.get(&id, ctx)?;
@@ -1107,14 +1176,7 @@ fn get_result(server: &Server, args: &Value, ctx: &Ctx) -> Result<Value, Fail> {
             let manifest = view(&bytes).map_err(Fail::Tool)?;
             let mut records = vec![];
             for raw in &manifest.results {
-                #[derive(Deserialize)]
-                struct Id {
-                    task_id: Option<u64>,
-                }
-                let selected = serde_json::from_str::<Id>(raw.get())
-                    .ok()
-                    .and_then(|r| r.task_id)
-                    .is_some_and(|t| wanted.contains(&t));
+                let selected = record_id(raw).is_some_and(|id| wanted.contains(&id));
                 if selected && let Ok(record) = serde_json::from_str::<Value>(raw.get()) {
                     records.push(record);
                 }

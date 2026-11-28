@@ -42,6 +42,7 @@ jobs:
       - name: Shared documentation tools and this repository's Markdown links
         run: |
           python3 scripts/test_docs_tools.py
+          python3 scripts/job-api/generate_skills.py --check
           python3 -O scripts/test_docs_tools.py
           # The embedded guide is a copy whose links are relative to the root.
           python3 scripts/check_markdown_links.py --exclude crates/optimization-runner/guide
@@ -52,6 +53,7 @@ jobs:
           python3 scripts/job-api/test_commands.py
           python3 scripts/job-api/test_remote.py
           python3 scripts/job-api/test_mcp.py
+          python3 scripts/job-api/test_mcp_files.py
       # In a container whose /proc belongs to an enclosing PID namespace,
       # /proc directory names are not the PIDs this namespace uses; the tests
       # that inspect processes map them (review OJ-05).
@@ -61,6 +63,22 @@ jobs:
             sudo -E unshare --pid --fork --kill-child --setuid "$(id -u)" --setgid "$(id -g)" \
               "$(command -v python3)" "scripts/job-api/$suite"
           done
+
+  mcp-sdk:
+    name: Official MCP client and Inspector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.3"
+          cache: npm
+          cache-dependency-path: scripts/job-api/sdk-client/package-lock.json
+      - run: cargo build --release --locked -p optimization-runner
+      - run: npm ci --prefix scripts/job-api/sdk-client --ignore-scripts
+      - run: npm test --prefix scripts/job-api/sdk-client
 
   msrv:
     name: Rust 1.88 (declared rust-version)
@@ -147,6 +165,19 @@ jobs:
             JOB_API_TARGET="$target" python3 scripts/job-api/test_mcp.py \
               Jobs.test_a_real_worker_reports_claims_and_evidence \
               Jobs.test_a_real_worker_runs_its_examples_over_mcp_only
+            case "$worker" in
+              fcmaes-rust/*)
+                JOB_API_TARGET="$target" python3 scripts/job-api/test_mcp.py \
+                  SkillWorkflows.test_run_eight_single_threaded_fcmaes_retries \
+                  SkillWorkflows.test_view_real_mode_and_map_elites_results
+                ;;
+              LP-IP-craft/*)
+                JOB_API_TARGET="$target" python3 scripts/job-api/test_mcp.py \
+                  SkillWorkflows.test_choose_lp_and_run_a_linear_model
+                JOB_API_TARGET="$target" python3 scripts/job-api/test_mcp_files.py \
+                  Files.test_maximum_file_round_trip_to_lp_worker
+                ;;
+            esac
           done
 
       - name: Explicit remote placement over OpenSSH (simulated user manager)
