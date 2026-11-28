@@ -8,6 +8,11 @@ revision. 0.3.0 is the first version on crates.io.
 
 ## [Unreleased]
 
+### Changed
+
+- The registry records in `docs/discovery/` name optimization-jobs 0.6.0,
+  installed from crates.io on 28 November 2026.
+
 ## [0.6.0] - 2026-11-28
 
 An MCP feature release. On MCP 2026-07-28, informally "MCP 2.0",

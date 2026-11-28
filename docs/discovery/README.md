@@ -142,13 +142,24 @@ README examples:
 | fcmaes-rust | crates.io `fcmaes-core`, PyPI `fcmaes-rust` 0.5.0 | Job worker, surrogate and other internal crates |
 | LP-IP-craft | PyPI `lp-ip-craft`, crates.io `lp-ip-craft`, `lp-ip-craft-native` 0.33.0 | Job worker |
 | SQP-craft | PyPI `sqp-craft`, crates.io `sqp-craft`, `-parallel`, `-activeset`, `-clarabel`, `-solver` 0.21.0 | Job worker |
-| optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.5.0 | — |
+| optimization-jobs | crates.io `optimization-job-api`, `optimization-runner` 0.6.0 | — |
 
 Use each repository's `RELEASING.md` and existing tested release workflows.
-On 2026-11-28, the 0.6.0 source archives were installed locally with
-the matching SDK archive. From a separate working directory, the installed
-runner initialized a node and MCP Inspector 2.17.0 verified all three
-skills. The published versions in the table above are registry observations.
+On 2026-11-28, before the release, the 0.6.0 source archives were installed
+locally with the matching SDK archive. From a separate working directory, the
+installed runner initialized a node and MCP Inspector 2.17.0 verified all
+three skills. The optimization-jobs row was updated the same day after the
+release: `cargo install optimization-runner --version 0.6.0 --locked`
+installed both binaries from crates.io. From an empty working directory the
+MCP server answered `server/discover` (2026-07-28 and the four handshake
+revisions; Resources, Skills and Tasks), `tools/list` (16 tools with the
+public one-hour hint; output schemas on `put_input`, `get_job` and
+`wait_job`) and `skills/list` (three skills). All ten skill files matched
+their listed sizes and SHA-256 digests. After `initialize` under 2025-11-25
+it listed the same 16 tools without output schemas, and `get_guide` returned
+the guide of the `v0.6.0` tag. A new crate was built against
+`optimization-job-api` 0.6.0, and docs.rs built both crates. The published
+versions in the table above are registry observations.
 
 The discovery changes touched no package version, release tag, dependency pin,
 publication permission or solver behavior. Do not mark a package published just
